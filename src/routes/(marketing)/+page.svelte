@@ -235,51 +235,43 @@
       <div
         class="text-xl md:text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-primary to-accent mb-3 md:mb-7 pb-1"
       >
-        SaaS Starter Demo
+        Smart Fleet Management For Everyone
       </div>
 
       <div
         class="text-4xl md:text-6xl font-bold px-2"
         style="line-height: 1.2;"
       >
-        The
+        FLAM
         <span
           class="underline decoration-secondary decoration-4 md:decoration-[6px]"
-          >open source</span
+          >a powerful fleet management platform</span
         >,
         <span
           class="underline decoration-secondary decoration-4 md:decoration-[6px]"
-          >fast</span
-        >, and
+          >that</span
+        >, helps 
         <span
           class="underline decoration-secondary decoration-4 md:decoration-[6px]"
-          >free to host</span
+          >commuters save time and operators</span
         >
-        <span> SaaS template</span>
+        <span>  Improve Service</span>
       </div>
       <div class="mt-6 md:mt-10 text-sm md:text-lg">
-        Built with <a
+        Transform your <a
           href="https://kit.svelte.dev"
           class="link font-bold"
-          target="_blank">SvelteKit</a
+          target="_blank">Commute</a
         >,
         <a href="https://supabase.com" class="link font-bold" target="_blank"
-          >Supabase</a
+          >In 3 </a
         >,
         <a href="https://stripe.com" class="link font-bold" target="_blank"
-          >Stripe</a
+          >Simple</a
         >,
         <a href="https://tailwindcss.com" class="link font-bold" target="_blank"
-          >Tailwind</a
+          >Steps</a
         >,
-        <a href="https://daisyui.com" class="link font-bold" target="_blank"
-          >DaisyUI</a
-        >, and
-        <a
-          href="https://www.postgresql.org"
-          class="link font-bold"
-          target="_blank">Postgres</a
-        >
       </div>
       <div
         class="mt-6 md:mt-4 flex flex-row flex-wrap gap-4 place-content-center"
