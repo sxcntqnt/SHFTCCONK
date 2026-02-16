@@ -5,111 +5,113 @@
   interface Props {
     children?: import("svelte").Snippet
   }
-
   let { children }: Props = $props()
 </script>
 
-<div class="navbar bg-base-100 container mx-auto">
-  <div class="flex-1">
-    <a class="btn btn-ghost normal-case text-xl" href="/">{WebsiteName}</a>
+<!-- Sticky Navbar – sage green accents, charcoal text, no overlap -->
+<nav class="navbar bg-charcoal-950/90 backdrop-blur-lg border-b border-charcoal-800 sticky top-0 z-50 shadow-sm">
+  <div class="navbar-start">
+    <a href="/" class="btn btn-ghost normal-case text-2xl md:text-3xl font-black tracking-tight text-sage-400">
+      {WebsiteName}
+    </a>
   </div>
-  <div class="flex-none">
-    <ul class="menu menu-horizontal px-1 hidden sm:flex font-bold text-lg">
-      <li class="md:mx-4">
-        <a
-          href="https://github.com/CriticalMoments/CMSaasStarter"
-          class="border border-primary">★ us on Github</a
-        >
-      </li>
-      <li class="md:mx-2"><a href="/blog">Blog</a></li>
-      <li class="md:mx-2"><a href="/pricing">Pricing</a></li>
-      <li class="md:mx-2"><a href="/account">Account</a></li>
-      <li class="md:mx-0">
-        <a href="/search" aria-label="Search">
-          <svg
-            fill="#000000"
-            class="w-6 h-6"
-            viewBox="0 0 20 20"
-            xmlns="http://www.w3.org/2000/svg"
-            ><path
-              d="M17.545 15.467l-3.779-3.779a6.15 6.15 0 0 0 .898-3.21c0-3.417-2.961-6.377-6.378-6.377A6.185 6.185 0 0 0 2.1 8.287c0 3.416 2.961 6.377 6.377 6.377a6.15 6.15 0 0 0 3.115-.844l3.799 3.801a.953.953 0 0 0 1.346 0l.943-.943c.371-.371.236-.84-.135-1.211zM4.004 8.287a4.282 4.282 0 0 1 4.282-4.283c2.366 0 4.474 2.107 4.474 4.474a4.284 4.284 0 0 1-4.283 4.283c-2.366-.001-4.473-2.109-4.473-4.474z"
-              fill="currentColor"
-            /></svg
-          >
-        </a>
-      </li>
+
+  <div class="navbar-center hidden lg:flex">
+    <ul class="menu menu-horizontal px-1 font-semibold text-base flex-nowrap gap-8">
+      <li><a href="/how-it-works" class="px-5 py-2 text-charcoal-100 hover:text-sage-300 transition-colors">How It Works</a></li>
+      <li><a href="/for-commuters" class="px-5 py-2 text-charcoal-100 hover:text-sage-300 transition-colors">For Commuters</a></li>
+      <li><a href="/for-operators" class="px-5 py-2 text-charcoal-100 hover:text-sage-300 transition-colors">For Operators</a></li>
+      <li><a href="/updates" class="px-5 py-2 text-charcoal-100 hover:text-sage-300 transition-colors">Updates</a></li>
     </ul>
-    <div class="dropdown dropdown-end sm:hidden">
-      <!-- svelte-ignore a11y_label_has_associated_control -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <label tabindex="0" class="btn btn-ghost btn-circle">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          ><path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M4 6h16M4 12h16M4 18h7"
-          /></svg
-        >
+  </div>
+
+  <div class="navbar-end flex items-center gap-5">
+    <!-- Single strong CTA – sage green, prominent -->
+    <a 
+      href="/dashboard" 
+      class="btn bg-sage-600 hover:bg-sage-700 text-white font-bold px-7 md:px-9 shadow-md hover:shadow-xl transition-all duration-300 rounded-full"
+    >
+      Start Tracking Now
+    </a>
+
+    <!-- Mobile menu trigger -->
+    <div class="dropdown dropdown-end lg:hidden">
+      <label tabindex="0" class="btn btn-ghost btn-circle text-charcoal-100">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
       </label>
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <ul
-        tabindex="0"
-        class="menu menu-lg dropdown-content mt-3 z-1 p-2 shadow-sm bg-base-100 rounded-box w-52 font-bold"
-      >
-        <li><a href="/blog">Blog</a></li>
-        <li><a href="/pricing">Pricing</a></li>
-        <li><a href="/account">Account</a></li>
-        <li><a href="/search">Search</a></li>
-        <li>
-          <a
-            href="https://github.com/CriticalMoments/CMSaasStarter"
-            class="border border-primary">★ us on Github</a
-          >
+      <ul tabindex="0" class="menu menu-lg dropdown-content mt-3 z-[1] p-5 shadow-2xl bg-charcoal-900 rounded-box w-64 font-semibold text-charcoal-100">
+        <li><a href="/how-it-works" class="py-3 hover:bg-sage-800/30">How It Works</a></li>
+        <li><a href="/for-commuters" class="py-3 hover:bg-sage-800/30">For Commuters</a></li>
+        <li><a href="/for-operators" class="py-3 hover:bg-sage-800/30">For Operators</a></li>
+        <li><a href="/updates" class="py-3 hover:bg-sage-800/30">Updates</a></li>
+        <li class="mt-5 border-t border-charcoal-700 pt-5">
+          <a href="/dashboard" class="btn bg-sage-600 hover:bg-sage-700 text-white w-full rounded-full">Start Tracking Now</a>
         </li>
       </ul>
     </div>
   </div>
-</div>
+</nav>
 
-<div class="">
+<!-- Main content with padding to avoid navbar overlap on scroll -->
+<main class="flex flex-col min-h-screen bg-charcoal-50 pt-4 md:pt-0">
   {@render children?.()}
-</div>
+</main>
 
-<!-- Spacer grows so the footer can be at bottom on short pages -->
-<div class="grow"></div>
-<div class="">
-  <div class="border-t max-w-[1000px] mx-auto"></div>
-  <footer
-    class="footer md:footer-horizontal p-10 gap-x-48 lg:gap-x-64 xl:gap-x-96 place-content-center text-base"
-  >
-    <nav>
-      <span class="footer-title opacity-80">Explore</span>
-      <a class="link link-hover mb-1" href="/">Overview</a>
-      <a class="link link-hover my-1" href="/pricing">Pricing</a>
-      <a class="link link-hover my-1" href="/blog">Blog</a>
-      <a class="link link-hover my-1" href="/contact_us">Contact Us</a>
-      <a
-        class="link link-hover my-1"
-        href="https://github.com/CriticalMoments/CMSaasStarter">Github</a
-      >
-    </nav>
-    <aside>
-      <span class="footer-title opacity-80">Sponsor</span>
-      <a class="max-w-[260px]" href="https://getkiln.ai">
-        <div class="font-bold text-3xl mb-1">Kiln AI</div>
-        <div class="font-medium mb-3">Build High Quality AI Products</div>
-        <div class="font-light">
-          Use advanced AI tactics, and collaborate with your team. Free apps for
-          Mac and Windows.
-        </div>
-        <div class="link text-sm font-bold mt-2">Learn More</div>
-      </a>
+<!-- Footer – charcoal + sage accents, more socials -->
+<footer class="bg-charcoal-900 text-charcoal-100 border-t border-charcoal-800 mt-auto">
+  <div class="max-w-7xl mx-auto px-6 py-14 md:py-20 grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-14">
+    <!-- Brand & tagline -->
+    <aside class="col-span-2 md:col-span-1">
+      <h3 class="font-black text-3xl mb-5 text-sage-400">{WebsiteName}</h3>
+      <p class="text-base opacity-80 mb-8 leading-relaxed">
+        Real-time matatu tracking in Nairobi – predictable arrivals, smarter commutes, better operations.
+      </p>
+      <div class="flex gap-6 text-3xl">
+        <a href="#" aria-label="Facebook" class="opacity-70 hover:opacity-100 hover:text-sage-300 transition">📘</a>
+        <a href="#" aria-label="WhatsApp" class="opacity-70 hover:opacity-100 hover:text-sage-300 transition">💬</a>
+        <a href="#" aria-label="TikTok" class="opacity-70 hover:opacity-100 hover:text-sage-300 transition">🎵</a>
+        <a href="#" aria-label="Instagram" class="opacity-70 hover:opacity-100 hover:text-sage-300 transition">📸</a>
+        <a href="#" aria-label="X/Twitter" class="opacity-70 hover:opacity-100 hover:text-sage-300 transition">𝕏</a>
+      </div>
     </aside>
-  </footer>
-</div>
+
+    <!-- Product -->
+    <nav class="flex flex-col gap-3">
+      <h6 class="footer-title text-sage-300 font-bold mb-4 uppercase tracking-wider text-sm">Product</h6>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Overview</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Features</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Pricing</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Track Now</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Games</a>
+    </nav>
+
+    <!-- Company -->
+    <nav class="flex flex-col gap-3">
+      <h6 class="footer-title text-sage-300 font-bold mb-4 uppercase tracking-wider text-sm">Company</h6>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">About</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Updates</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Contact</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Blog</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">FAQ</a>
+    </nav>
+
+    <!-- Legal -->
+    <nav class="flex flex-col gap-3">
+      <h6 class="footer-title text-sage-300 font-bold mb-4 uppercase tracking-wider text-sm">Legal</h6>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Privacy Policy</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Terms of Service</a>
+      <a class="link link-hover opacity-90 hover:text-sage-300 transition">Security</a>
+    </nav>
+  </div>
+
+  <!-- Bottom section with CTA nudge -->
+  <div class="bg-charcoal-950 py-8 text-center text-sm opacity-80 border-t border-charcoal-800">
+    <p class="mb-4 font-medium text-base">
+      Stop waiting in uncertainty – see your matatu coming in real time.
+      <a href="/dashboard" class="text-sage-400 font-bold hover:underline ml-2">Start free today</a>
+    </p>
+    <p>© {new Date().getFullYear()} {WebsiteName}. Designed for ethical, smarter urban mobility.</p>
+  </div>
+</footer>
