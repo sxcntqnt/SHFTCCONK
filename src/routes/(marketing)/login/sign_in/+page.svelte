@@ -5,19 +5,32 @@
   import { onMount } from "svelte"
   import { page } from "$app/stores"
 
-  let { data } = $props()
-  let { supabase } = data
+  export let data;
+  $: supabase = data?.supabase;
 
   onMount(() => {
     supabase.auth.onAuthStateChange((event) => {
       // Redirect to account after successful login
       if (event == "SIGNED_IN") {
-        // Delay needed because order of callback not guaranteed.
-        // Give the layout callback priority to update state or
-        // we'll just bounch back to login when /account tries to load
-        setTimeout(() => {
-          goto("/account")
-        }, 1)
+        // Delay briefly to allow layout/auth state to settle,
+        // then resolve identity and route based on operational bindings.
+        setTimeout(async () => {
+          try {
+            const { data: rpcData, error } = await supabase.rpc('bootstrap_session');
+            if (error) {
+              console.error('bootstrap_session error', error);
+              goto('/account');
+              return;
+            }
+            // Supabase RPC returns rows; take first row if array
+            const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+            const route = payload?.route ?? '/account';
+            goto(route);
+          } catch (e) {
+            console.error(e);
+            goto('/account');
+          }
+        }, 250);
       }
     })
   })
