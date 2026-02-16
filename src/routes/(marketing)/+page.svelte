@@ -164,7 +164,7 @@
       title: "Locate a Matatu",
       description:
         "Select a route and instantly see nearby vehicles approaching your stage.",
-      link: "/dashboard",
+      link: "/app/dashboard",
     },
     {
       icon: "routes",
@@ -286,7 +286,7 @@
         >
           Get the App – Free
         </a>
-        <a href="/dashboard" class="btn btn-outline btn-lg lg:btn-xl">
+        <a href="/app/dashboard" class="btn btn-outline btn-lg lg:btn-xl">
           Try Live Web Tracker →
         </a>
       </div>

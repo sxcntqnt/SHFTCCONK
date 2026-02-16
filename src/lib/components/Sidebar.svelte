@@ -6,7 +6,13 @@
   import { user, ROLES } from '$lib/auth'
   import { derived } from 'svelte/store'
   let showDrawer = false
+  let menuButton: HTMLButtonElement | null = null
+  let drawerEl: HTMLElement | null = null
   const toggle = () => showDrawer = !showDrawer
+
+  // derived current path for active link checks
+  const currentPath = derived(page, $page => $page.url.pathname)
+  const isActive = (href: string, path: string) => path === href || path.startsWith(href + '/')
 
   const MENU_CONFIG = [
     { id: 'dashboard', href: '/app/dashboard', label: 'Home', icon: '🏠', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
@@ -20,12 +26,61 @@
   const visibleMenu = derived(user, $user => {
     return MENU_CONFIG.filter(item => item.roles.includes('*') || item.roles.includes($user.role))
   })
+
+  // body scroll lock, focus management & focus-trap for accessibility
+  let focusTrapHandler: (e: KeyboardEvent) => void
+
+  $: if (typeof document !== 'undefined') {
+    if (showDrawer) {
+      document.body.classList.add('overflow-hidden')
+      // focus first focusable inside drawer
+      setTimeout(() => {
+        drawerEl?.querySelector<HTMLElement>('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])')?.focus()
+      }, 0)
+
+      focusTrapHandler = (e: KeyboardEvent) => {
+        if (e.key !== 'Tab') return
+        const focusables = drawerEl?.querySelectorAll<HTMLElement>('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])') ?? []
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault(); last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault(); first.focus()
+        }
+      }
+      document.addEventListener('keydown', focusTrapHandler)
+    } else {
+      document.body.classList.remove('overflow-hidden')
+      if (focusTrapHandler) document.removeEventListener('keydown', focusTrapHandler)
+      // restore focus to the menu button when drawer closes
+      setTimeout(() => menuButton?.focus(), 0)
+    }
+  }
+
+  // close drawer on navigation and on Escape key
+  onMount(() => {
+    const unsub = page.subscribe(() => { if (showDrawer) showDrawer = false })
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showDrawer) {
+        showDrawer = false
+        menuButton?.focus()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      unsub()
+      document.removeEventListener('keydown', onKey)
+      if (focusTrapHandler) document.removeEventListener('keydown', focusTrapHandler)
+    }
+  })
 </script>
 
 <!-- Mobile header button -->
-<div class="md:hidden flex items-center justify-between p-4 border-b bg-white">
+  <div class="md:hidden flex items-center justify-between p-4 border-b bg-white">
   <h1 class="text-lg font-bold">MATATU OS</h1>
-  <button aria-label="Open menu" class="p-2 rounded-md bg-gray-100" on:click={toggle}>
+  <button aria-label="Open menu" bind:this={menuButton} class="p-2 rounded-md bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-300" on:click={toggle}>
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
   </button>
 </div>
@@ -41,15 +96,17 @@
     </div>
   </div>
 
-  <nav class="flex-1 p-4 space-y-1.5">
+  <nav class="flex-1 p-4 space-y-2" aria-label="Main navigation">
     {#if $visibleMenu.length === 0}
       <div class="text-sm text-gray-500">No menu items available.</div>
     {:else}
       {#each $visibleMenu as item}
-        <a href={item.href} class="flex items-center gap-3 px-4 py-3 rounded-2xl font-semibold text-[#1a1a1a] hover:bg-white hover:shadow-md transition-all duration-200 active:scale-98 group">
-          <span class="text-xl opacity-80 group-hover:opacity-100 transition">{item.icon}</span>
-          {item.label}
-        </a>
+          <a href={item.href}
+            class="flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-gray-800 hover:bg-white hover:shadow-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            aria-current={isActive(item.href, $currentPath) ? 'page' : undefined}>
+            <span class="text-xl opacity-80">{item.icon}</span>
+            <span class="truncate">{item.label}</span>
+          </a>
       {/each}
     {/if}
   </nav>
@@ -70,14 +127,18 @@
 {#if showDrawer}
   <div class="fixed inset-0 z-40">
     <button type="button" class="absolute inset-0 bg-black/40 p-0 m-0 border-0 cursor-pointer focus:outline-none" on:click={toggle} aria-label="Close menu"></button>
-    <div class="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl p-4 overflow-y-auto">
+    <div bind:this={drawerEl} role="dialog" aria-modal="true" aria-label="Main menu" class="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl p-4 overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-bold">Menu</h2>
         <button class="p-2 rounded" on:click={toggle} aria-label="Close menu">✕</button>
       </div>
-      <nav class="space-y-2">
+      <nav class="space-y-2" aria-label="Mobile navigation">
         {#each $visibleMenu as item}
-          <a href={item.href} on:click={toggle} class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-100">{item.icon} {item.label}</a>
+            <a href={item.href} on:click={toggle}
+              class="flex items-center gap-3 px-4 py-3 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200">
+              <span class="text-lg">{item.icon}</span>
+              <span class="truncate">{item.label}</span>
+            </a>
         {/each}
       </nav>
       <div class="mt-6 p-3 border-t">
