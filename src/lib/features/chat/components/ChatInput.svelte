@@ -1,5 +1,5 @@
 <script>
-  import { socketConn, currentUser, activeContact, addMessage, markUserTyping } from '$lib/stores/chat';
+  import { socketConn, currentUser, activeContact, addMessage, markUserTyping } from '$lib/features/chat/stores/store';
   import { writable } from 'svelte/store';
 
   export let contact;

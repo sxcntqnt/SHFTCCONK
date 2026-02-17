@@ -1,7 +1,7 @@
 <script>
-  import AddContact from './AddContact.svelte';
-  import ContactList from './ContactList.svelte';
-  import { contacts, contactsLoading, contactsError, activeContact } from '$lib/stores/chat';
+  import AddContact from '$lib/features/chat/components/AddContact.svelte';
+  import ContactList from '$lib/features/chat/components/ContactList.svelte';
+  import { contacts, contactsLoading, contactsError, activeContact } from '$lib/features/chat/stores/store';
   import { createEventDispatcher } from 'svelte';
   export let showSidebar, sidebarClass, isMobile;
   const dispatch = createEventDispatcher();

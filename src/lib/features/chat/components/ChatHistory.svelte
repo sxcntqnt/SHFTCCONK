@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { formatChatTimestamp } from '$lib/utils/date';
+  import { formatChatTimestamp } from '$lib/features/chat/utils/date';
   export let chats = [];
   export let currentUser = '';
   export let contact = '';

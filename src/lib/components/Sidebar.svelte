@@ -1,5 +1,3 @@
-<!-- Script moved down; mobile drawer and desktop aside share same menu config and logic -->
-
 <script lang="ts">
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
@@ -19,8 +17,9 @@
     { id: 'routes', href: '/app/routes', label: 'Live Routes', icon: '🚌', roles: [ROLES.PASSENGER, ROLES.PLANNER, ROLES.REGULATOR] },
     { id: 'telemetry', href: '/app/sync', label: 'Telemetry Sync', icon: '📡', roles: [ROLES.ORGANIZATION, ROLES.ADMIN, ROLES.OWNER] },
     { id: 'fleet', href: '/app/fleet', label: 'Fleet Manager', icon: '📊', roles: [ROLES.OWNER, ROLES.ORGANIZATION] },
-    { id: 'race', href: '/app/race', label: 'Race Control', icon: '🏁', roles: [ROLES.PASSENGER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
-    { id: 'chat', href: '/app/chat', label: 'Chat', icon: '💬', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'reservations', href: '/reserve', label: 'Reservation', icon: '🎫', roles: [ROLES.PASSENGER, ROLES.ADMIN] },
+    { id: 'race', href: '/race', label: 'Race Control', icon: '🏁', roles: [ROLES.PASSENGER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'chat', href: '/chat', label: 'Chat', icon: '💬', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'admin-panel', href: '/admin/actor_requests', label: 'Admin Panel', icon: '🛠️', roles: [ROLES.ADMIN, ROLES.ORGANIZATION] },
     { id: 'settings', href: '/app/settings', label: 'Settings', icon: '⚙️', roles: ['*'] }
     

@@ -1,5 +1,5 @@
 <script>
-  import { formatLastActivity } from '$lib/utils/date';
+  import { formatLastActivity } from '$lib/features/chat/utils/date';
   export let contacts = [];
   export let selected = '';
   export let onSelect;
