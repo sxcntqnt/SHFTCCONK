@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-
+  import '$lib/features/race/style.css';
   // references to DOM elements
   let nameInput: HTMLInputElement;
   let colorPicker: HTMLDivElement;
@@ -73,8 +73,4 @@
 </div>
 
 <!-- styles -->
-<style>
-  #trackcode { display: none; }
-  #fore { font-family: 'Press Start 2P', monospace; }
-  /* import CSS from lib/features/race/style.css */
-</style>
+
