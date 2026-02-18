@@ -18,8 +18,13 @@
     { id: 'telemetry', href: '/app/sync', label: 'Telemetry Sync', icon: '📡', roles: [ROLES.ORGANIZATION, ROLES.ADMIN, ROLES.OWNER] },
     { id: 'fleet', href: '/app/fleet', label: 'Fleet Manager', icon: '📊', roles: [ROLES.OWNER, ROLES.ORGANIZATION] },
     { id: 'reservations', href: '/reserve', label: 'Reservation', icon: '🎫', roles: [ROLES.PASSENGER, ROLES.ADMIN] },
+    { id: 'geofences', href: '/geofences', label: 'Geofences', icon: '📍🌐', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'trips', href: '/trips', label: 'Trips', icon: '🗺️', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'fuel', href: '/fuel', label: 'Fuel', icon: '⛽', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'race', href: '/race', label: 'Race Control', icon: '🏁', roles: [ROLES.PASSENGER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'chat', href: '/chat', label: 'Chat', icon: '💬', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'weather', href: '/weather', label: 'Weather', icon: '🌤️', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
+    { id: 'notification', href: '/notifications', label: 'Notification', icon: '📣', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'admin-panel', href: '/admin/actor_requests', label: 'Admin Panel', icon: '🛠️', roles: [ROLES.ADMIN, ROLES.ORGANIZATION] },
     { id: 'settings', href: '/app/settings', label: 'Settings', icon: '⚙️', roles: ['*'] }
     
