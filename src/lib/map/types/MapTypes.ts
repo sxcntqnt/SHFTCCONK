@@ -25,3 +25,4 @@ export interface MapState {
   selectedMarker?: MapMarker;
   layers: MapLayer[];
 }
+

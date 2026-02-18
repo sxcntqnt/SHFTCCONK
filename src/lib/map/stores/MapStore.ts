@@ -47,3 +47,5 @@ export interface Geofence {
 }
 
 export const geofences = writable<Geofence[]>([]);
+
+
