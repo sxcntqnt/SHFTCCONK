@@ -17,8 +17,25 @@ export default defineConfig({
       },
     },
   ],
+
+  // 🔐 allow external hostname access
+  server: {
+    host: true, // listen on 0.0.0.0 (required for remote access)
+    allowedHosts: [
+      "sxcntcnqunts.com"
+    ],
+  },
+
+  preview: {
+    host: true,
+    allowedHosts: [
+      "sxcntcnqunts.com"
+    ],
+  },
+
   test: {
     include: ["src/**/*.{test,spec}.{js,ts}"],
-    globals: true, /// allows to skip import of test functions like `describe`, `it`, `expect`, etc.
+    globals: true,
   },
 })
+
