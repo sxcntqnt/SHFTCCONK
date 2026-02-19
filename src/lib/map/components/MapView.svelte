@@ -49,7 +49,7 @@
     mapInstance.addControl(drawControl);
 
     // On shape created
-    mapInstance.on(L.Draw.Event.CREATED, (event: any) => {
+    mapInstance.on('draw:created', (event: any) => {
       const layer = event.layer;
 
       if (!nextName) {
