@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { Cpu, Radio, CheckCircle2, Search, Info, Link as LinkIcon, QrCode, ShieldAlert, Lock } from 'lucide-svelte';
+  import { Cpu, Radio, CheckCircle2, Search, Info, Link as LinkIcon, QrCode, ShieldAlert, Lock } from '@lucide/svelte';
   
   let step = 1;
   let isScanning = false;

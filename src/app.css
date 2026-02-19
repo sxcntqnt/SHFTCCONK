@@ -7,10 +7,10 @@
 }
 
 @plugin "daisyui/theme" {
-  name: "saasstartertheme";
+  name: "Flam";
   default: true; /* set as default */
-  prefersdark: false; /* set as default dark mode (prefers-color-scheme:dark) */
-  color-scheme: light; /* color of browser-provided UI */
+  prefersdark: true; /* set as default dark mode (prefers-color-scheme:dark) */
+  color-scheme: dark; /* color of browser-provided UI */
 
   --color-primary: #180042;
   --color-primary-content: #fefbf6;
@@ -20,8 +20,8 @@
   --color-accent-content: #180042;
   --color-neutral: #180042;
   --color-neutral-content: #fefbf6;
-  --color-base-100: #fefbf6;
-  --color-base-200: #faedd6;
+  --color-base-100: #bcbe7f;
+  --color-base-200: #5f939fcf;
   --color-base-300: oklch(92% 0.04 240);
   --color-base-content: #180042;
   --color-info: oklch(70% 0.2 220);

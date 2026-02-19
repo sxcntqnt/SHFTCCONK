@@ -22,10 +22,10 @@
   const jsonldScript = `<script type="application/ld+json">${JSON.stringify(ldJson) + "<"}/script>`
 
   /* icon registry — avoids storing components inside data */
-  const SewingPinIcon = "/icons/marker.png"
-  const LineChartIcon = "/icons/line-chart.svg"
-  const BellIcon = "/icons/star.png"
-  const BarChart3Icon =  "/icons/point.png"
+  const SewingPinIcon = "marker.png"
+  const LineChartIcon = "line-chart.svg"
+  const BellIcon = "star.png"
+  const BarChart3Icon =  "point.png"
 
   const ICONS: Record<IconKey, string> = {
     tracking: SewingPinIcon,
@@ -39,12 +39,12 @@
      ========================= */
   type MatatuPartner = { name: string; logo: string }
   export const MATATU_PARTNERS: readonly MatatuPartner[] = [
-    { name: "SUPERMETRO", logo: "/icons/vehicles/ptrns/super-metro.svg" }, 
-    { name: "NICCO", logo: "/icons/vehicles/ptrns/nicco-sacco.svg" }, 
-    { name: "RONGAO", logo: "/icons/vehicles/ptrns/rongao-sacco.svg" }, 
-    { name: "BURUSACCO", logo: "/icons/vehicles/ptrns/buru-sacco.svg" }, 
-    { name: "UMOINNER", logo: "/icons/vehicles/ptrns/umoinner.svg" }, 
-    { name: "FORWARD", logo: "/icons/vehicles/ptrns/forward-sacco.svg" }, 
+    { name: "SUPERMETRO", logo: "vehicles/ptrns/super-metro.svg" }, 
+    { name: "NICCO", logo: "vehicles/ptrns/nicco-sacco.svg" }, 
+    { name: "RONGAO", logo: "vehicles/ptrns/rongao-sacco.svg" }, 
+    { name: "BURUSACCO", logo: "vehicles/ptrns/buru-sacco.svg" }, 
+    { name: "UMOINNER", logo: "vehicles/ptrns/umoinner.svg" }, 
+    { name: "FORWARD", logo: "vehicles/ptrns/forward-sacco.svg" }, 
   ]
 
   /* =========================
@@ -55,21 +55,21 @@
       title: "Predictable Public Transport",
       description:
         "Passengers know exactly where a matatu is and when it will arrive, eliminating uncertainty and roadside waiting.",
-      illustration: "/icons/vehicles/pillars/predictability.png", 
+      illustration: "vehicles/pillars/predictability.png", 
 
     },
     {
       title: "Operational Intelligence for Saccos",
       description:
         "Fleet owners monitor vehicle movement, compliance, utilization, and performance in real time.",
-      illustration: "/icons/vehicles/pillars/operations.png", 
+      illustration: "vehicles/pillars/operations.png", 
 
     },
     {
       title: "Urban Mobility Data Layer",
       description:
         "Aggregated transport telemetry enables smarter routing, congestion awareness, and planning insights.",
-      illustration: "/icons/vehicles/pillars/city-data.png", 
+      illustration: "vehicles/pillars/city-data.png", 
 
     },
   ] as const
@@ -83,7 +83,7 @@
       description:
         "Continuous GPS streaming from installed trackers provides second-level vehicle position accuracy.",
       icon: "tracking",
-      image: "/icons/vehicles/features/tracking.png", 
+      image: "vehicles/features/tracking.png", 
 
       audience: ["Commuter", "Operator"],
     },
@@ -92,7 +92,7 @@
       description:
         "Routes adapt using congestion patterns and historical trip duration modeling.",
       icon: "routes",
-      image: "/icons/vehicles/features/routes.png", 
+      image: "vehicles/features/routes.png", 
 
       audience: ["Commuter", "Operator", "Planner"],
     },
@@ -101,7 +101,7 @@
       description:
         "Arrival prediction, delays, diversions, and approaching vehicle notifications.",
       icon: "notifications",
-      image: "/icons/vehicles/features/notifications.png", 
+      image: "vehicles/features/notifications.png", 
 
       audience: ["Commuter"],
     },
@@ -110,7 +110,7 @@
       description:
         "Trip cycles, idle time detection, load balancing, and revenue opportunity identification.",
       icon: "analytics",
-      image: "/icons/vehicles/features/analytics.png", 
+      image: "vehicles/features/analytics.png", 
 
       audience: ["Operator", "Sacco"],
     },
@@ -128,7 +128,7 @@
         "Best route recommendations",
         "Delay notifications",
       ],
-      icon: "/icons/vehicles/actors/commuter.png", 
+      icon: "vehicles/actors/commuter.png", 
 
     },
     {
@@ -139,7 +139,7 @@
         "Route adherence monitoring",
         "Operational alerts",
       ],
-      icon: "/icons/vehicles/actors/operator.png", 
+      icon: "vehicles/actors/operator.png", 
 
     },
     {
@@ -150,7 +150,7 @@
         "Driver behavior monitoring",
         "Revenue optimization insights",
       ],
-      icon: "/icons/vehicles/actors/sacco.png", 
+      icon: "vehicles/actors/sacco.png", 
 
     },
   ]
@@ -261,52 +261,50 @@
 </svelte:head>
 
 <!-- HERO -->
-<section
-  class="hero min-h-screen bg-gradient-to-br from-base-200 to-base-100 relative"
->
-  <div
-    class="hero-content text-center px-6 py-20 md:py-32 max-w-5xl mx-auto z-10"
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+
+  <!-- Background Video -->
+  <video
+    autoplay
+    muted
+    loop
+    playsinline
+    class="absolute inset-0 w-full h-full object-cover"
   >
-    <div>
-      <h1
-        class="text-5xl sm:text-6xl md:text-7xl font-black leading-tight mb-6"
+    <source src="/vehicles/custom/GenjeSana.mp4" type="video/mp4" />
+  </video>
+
+  <!-- Dark Overlay (IMPORTANT for text contrast) -->
+  <div class="absolute inset-0 bg-black/60"></div>
+
+  <!-- Hero Content -->
+  <div class="relative z-10 text-center px-6 py-20 md:py-32 max-w-5xl mx-auto text-white">
+
+    <h1 class="text-5xl sm:text-6xl md:text-7xl font-black leading-tight mb-6">
+      Never Wait Blindly at the Stage Again
+    </h1>
+
+    <p class="text-xl md:text-2xl mb-10 max-w-3xl mx-auto opacity-90">
+      See exactly where your matatu is right now — get precise ETAs and alerts
+      when it's 2–3 minutes away.
+    </p>
+
+    <div class="flex flex-col sm:flex-row gap-5 justify-center">
+      <a
+        href=''
+        class="btn btn-primary btn-xl lg:btn-2xl font-bold uppercase tracking-wide shadow-2xl"
       >
-        Never Wait Blindly at the Stage Again
-      </h1>
-
-      <p class="text-xl md:text-2xl mb-10 max-w-3xl mx-auto opacity-90">
-        See exactly where your matatu is right now — get precise ETAs and alerts
-        when it's 2–3 minutes away.
-      </p>
-
-      <div class="flex flex-col sm:flex-row gap-5 justify-center">
-        <a
-          href="/download"
-          class="btn btn-primary btn-xl lg:btn-2xl font-bold uppercase tracking-wide shadow-2xl"
-        >
-          Get the App – Free
-        </a>
-        <a href="/app/dashboard" class="btn btn-outline btn-lg lg:btn-xl">
-          Try Live Web Tracker →
-        </a>
-      </div>
-
-      <p class="mt-8 text-sm opacity-70">
-        Already helping thousands of Nairobi commuters save time every day
-      </p>
+        Get the App – Free
+      </a>
+      <a href='' class="btn btn-outline btn-lg lg:btn-xl text-white border-white">
+        Try Live Web Tracker →
+      </a>
     </div>
-  </div>
 
-  <!-- Hero visual – replace with real phone mockup showing live map + ETA -->
-  <div
-    class="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-4xl px-6 md:bottom-12"
-  >
-    <img
-      src="/icons/images/Thumbnail.png" 
+    <p class="mt-8 text-sm opacity-80">
+      Already helping thousands of Nairobi commuters save time every day
+    </p>
 
-      alt="Matatu tracking app showing live map, ETA countdown and arrival notification"
-      class="w-full rounded-3xl shadow-2xl border-8 border-white/30"
-    />
   </div>
 </section>
 

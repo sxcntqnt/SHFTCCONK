@@ -19,9 +19,9 @@
   <div class="navbar-center hidden lg:flex">
     <ul class="menu menu-horizontal px-1 font-semibold text-base flex-nowrap gap-8">
       <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">How It Works</a></li>
-      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">For Commuters</a></li>
-      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">For Operators</a></li>
-      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">Updates</a></li>
+      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">Commuters</a></li>
+      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">Operators</a></li>
+      <li><a href="/blog" class="px-5 py-2 text-charcoal-100 hover:text-matatu-orange hover:bg-charcoal-800/50 rounded-full transition-all">Enterprise</a></li>
     </ul>
   </div>
 
@@ -43,8 +43,8 @@
       </label>
       <ul tabindex="0" class="menu menu-lg dropdown-content mt-3 z-[1] p-6 shadow-2xl bg-charcoal-900/95 backdrop-blur-lg rounded-2xl w-72 font-semibold text-charcoal-100 border border-sage-700/30">
         <li><a href="/how-it-works" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">How It Works</a></li>
-        <li><a href="/for-commuters" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">For Commuters</a></li>
-        <li><a href="/for-operators" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">For Operators</a></li>
+        <li><a href="/for-commuters" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">Commuters</a></li>
+        <li><a href="/for-operators" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">Operators</a></li>
         <li><a href="/updates" class="py-3.5 hover:bg-matatu-orange/20 hover:text-matatu-orange rounded-xl transition">Updates</a></li>
         <li class="mt-6 border-t border-charcoal-700 pt-6">
           <a href="/dashboard" class="btn bg-matatu-orange hover:bg-matatu-orange/90 text-white w-full rounded-full shadow-md">Start Tracking Now</a>
@@ -56,7 +56,7 @@
 
 <!-- Main content – vibrant gradient background + subtle texture -->
 <main class="flex flex-col min-h-screen bg-gradient-to-br from-charcoal-950 via-charcoal-900 to-sage-800/40 pt-4 md:pt-0 relative overflow-hidden">
-  <!-- Optional subtle overlay pattern for urban feel (dots/grid) -->
+  <!-- Optional subtle overlay pattern urban feel (dots/grid) -->
   <div class="absolute inset-0 opacity-5 pointer-events-none"
        style="background-image: radial-gradient(circle at 1px 1px, white 1px, transparent 0); background-size: 40px 40px;">
   </div>
@@ -87,6 +87,8 @@
   <div class="flex gap-7 justify-start">
     <a href="#" aria-label="Instagram" class="opacity-75 hover:opacity-100 hover:text-matatu-orange transition transform hover:scale-110">📸</a>
     <a href="#" aria-label="X/Twitter" class="opacity-75 hover:opacity-100 hover:text-matatu-orange transition transform hover:scale-110">𝕏</a>
+    <a href="#" aria-label="Youtube" class="opacity-75 hover:opacity-100 hover:text-matatu-orange transition transform hover:scale-110">📸</a>
+
   </div>
 </div>
 
@@ -126,7 +128,7 @@
     Stop waiting in uncertainty – see your matatu coming in real time.
     <a href="/dashboard" class="text-matatu-orange font-bold hover:underline ml-2 transition">Start free today →</a>
   </p>
-  <p class="text-charcoal-400">© {new Date().getFullYear()} {WebsiteName}. Designed for ethical, smarter urban mobility.</p>
+  <p class="text-charcoal-400">© {new Date().getFullYear()} {WebsiteName}. Designed ethical, smarter urban mobility.</p>
 </div>
 
 </footer>

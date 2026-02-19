@@ -15,7 +15,7 @@ favoriteDrivers,
     filteredRememberedMatatus,    
     isLoadingFavorites,
     loadFavoriteData
-  } from '$lib/features/dashboard/stores/DashboardStore.ts';
+  } from '$lib/features/dashboard/stores/DashboardStore';
 
   import { onMount } from 'svelte';
 
