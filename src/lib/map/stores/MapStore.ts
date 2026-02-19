@@ -9,6 +9,7 @@ export const mapState = writable<MapState>({
   layers: [],
 });
 
+
 export function setCenter(center: Coordinates) {
   mapState.update(state => ({ ...state, center }));
 }
@@ -42,9 +43,11 @@ export function toggleLayerVisibility(layerId: string) {
 }
 
 export interface Geofence {
+  id: string;
   name: string;
-  coords: Coordinates[]; // always an array for polygon consistency
+  coords: Coordinates[];
 }
+
 
 export const geofences = writable<Geofence[]>([]);
 

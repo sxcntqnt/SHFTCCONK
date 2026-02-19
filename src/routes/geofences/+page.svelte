@@ -1,9 +1,11 @@
 <script lang="ts">
   import MapView from '$lib/map/components/MapView.svelte';
   import { geofences } from '$lib/map/stores/MapStore';
-  import type { Geofence } from '$lib/map/stores/MapStore';
+  import type { Geofence} from '$lib/map/stores/MapStore';
 
   let geofenceName = '';
+  let defaultCenter: Coordinates = { lat: 1.2921, lng: 36.8219 }; // Nairobi
+
 
   // Handle new geofence from MapView
   function handleCreated(event: CustomEvent<Geofence>) {
@@ -66,7 +68,7 @@
   <!-- Map -->
   <div class="flex-1 min-h-[500px] rounded-2xl shadow-lg overflow-hidden">
     <MapView
-      initialCenter={{ lat: 1.2921, lng: 36.8219 }}
+      defaultCenter={{ lat: 1.2921, lng: 36.8219 }}
       initialZoom={5}
       bind:nextName={geofenceName}
       on:created={handleCreated}

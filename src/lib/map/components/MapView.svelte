@@ -4,7 +4,7 @@
   import type { Coordinates, Geofence } from '$lib/map/stores/MapStore';
 
   export let initialCenter: Coordinates = { lat: 1.2921, lng: 36.8219 };
-  export let initialZoom: number = 5;
+  export let initialZoom: number = 1;
 
   // Parent can bind this to sidebar input
   export let nextName: string = '';
@@ -22,6 +22,10 @@
     if (typeof window === 'undefined') return;
 
     const L = await import('leaflet');
+
+    (L.Browser as any).touch = false;
+    (L.Browser as any).pointer = true;
+
     await import('leaflet/dist/leaflet.css');
     await import('leaflet-draw');
     await import('leaflet-draw/dist/leaflet.draw.css');
