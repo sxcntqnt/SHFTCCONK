@@ -28,10 +28,10 @@
   <div class="navbar-end flex items-center gap-5">
     <!-- Prominent CTA – vibrant orange energy -->
     <a
-      href="/dashboard"
+      href="/login"
       class="btn bg-matatu-orange hover:bg-matatu-orange/90 text-white font-bold px-7 md:px-9 shadow-lg hover:shadow-2xl transition-all duration-300 rounded-full border border-matatu-orange/40"
     >
-      Start Tracking Now
+      Sign In
     </a>
 
     <!-- Mobile menu – more colorful -->

@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import type { MapLayer } from '$lib/map/types/MapTypes.ts';
-import { mapState } from './mapStore';
+import { mapState } from './MapStore';
 
 export const layers = writable<MapLayer[]>([]);
 
