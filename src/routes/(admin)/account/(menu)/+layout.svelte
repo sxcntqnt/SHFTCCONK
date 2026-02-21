@@ -2,147 +2,456 @@
   import "../../../../app.css"
   import { writable } from "svelte/store"
   import { setContext } from "svelte"
+  import { page } from "$app/stores"
   import { WebsiteName } from "../../../../config"
+
   interface Props {
     children?: import("svelte").Snippet
   }
-
   let { children }: Props = $props()
 
   const adminSectionStore = writable("")
   setContext("adminSection", adminSectionStore)
   let adminSection: string | undefined = $state()
-  adminSectionStore.subscribe((value) => {
-    adminSection = value
-  })
+  adminSectionStore.subscribe((value) => { adminSection = value })
 
-  function closeDrawer(): void {
-    const adminDrawer = document.getElementById(
-      "admin-drawer",
-    ) as HTMLInputElement
-    adminDrawer.checked = false
+  let mobileOpen = $state(false)
+
+  function closeDrawer() { mobileOpen = false }
+
+  let currentPath = $derived($page.url.pathname)
+
+  const navItems = [
+    {
+      key: "home",
+      label: "Dashboard",
+      href: "/account",
+      icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
+    },
+    {
+      key: "billing",
+      label: "Billing",
+      href: "/account/billing",
+      icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`,
+    },
+    {
+      key: "settings",
+      label: "Settings",
+      href: "/account/settings",
+      icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
+    },
+  ]
+
+  function isActive(item: { key: string; href: string }): boolean {
+    if (adminSection) return adminSection === item.key
+    if (item.href === "/account") return currentPath === "/account"
+    return currentPath.startsWith(item.href)
   }
 </script>
 
-<div class="drawer lg:drawer-open">
-  <input id="admin-drawer" type="checkbox" class="drawer-toggle" />
-  <div class="drawer-content">
-    <div class="navbar bg-base-100 lg:hidden">
-      <div class="flex-1">
-        <a class="btn btn-ghost normal-case text-xl" href="/">{WebsiteName}</a>
-      </div>
-      <div class="flex-none">
-        <div class="dropdown dropdown-end">
-          <label for="admin-drawer" class="btn btn-ghost btn-circle">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              ><path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h7"
-              /></svg
-            >
-          </label>
-        </div>
-      </div>
+<style>
+  /* ── Shell ── */
+  .admin-shell {
+    display: flex;
+    min-height: 100vh;
+    background: var(--ink);
+    font-family: var(--font-body);
+  }
+
+  /* ════════════════════════
+     SIDEBAR
+  ════════════════════════ */
+  .sidebar {
+    width: 232px;
+    flex-shrink: 0;
+    background: var(--ink-2);
+    border-right: 1px solid var(--rim);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+
+  /* Logo */
+  .sidebar-logo {
+    padding: 22px 20px 18px;
+    border-bottom: 1px solid var(--rim);
+    flex-shrink: 0;
+  }
+  .logo-link {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text-1);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.2s;
+  }
+  .logo-link:hover { opacity: 0.85; }
+  .logo-link span { color: var(--orange); }
+
+  /* Nav section */
+  .sidebar-section-label {
+    padding: 20px 20px 8px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  .sidebar-nav {
+    padding: 4px 10px;
+    flex: 1;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-2);
+    text-decoration: none;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    position: relative;
+  }
+  .nav-link :global(svg) {
+    flex-shrink: 0;
+    opacity: 0.55;
+    transition: opacity 0.15s;
+  }
+  .nav-link:hover {
+    background: var(--rim);
+    color: var(--text-1);
+  }
+  .nav-link:hover :global(svg) { opacity: 0.9; }
+  .nav-link.active {
+    background: rgba(242,101,34,0.1);
+    border-color: rgba(242,101,34,0.2);
+    color: var(--orange);
+    font-weight: 600;
+  }
+  .nav-link.active :global(svg) { opacity: 1; }
+
+  /* Active indicator bar */
+  .nav-link.active::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 0 3px 3px 0;
+    background: var(--orange);
+  }
+
+  /* Sidebar footer */
+  .sidebar-footer {
+    padding: 14px 10px;
+    border-top: 1px solid var(--rim);
+    flex-shrink: 0;
+  }
+
+  .sign-out-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-3);
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .sign-out-link:hover {
+    background: rgba(239,68,68,0.08);
+    border-color: rgba(239,68,68,0.15);
+    color: #f87171;
+  }
+  .sign-out-link :global(svg) { opacity: 0.6; }
+  .sign-out-link:hover :global(svg) { opacity: 1; }
+
+  /* Back to site */
+  .back-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-3);
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s;
+  }
+  .back-link:hover { color: var(--text-2); background: var(--rim); }
+
+  /* ════════════════════════
+     MOBILE OVERLAY
+  ════════════════════════ */
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(6px);
+  }
+  .mobile-overlay.open { display: block; }
+
+  .mobile-panel {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    width: 232px;
+    background: var(--ink-2);
+    border-right: 1px solid var(--rim-2);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .mobile-panel-header {
+    padding: 20px 18px;
+    border-bottom: 1px solid var(--rim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .mobile-close {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--rim);
+    border: none; cursor: pointer;
+    color: var(--text-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem;
+    transition: background 0.15s;
+  }
+  .mobile-close:hover { background: var(--rim-2); }
+
+  /* ════════════════════════
+     MAIN AREA
+  ════════════════════════ */
+  .admin-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Topbar */
+  .admin-topbar {
+    height: 54px;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--rim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,10,12,0.7);
+    backdrop-filter: blur(16px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hamburger {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-2);
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .hamburger:hover { background: var(--rim); color: var(--text-1); }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-3);
+  }
+  .breadcrumb a {
+    color: var(--text-3);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .breadcrumb a:hover { color: var(--text-2); }
+  .breadcrumb-sep { opacity: 0.35; font-size: 0.9rem; }
+  .breadcrumb-current {
+    color: var(--text-1);
+    font-weight: 500;
+  }
+
+  /* Content */
+  .admin-content {
+    flex: 1;
+    padding: 40px 44px;
+    max-width: 1080px;
+  }
+
+  /* ════════════════════════
+     RESPONSIVE
+  ════════════════════════ */
+  @media (max-width: 1024px) {
+    .sidebar { display: none; }
+    .hamburger { display: flex; }
+    .admin-topbar { padding: 0 20px; }
+    .admin-content { padding: 28px 20px; }
+  }
+</style>
+
+<!-- ════════════════════════ MOBILE OVERLAY ════════════════════════ -->
+<div
+  class="mobile-overlay {mobileOpen ? 'open' : ''}"
+  onclick={closeDrawer}
+>
+  <div class="mobile-panel" onclick={(e) => e.stopPropagation()}>
+    <div class="mobile-panel-header">
+      <a href="/" class="logo-link" onclick={closeDrawer}>
+        {WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span>
+      </a>
+      <button class="mobile-close" onclick={closeDrawer}>✕</button>
     </div>
-    <div class="container px-6 lg:px-12 py-3 lg:py-6">
-      {@render children?.()}
+
+    <p class="sidebar-section-label">Navigation</p>
+    <nav class="sidebar-nav">
+      {#each navItems as item}
+        <a
+          href={item.href}
+          class="nav-link {isActive(item) ? 'active' : ''}"
+          onclick={closeDrawer}
+        >
+          {@html item.icon}
+          {item.label}
+        </a>
+      {/each}
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="/" class="back-link" onclick={closeDrawer}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 12H5M12 5l-7 7 7 7"/>
+        </svg>
+        Back to site
+      </a>
+      <a href="/account/sign_out" class="sign-out-link" onclick={closeDrawer}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign Out
+      </a>
     </div>
   </div>
+</div>
 
-  <div class="drawer-side">
-    <label for="admin-drawer" class="drawer-overlay"></label>
-    <ul
-      class="menu menu-lg p-4 w-80 min-h-full bg-base-100 lg:border-r text-primary"
-    >
-      <li>
-        <div
-          class="normal-case menu-title text-xl font-bold text-primary flex flex-row"
-        >
-          <a href="/" class="grow">{WebsiteName}</a>
-          <label for="admin-drawer" class="lg:hidden ml-3"> &#x2715; </label>
-        </div>
-      </li>
-      <li>
-        <a
-          href="/account"
-          class={adminSection === "home" ? "active" : ""}
-          onclick={closeDrawer}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            ><path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-            /></svg
-          >
-          Home
-        </a>
-      </li>
-      <li>
-        <a
-          href="/account/billing"
-          class={adminSection === "billing" ? "active" : ""}
-          onclick={closeDrawer}
-        >
-          <svg
-            class="h-5 w-5"
-            viewBox="0 0 24 24"
-            stroke="none"
-            fill="currentColor"
-          >
-            <path
-              d="M18,1H6A3,3,0,0,0,3,4V22a1,1,0,0,0,1.8.6L6.829,19.9l1.276,2.552a1,1,0,0,0,.8.549.981.981,0,0,0,.89-.4L12,19.667,14.2,22.6a.983.983,0,0,0,.89.4,1,1,0,0,0,.8-.549L17.171,19.9,19.2,22.6a1,1,0,0,0,.8.4,1,1,0,0,0,1-1V4A3,3,0,0,0,18,1Zm1,18-1.2-1.6a.983.983,0,0,0-.89-.4,1,1,0,0,0-.8.549l-1.276,2.552L12.8,17.4a1,1,0,0,0-1.6,0L9.171,20.105,7.9,17.553A1,1,0,0,0,7.09,17a.987.987,0,0,0-.89.4L5,19V4A1,1,0,0,1,6,3H18a1,1,0,0,1,1,1ZM17,9a1,1,0,0,1-1,1H8A1,1,0,0,1,8,8h8A1,1,0,0,1,17,9Zm-4,4a1,1,0,0,1-1,1H8a1,1,0,0,1,0-2h4A1,1,0,0,1,13,13Z"
-            />
-          </svg>
-          Billing
-        </a>
-      </li>
-      <li>
-        <a
-          href="/account/settings"
-          class={adminSection === "settings" ? "active" : ""}
-          onclick={closeDrawer}
-        >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" stroke="none" fill="none">
-            <g id="Interface / Settings">
-              <g id="Vector">
-                <path
-                  d="M20.3499 8.92293L19.9837 8.7192C19.9269 8.68756 19.8989 8.67169 19.8714 8.65524C19.5983 8.49165 19.3682 8.26564 19.2002 7.99523C19.1833 7.96802 19.1674 7.93949 19.1348 7.8831C19.1023 7.82677 19.0858 7.79823 19.0706 7.76998C18.92 7.48866 18.8385 7.17515 18.8336 6.85606C18.8331 6.82398 18.8332 6.79121 18.8343 6.72604L18.8415 6.30078C18.8529 5.62025 18.8587 5.27894 18.763 4.97262C18.6781 4.70053 18.536 4.44993 18.3462 4.23725C18.1317 3.99685 17.8347 3.82534 17.2402 3.48276L16.7464 3.1982C16.1536 2.85658 15.8571 2.68571 15.5423 2.62057C15.2639 2.56294 14.9765 2.56561 14.6991 2.62789C14.3859 2.69819 14.0931 2.87351 13.5079 3.22396L13.5045 3.22555L13.1507 3.43741C13.0948 3.47091 13.0665 3.48779 13.0384 3.50338C12.7601 3.6581 12.4495 3.74365 12.1312 3.75387C12.0992 3.7549 12.0665 3.7549 12.0013 3.7549C11.9365 3.7549 11.9024 3.7549 11.8704 3.75387C11.5515 3.74361 11.2402 3.65759 10.9615 3.50224C10.9334 3.48658 10.9056 3.46956 10.8496 3.4359L10.4935 3.22213C9.90422 2.86836 9.60915 2.69121 9.29427 2.62057C9.0157 2.55807 8.72737 2.55634 8.44791 2.61471C8.13236 2.68062 7.83577 2.85276 7.24258 3.19703L7.23994 3.1982L6.75228 3.48124L6.74688 3.48454C6.15904 3.82572 5.86441 3.99672 5.6517 4.23614C5.46294 4.4486 5.32185 4.69881 5.2374 4.97018C5.14194 5.27691 5.14703 5.61896 5.15853 6.3027L5.16568 6.72736C5.16676 6.79166 5.16864 6.82362 5.16817 6.85525C5.16343 7.17499 5.08086 7.48914 4.92974 7.77096C4.9148 7.79883 4.8987 7.8267 4.86654 7.88237C4.83436 7.93809 4.81877 7.96579 4.80209 7.99268C4.63336 8.26452 4.40214 8.49186 4.12733 8.65572C4.10015 8.67193 4.0715 8.68752 4.01521 8.71871L3.65365 8.91908C3.05208 9.25245 2.75137 9.41928 2.53256 9.65669C2.33898 9.86672 2.19275 10.1158 2.10349 10.3872C2.00259 10.6939 2.00267 11.0378 2.00424 11.7255L2.00551 12.2877C2.00706 12.9708 2.00919 13.3122 2.11032 13.6168C2.19979 13.8863 2.34495 14.134 2.53744 14.3427C2.75502 14.5787 3.05274 14.7445 3.64974 15.0766L4.00808 15.276C4.06907 15.3099 4.09976 15.3266 4.12917 15.3444C4.40148 15.5083 4.63089 15.735 4.79818 16.0053C4.81625 16.0345 4.8336 16.0648 4.8683 16.1255C4.90256 16.1853 4.92009 16.2152 4.93594 16.2452C5.08261 16.5229 5.16114 16.8315 5.16649 17.1455C5.16707 17.1794 5.16658 17.2137 5.16541 17.2827L5.15853 17.6902C5.14695 18.3763 5.1419 18.7197 5.23792 19.0273C5.32287 19.2994 5.46484 19.55 5.65463 19.7627C5.86915 20.0031 6.16655 20.1745 6.76107 20.5171L7.25478 20.8015C7.84763 21.1432 8.14395 21.3138 8.45869 21.379C8.73714 21.4366 9.02464 21.4344 9.30209 21.3721C9.61567 21.3017 9.90948 21.1258 10.4964 20.7743L10.8502 20.5625C10.9062 20.5289 10.9346 20.5121 10.9626 20.4965C11.2409 20.3418 11.5512 20.2558 11.8695 20.2456C11.9015 20.2446 11.9342 20.2446 11.9994 20.2446C12.0648 20.2446 12.0974 20.2446 12.1295 20.2456C12.4484 20.2559 12.7607 20.3422 13.0394 20.4975C13.0639 20.5112 13.0885 20.526 13.1316 20.5519L13.5078 20.7777C14.0971 21.1315 14.3916 21.3081 14.7065 21.3788C14.985 21.4413 15.2736 21.4438 15.5531 21.3855C15.8685 21.3196 16.1657 21.1471 16.7586 20.803L17.2536 20.5157C17.8418 20.1743 18.1367 20.0031 18.3495 19.7636C18.5383 19.5512 18.6796 19.3011 18.764 19.0297C18.8588 18.7252 18.8531 18.3858 18.8417 17.7119L18.8343 17.2724C18.8332 17.2081 18.8331 17.1761 18.8336 17.1445C18.8383 16.8247 18.9195 16.5104 19.0706 16.2286C19.0856 16.2007 19.1018 16.1726 19.1338 16.1171C19.166 16.0615 19.1827 16.0337 19.1994 16.0068C19.3681 15.7349 19.5995 15.5074 19.8744 15.3435C19.9012 15.3275 19.9289 15.3122 19.9838 15.2818L19.9857 15.2809L20.3472 15.0805C20.9488 14.7472 21.2501 14.5801 21.4689 14.3427C21.6625 14.1327 21.8085 13.8839 21.8978 13.6126C21.9981 13.3077 21.9973 12.9658 21.9958 12.2861L21.9945 11.7119C21.9929 11.0287 21.9921 10.6874 21.891 10.3828C21.8015 10.1133 21.6555 9.86561 21.463 9.65685C21.2457 9.42111 20.9475 9.25526 20.3517 8.92378L20.3499 8.92293Z"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-                <path
-                  d="M8.00033 12C8.00033 14.2091 9.79119 16 12.0003 16C14.2095 16 16.0003 14.2091 16.0003 12C16.0003 9.79082 14.2095 7.99996 12.0003 7.99996C9.79119 7.99996 8.00033 9.79082 8.00033 12Z"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </g>
-            </g>
-          </svg>
-          Settings
-        </a>
-      </li>
+<!-- ════════════════════════ SHELL ════════════════════════ -->
+<div class="admin-shell">
 
-      <li class="mt-auto">
-        <a href="/account/sign_out" class="mt-auto text-base">Sign Out</a>
-      </li>
-    </ul>
+  <!-- Desktop Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <a href="/" class="logo-link">
+        {WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span>
+      </a>
+    </div>
+
+    <p class="sidebar-section-label">Navigation</p>
+    <nav class="sidebar-nav">
+      {#each navItems as item}
+        <a
+          href={item.href}
+          class="nav-link {isActive(item) ? 'active' : ''}"
+        >
+          {@html item.icon}
+          {item.label}
+        </a>
+      {/each}
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="/" class="back-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M19 12H5M12 5l-7 7 7 7"/>
+        </svg>
+        Back to site
+      </a>
+      <a href="/account/sign_out" class="sign-out-link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign Out
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="admin-main">
+
+    <!-- Topbar -->
+    <div class="admin-topbar">
+      <div class="topbar-left">
+        <button class="hamburger" onclick={() => mobileOpen = true} aria-label="Open menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <a href="/">Home</a>
+          <span class="breadcrumb-sep">›</span>
+          <a href="/account">Account</a>
+          {#if adminSection && adminSection !== "home"}
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">
+              {navItems.find(n => n.key === adminSection)?.label ?? adminSection}
+            </span>
+          {:else if currentPath !== "/account"}
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">
+              {navItems.find(n => n.href !== "/account" && currentPath.startsWith(n.href))?.label ?? ""}
+            </span>
+          {/if}
+        </nav>
+      </div>
+
+      <!-- Right side — subtle status indicator -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--teal);box-shadow:0 0 6px rgba(0,176,155,0.6);"></span>
+        <span style="font-size:0.72rem;color:var(--text-3);font-weight:500;">Connected</span>
+      </div>
+    </div>
+
+    <!-- Page content -->
+    <div class="admin-content">
+      {@render children?.()}
+    </div>
+
   </div>
 </div>

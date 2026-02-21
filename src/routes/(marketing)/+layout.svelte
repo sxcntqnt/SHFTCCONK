@@ -440,9 +440,10 @@
 <!-- ═══════════════════════ NAVBAR ═══════════════════════ -->
 <nav class="topbar {scrolled ? 'scrolled' : ''}">
   <div class="nav-inner">
-
     <!-- Logo -->
-    <a href="/" class="logo">{WebsiteName.slice(0,-2)}<span>{WebsiteName.slice(-2)}</span></a>
+    <a href="/" class="logo">
+      {WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span>
+    </a>
 
     <!-- Desktop -->
     <div class="desktop-nav">
@@ -485,16 +486,31 @@
 
       <div class="nav-divider"></div>
 
-      <a href="/docs" class="nav-link-plain {currentPath.startsWith('/docs') ? 'active' : ''}">Docs</a>
-      <a href="/blog" class="nav-link-plain {currentPath.startsWith('/blog') ? 'active' : ''}">Blog</a>
-
+      <a
+        href="/docs"
+        class="nav-link-plain {currentPath.startsWith('/docs') ? 'active' : ''}"
+      >
+        Docs
+      </a>
+      <a
+        href="/blog"
+        class="nav-link-plain {currentPath.startsWith('/blog') ? 'active' : ''}"
+      >
+        Blog
+      </a>
       <a href="/login" class="btn-signin">Sign In</a>
     </div>
 
     <!-- Hamburger -->
-    <button class="hamburger" onclick={() => mobileOpen = true} aria-label="Open menu">
+    <button
+      class="hamburger"
+      onclick={() => (mobileOpen = true)}
+      aria-label="Open menu"
+    >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/>
+        <line x1="3" y1="7" x2="21" y2="7"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="17" x2="21" y2="17"/>
       </svg>
     </button>
   </div>
@@ -502,22 +518,48 @@
 
 <!-- ═══════════════════════ MOBILE PANEL ═══════════════════════ -->
 {#if mobileOpen}
-  <div class="mobile-overlay" onclick={() => mobileOpen = false} transition:fade={{ duration: 180 }}>
-    <div class="mobile-panel" on:click|stopPropagation transition:fly={{ x: 320, duration: 280 }}>
-      <button class="mobile-close" onclick={() => mobileOpen = false}>✕</button>
+  <div
+    class="mobile-overlay"
+    onclick={() => (mobileOpen = false)}
+    transition:fade={{ duration: 180 }}
+  >
+    <div
+      class="mobile-panel"
+      onclick={(event) => {
+        event.stopPropagation();  // ← Prevents clicks inside the panel from closing the menu
+      }}
+      transition:fly={{ x: 320, duration: 280 }}
+    >
+      <button
+        class="mobile-close"
+        onclick={() => (mobileOpen = false)}
+      >
+        ✕
+      </button>
 
       {#each navSections as section}
         <p class="mobile-section-title">{section.label}</p>
         {#each section.items as item}
-          <a href={item.href} class="mobile-link" onclick={() => mobileOpen = false}>{item.label}</a>
+          <a
+            href={item.href}
+            class="mobile-link"
+            onclick={() => (mobileOpen = false)}
+          >
+            {item.label}
+          </a>
         {/each}
       {/each}
 
       <p class="mobile-section-title">Quick Links</p>
-      <a href="/docs" class="mobile-link" onclick={() => mobileOpen = false}>Docs</a>
-      <a href="/blog" class="mobile-link" onclick={() => mobileOpen = false}>Blog</a>
-
-      <a href="/login" class="mobile-signin" onclick={() => mobileOpen = false}>Sign In →</a>
+      <a href="/docs" class="mobile-link" onclick={() => (mobileOpen = false)}>Docs</a>
+      <a href="/blog" class="mobile-link" onclick={() => (mobileOpen = false)}>Blog</a>
+      <a
+        href="/login"
+        class="mobile-signin"
+        onclick={() => (mobileOpen = false)}
+      >
+        Sign In →
+      </a>
     </div>
   </div>
 {/if}
