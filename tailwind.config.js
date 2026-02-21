@@ -49,4 +49,11 @@ module.exports = {
     ],
   },
   plugins: [require("daisyui")],
+  safelist: [
+    'bg-green-500',  'ring-green-200',
+    'bg-blue-500',   'ring-blue-200',
+    'bg-red-500',    'ring-red-200',
+    'bg-gray-500',   'ring-gray-200',
+    // add more if you have other roles/colors later
+  ],
 }

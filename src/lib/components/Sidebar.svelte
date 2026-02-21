@@ -2,20 +2,21 @@
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
-  import { user, ROLES } from '$lib/auth';
+  import { authStore, ROLES } from '$lib/auth';
   import { derived } from 'svelte/store';
   import { fade } from 'svelte/transition';
 
-  let collapsed = false;
-  let showDrawer = false;
+  let collapsed = $state(false);
+  let showDrawer = $state(false);
   let menuButton: HTMLButtonElement | null = null;
   let drawerEl: HTMLElement | null = null;
-  let innerWidth = 0;
+  let innerWidth = $state(0);
 
-  let hoverExpand = true;
+  let hoverExpand = $state(true);
 
-  $: isDesktop = browser ? innerWidth >= 768 : false;
-  $: canHoverExpand = hoverExpand && isDesktop && collapsed;
+  let isDesktop = $derived(browser ? innerWidth >= 768 : false);
+
+  let canHoverExpand = $derived(hoverExpand && isDesktop && collapsed)
 
   const toggleCollapse = () => collapsed = !collapsed;
   const toggleDrawer = () => showDrawer = !showDrawer;
@@ -23,20 +24,32 @@
   const currentPath = derived(page, $page => $page.url.pathname);
   const isActive = (href: string, path: string) => path === href || path.startsWith(href + '/');
 
-  $: dotColorClass = (() => {
-    const role = $user?.role?.toUpperCase() ?? '';
-    if (['PASSENGER', 'DRIVER'].includes(role)) return 'bg-green-500 ring-green-200';
-    if (['OWNER', 'ORGANIZATION'].includes(role)) return 'bg-blue-500 ring-blue-200';
-    if (role === 'ADMIN') return 'bg-red-500 ring-red-200';
-    return 'bg-gray-500 ring-gray-200';
-  })();
+let dotColorClass = $derived(() => {
+  const role = $authStore?.role?.toUpperCase() ?? '';
+  let bg = 'bg-gray-500';
+  let ring = 'ring-gray-200';
+
+  if (['PASSENGER', 'DRIVER'].includes(role)) {
+    bg = 'bg-green-500';
+    ring = 'ring-green-200';
+  } else if (['OWNER', 'ORGANIZATION'].includes(role)) {
+    bg = 'bg-blue-500';
+    ring = 'ring-blue-200';
+  } else if (role === 'ADMIN') {
+    bg = 'bg-red-500';
+    ring = 'ring-red-200';
+  }
+
+  return `${bg} ${ring}`;
+});
 
   const MENU_CONFIG = [
     { id: 'dashboard', href: '/app/dashboard', label: 'Home', icon: '🏠', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'feed', href: '/feed', label: 'Live Feed', icon: '🚌', roles: [ROLES.PASSENGER, ROLES.PLANNER, ROLES.REGULATOR] },
     { id: 'telemetry', href: '/app/sync', label: 'Telemetry Sync', icon: '📡', roles: [ROLES.ORGANIZATION, ROLES.ADMIN, ROLES.OWNER] },
     { id: 'fleet', href: '/app/fleet', label: 'Fleet Manager', icon: '📊', roles: [ROLES.OWNER, ROLES.ORGANIZATION] },
-    { id: 'reservations', href: '/reserve', label: 'Reservation', icon: '🎫', roles: [ROLES.PASSENGER, ROLES.ADMIN] },
+    { id: 'reserve', href: '/reserve', label: 'Reservations', icon: '🎫', roles: [ROLES.PASSENGER, ROLES.ADMIN] },
+    { id: 'track', href: '/track', label: 'Tracker', icon: '🎫', roles: [ROLES.PASSENGER, ROLES.ADMIN] },
     { id: 'geofences', href: '/geofences', label: 'Geofences', icon: '📍🌐', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'trips', href: '/trips', label: 'Trips', icon: '🗺️', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
     { id: 'fuel', href: '/fuel', label: 'Fuel', icon: '⛽', roles: [ROLES.PASSENGER, ROLES.DRIVER, ROLES.OWNER, ROLES.ORGANIZATION, ROLES.ADMIN] },
@@ -48,33 +61,60 @@
     { id: 'settings', href: '/settings', label: 'Settings', icon: '⚙️', roles: ['*'] }
   ];
 
-  const visibleMenu = derived(user, $user =>
-    MENU_CONFIG.filter(item => item.roles.includes('*') || item.roles.includes($user?.role ?? ''))
+  const visibleMenu = derived(authStore, $authStore =>
+    MENU_CONFIG.filter(item => item.roles.includes('*') || item.roles.includes($authStore?.role ?? ''))
   );
 
   let focusTrapHandler: (e: KeyboardEvent) => void;
+$effect(() => {
+  if (!browser) return;  // skip in SSR
 
-  $: if (browser && showDrawer) {
+  if (showDrawer) {
     document.body.classList.add('overflow-hidden');
 
+    // Focus first focusable element after drawer opens
     setTimeout(() => {
-      drawerEl?.querySelector<HTMLElement>('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])')?.focus();
+      const firstFocusable = drawerEl?.querySelector<HTMLElement>(
+        'a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
     }, 0);
 
+    // Define & attach trap handler
     focusTrapHandler = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
-      const focusables = Array.from(drawerEl?.querySelectorAll<HTMLElement>('a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])') ?? []);
+
+      const focusables = Array.from(
+        drawerEl?.querySelectorAll<HTMLElement>(
+          'a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+
       if (!focusables.length) return;
+
       const first = focusables[0];
       const last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener('keydown', focusTrapHandler);
-  } else if (browser) {
-    document.body.classList.remove('overflow-hidden');
-    if (focusTrapHandler) document.removeEventListener('keydown', focusTrapHandler);
   }
+
+  // Cleanup when showDrawer becomes false (or component unmounts)
+  return () => {
+    document.body.classList.remove('overflow-hidden');
+    if (focusTrapHandler) {
+      document.removeEventListener('keydown', focusTrapHandler);
+    }
+  };
+});
 
   onMount(() => {
     const unsub = page.subscribe(() => { if (showDrawer) showDrawer = false });
@@ -100,7 +140,7 @@
 <!-- Mobile Header -->
 <div class="md:hidden flex items-center justify-between p-4 border-b bg-white shadow-sm sticky top-0 z-30">
   <h1 class="text-lg font-bold tracking-tighter">MATATU OS</h1>
-  <button aria-label="Open menu" bind:this={menuButton} class="p-2 rounded-md bg-gray-50 border border-gray-200" on:click={toggleDrawer}>
+  <button aria-label="Open menu" bind:this={menuButton} class="p-2 rounded-md bg-gray-50 border border-gray-200" onclick={toggleDrawer}>
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
     </svg>
@@ -129,14 +169,14 @@
               class:opacity-0={collapsed && !canHoverExpand}
               class:translate-x-2={collapsed && !canHoverExpand}
               transition:fade>
-          {$user?.role ?? 'GUEST'} MODE
+          {$authStore?.role ?? 'GUEST'} MODE
         </span>
       </div>
     </div>
 
     <button
       class="p-2 rounded-lg hover:bg-gray-200/50 transition-all flex-shrink-0 ml-auto"
-      on:click={toggleCollapse}
+      onclick={toggleCollapse}
       aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
     >
       <svg class="w-4 h-4 text-gray-500 transition-transform duration-500" class:rotate-180={!collapsed} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -167,21 +207,21 @@
     {/each}
   </nav>
 
-  <!-- User Info -->
+  <!-- authStore Info -->
   <div class="p-3 mt-auto border-t border-gray-200 bg-gray-50/50">
     <div
       class="p-2 bg-white rounded-2xl shadow-sm border border-black/5 flex items-center transition-all duration-300"
       class:justify-center={collapsed && !canHoverExpand}
     >
       <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-bold text-lg shadow-inner flex-shrink-0" transition:fade>
-        {$user?.name?.[0] ?? 'U'}
+        {$authStore?.fullName?.[0] ?? 'U'}
       </div>
       <div class="ml-3 min-w-0 transition-all duration-300 overflow-hidden" 
            class:w-0={collapsed && !canHoverExpand} 
            class:opacity-0={collapsed && !canHoverExpand}
            class:w-full={!collapsed || canHoverExpand}>
-        <p class="text-sm font-bold truncate" transition:fade>{$user?.name ?? 'Guest User'}</p>
-        <p class="text-[10px] text-gray-400 font-bold uppercase truncate" transition:fade>{$user?.sacco ?? 'Personal'}</p>
+        <p class="text-sm font-bold truncate" transition:fade>{$authStore?.fullName ?? 'Guest authStore'}</p>
+        <p class="text-[10px] text-gray-400 font-bold uppercase truncate" transition:fade>{$authStore?.sacco ?? 'Personal'}</p>
       </div>
     </div>
   </div>
@@ -190,15 +230,15 @@
 <!-- Mobile Drawer -->
 {#if showDrawer}
   <div class="fixed inset-0 z-40 md:hidden">
-    <button type="button" class="absolute inset-0 bg-black/60 backdrop-blur-sm" on:click={toggleDrawer} aria-label="Close menu"></button>
+    <button type="button" class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick={toggleDrawer} aria-label="Close menu"></button>
     <div bind:this={drawerEl} role="dialog" aria-modal="true" aria-label="Main menu" class="absolute left-0 top-0 bottom-0 w-80 bg-white shadow-2xl flex flex-col p-4 overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-bold">Menu</h2>
-        <button class="p-2 rounded" on:click={toggleDrawer} aria-label="Close menu">✕</button>
+        <button class="p-2 rounded" onclick={toggleDrawer} aria-label="Close menu">✕</button>
       </div>
       <nav class="space-y-2">
         {#each $visibleMenu as item}
-          <a href={item.href} on:click={toggleDrawer} class="flex items-center gap-3 px-4 py-3 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200">
+          <a href={item.href} onclick={toggleDrawer} class="flex items-center gap-3 px-4 py-3 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200">
             <span class="text-lg">{item.icon}</span>
             <span class="truncate">{item.label}</span>
           </a>
@@ -206,11 +246,11 @@
       </nav>
       <div class="mt-6 p-3 border-t flex items-center gap-3">
         <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold" transition:fade>
-          {$user?.name?.[0] ?? 'U'}
+          {$authStore?.fullName?.[0] ?? 'U'}
         </div>
         <div>
-          <div class="font-semibold" transition:fade>{$user?.name ?? 'Guest User'}</div>
-          <div class="text-xs text-gray-500" transition:fade>{$user?.sacco ?? 'Personal'}</div>
+          <div class="font-semibold" transition:fade>{$authStore?.fullName ?? 'Guest authStore'}</div>
+          <div class="text-xs text-gray-500" transition:fade>{$authStore?.sacco ?? 'Personal'}</div>
         </div>
       </div>
     </div>
