@@ -42,7 +42,7 @@
       items: [
         { label: "About Us", href: "/about", desc: "Our mission & story" },
         { label: "Careers", href: "/careers", desc: "Join our team" },
-        { label: "Contact", href: "/contact", desc: "Get in touch" },
+        { label: "Contact", href: "/contact_us", desc: "Get in touch" },
         { label: "Press", href: "/press", desc: "Media resources" }
       ]
     }
