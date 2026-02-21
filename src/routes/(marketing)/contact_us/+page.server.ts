@@ -1,78 +1,130 @@
-import { fail } from "@sveltejs/kit"
-import { sendAdminEmail } from "$lib/mailer.js"
+import { fail } from '@sveltejs/kit';
+import type { Actions } from './$types';
 
-/** @type {import('./$types').Actions} */
-export const actions = {
-  submitContactUs: async ({ request, locals: { supabaseServiceRole } }) => {
-    const formData = await request.formData()
-    const errors: { [fieldName: string]: string } = {}
+import { contactSchema } from '$lib/security/contact.schema';
+import { verifyTurnstile } from '$lib/security/verifyTurnstile';
+import { escapeHtml } from '$lib/security/sanitize';
+import { rateLimit } from '$lib/security/rateLimit';
+import { preventDuplicate } from '$lib/security/dedupe';
+import { logSecurityEvent } from '$lib/features/utils/logger';
+import { sendAdminEmail } from '$lib/mailer';
 
-    const firstName = formData.get("first_name")?.toString() ?? ""
-    if (firstName.length < 2) {
-      errors["first_name"] = "First name is required"
-    }
-    if (firstName.length > 500) {
-      errors["first_name"] = "First name too long"
-    }
+export const actions: Actions = {
+  default: async ({ request, locals: { supabaseServiceRole }, getClientAddress }) => {
+    const ip = getClientAddress();
+    const formData = await request.formData();
 
-    const lastName = formData.get("last_name")?.toString() ?? ""
-    if (lastName.length < 2) {
-      errors["last_name"] = "Last name is required"
-    }
-    if (lastName.length > 500) {
-      errors["last_name"] = "Last name too long"
+    // ─────────────────────────────
+    // 1. Honeypot
+    // ─────────────────────────────
+    if (formData.get('website')) {
+      return { success: true };
     }
 
-    const email = formData.get("email")?.toString() ?? ""
-    if (email.length < 6) {
-      errors["email"] = "Email is required"
-    } else if (email.length > 500) {
-      errors["email"] = "Email too long"
-    } else if (!email.includes("@") || !email.includes(".")) {
-      errors["email"] = "Invalid email"
+    // ─────────────────────────────
+    // 2. Rate limiting
+    // ─────────────────────────────
+    const allowed = await rateLimit(ip);
+    if (!allowed) {
+      return fail(429, { error: 'Too many requests' });
     }
 
-    const company = formData.get("company")?.toString() ?? ""
-    if (company.length > 500) {
-      errors["company"] = "Company too long"
+    // ─────────────────────────────
+    // 3. Cloudflare Turnstile
+    // ─────────────────────────────
+    const token = formData.get('cf-turnstile-response')?.toString() ?? '';
+
+    let captchaValid = false;
+
+    try {
+      captchaValid = await verifyTurnstile(token, ip);
+    } catch (err) {
+      logSecurityEvent('INVALID_RECAPTCHA', {
+        provider: 'turnstile',
+        ip,
+        reason: 'verification_error',
+      });
     }
 
-    const phone = formData.get("phone")?.toString() ?? ""
-    if (phone.length > 100) {
-      errors["phone"] = "Phone number too long"
+    if (!captchaValid) {
+      return fail(400, {
+        error: 'Security verification failed.',
+      });
     }
 
-    const message = formData.get("message")?.toString() ?? ""
-    if (message.length > 2000) {
-      errors["message"] = "Message too long (" + message.length + " of 2000)"
+    // ─────────────────────────────
+    // 4. Extract & validate
+    // ─────────────────────────────
+    const raw = {
+      first: formData.get('first')?.toString().trim() ?? '',
+      last: formData.get('last')?.toString().trim() ?? '',
+      email: formData.get('email')?.toString().trim() ?? '',
+      phone: formData.get('phone')?.toString().trim() ?? '',
+      org: formData.get('org')?.toString().trim() ?? '',
+      type: formData.get('type')?.toString().trim() ?? '',
+      message: formData.get('message')?.toString().trim() ?? '',
+    };
+
+    const parsed = contactSchema.safeParse(raw);
+
+    if (!parsed.success) {
+      logSecurityEvent('VALIDATION_FAILURE', { ip });
+      return fail(400, {
+        errors: parsed.error.flatten().fieldErrors,
+      });
     }
 
-    if (Object.keys(errors).length > 0) {
-      return fail(400, { errors })
+    // ─────────────────────────────
+    // 5. Duplicate protection
+    // ─────────────────────────────
+    const notDuplicate = await preventDuplicate(ip, parsed.data.email);
+    if (!notDuplicate) {
+      return fail(429, { error: 'Duplicate submission detected' });
     }
 
-    // Save to database
-    const { error: insertError } = await supabaseServiceRole
-      .from("contact_requests")
+    // ─────────────────────────────
+    // 6. Sanitize before storage
+    // ─────────────────────────────
+    const sanitized = {
+      ...parsed.data,
+      message: escapeHtml(parsed.data.message),
+      first: escapeHtml(parsed.data.first),
+      last: escapeHtml(parsed.data.last),
+      org: escapeHtml(parsed.data.org ?? ''),
+    };
+
+    // ─────────────────────────────
+    // 7. Database insert
+    // ─────────────────────────────
+    const { error } = await supabaseServiceRole
+      .from('contact_requests')
       .insert({
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        company_name: company,
-        phone,
-        message_body: message,
-        updated_at: new Date(),
-      })
+        ...sanitized,
+        ip_address: ip,
+        created_at: new Date().toISOString(),
+      });
 
-    if (insertError) {
-      console.error("Error saving contact request", insertError)
-      return fail(500, { errors: { _: "Error saving" } })
+    if (error) {
+      logSecurityEvent('PAYLOAD_BLOCKED', { ip, error });
+      return fail(500, { error: 'Database error' });
     }
 
-    // Send email to admin
-    await sendAdminEmail({
-      subject: "New contact request",
-      body: `New contact request from ${firstName} ${lastName}.\n\nEmail: ${email}\n\nPhone: ${phone}\n\nCompany: ${company}\n\nMessage: ${message}`,
-    })
+    // ─────────────────────────────
+    // 8. Admin notification
+    // ─────────────────────────────
+    try {
+      await sendAdminEmail({
+        subject: `New Contact – ${sanitized.first} ${sanitized.last}`,
+        body: JSON.stringify(
+          { ...sanitized, ip },
+          null,
+          2
+        ),
+      });
+    } catch {
+      // Email failure should never block user
+    }
+
+    return { success: true };
   },
-}
+};

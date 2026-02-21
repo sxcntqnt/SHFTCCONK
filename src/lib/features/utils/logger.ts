@@ -20,3 +20,19 @@ export const logger = {
     }
   }
 };
+
+export type SecurityEvent =
+  | 'RATE_LIMIT_BLOCK'
+  | 'DUPLICATE_SUBMISSION'
+  | 'INVALID_RECAPTCHA'
+  | 'VALIDATION_FAILURE'
+  | 'PAYLOAD_BLOCKED';
+
+export function logSecurityEvent(event: SecurityEvent, meta: Record<string, unknown>) {
+  console.warn(JSON.stringify({
+    level: 'SECURITY',
+    event,
+    timestamp: new Date().toISOString(),
+    ...meta,
+  }));
+}

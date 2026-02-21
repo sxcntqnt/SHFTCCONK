@@ -1,6 +1,12 @@
+  import TurnstileWidget from '$lib/components/TurnstileWidget.svelte';
 <svelte:head>
   <title>Contact — Matatu Pulse | Get in Touch</title>
   <meta name="description" content="Contact the Matatu Pulse team. Reach us for operator demos, partnership enquiries, press, technical support, or general questions about our Nairobi matatu tracking platform." />
+ <script
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+    async
+    defer>
+  </script>
 </svelte:head>
 
 <style>
@@ -119,7 +125,7 @@
           <div class="form-title">Send Us a Message</div>
           <p class="form-sub">We read and respond to every message. Typical response time is under 4 hours on business days.</p>
 
-          <form action="/contact" method="POST">
+          <form method="POST">
             <div class="form-grid">
               <div class="form-group">
                 <label for="first">First Name</label>
@@ -160,12 +166,18 @@
               </div>
             </div>
 
+            <!-- Turnstile widget -->
+  <div
+    class="cf-turnstile"
+    data-sitekey={String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY)}
+    ></div>
             <button type="submit" class="submit-btn">
               Send Message
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </button>
             <p class="form-note">We'll never share your information with third parties.</p>
           </form>
+          
         </div>
       </div>
 
