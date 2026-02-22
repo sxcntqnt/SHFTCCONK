@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { user } from '$lib/auth';
-  import type { Role } from '$lib/auth';
+  import { user } from '$lib/features/auth/stores/auth';
+  import type { Role } from '$lib/features/auth/stores/auth';
 
   let fuelData: Record<string, string | number> = {};
   let loading = false;

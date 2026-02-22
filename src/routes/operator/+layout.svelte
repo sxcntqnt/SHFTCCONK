@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { Home, Car, Wallet, ShieldCheck, Map, AlertTriangle, Settings } from '@lucide/svelte';
-  import { authStore, hasPermission } from '$lib/auth';
+  import { authStore, hasPermission } from '$lib/features/auth/stores/auth';
   import Notification from '$lib/components/NotificationToast.svelte';
   import ErrorBoundary from '$lib/components/ErrorBoundary.svelte';
   import { onMount } from 'svelte';

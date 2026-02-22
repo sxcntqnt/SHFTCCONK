@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { authStore, ROLES } from '$lib/auth';  // assuming you renamed userStore → authStore consistently
+  import { authStore, ROLES } from '$lib/features/auth/stores/auth';  // assuming you renamed userStore → authStore consistently
 
   // ── Runes ────────────────────────────────────────────────────────────────
 

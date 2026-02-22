@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { user, ROLES } from '$lib/auth'
+  import { user, ROLES } from '$lib/features/auth/stores/auth'
 
   let notificationRange = 5 // passenger default mins
   let revenueTarget = 15000 // business default KES

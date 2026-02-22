@@ -10,7 +10,7 @@
  */
 
 import { writable, get } from "svelte/store"
-import type { BootstrapSessionPayload } from "./auth.types"
+import type { BootstrapSessionPayload } from "../../../types"
 
 /* ============================================================
    ROLES  — unchanged, single source of truth

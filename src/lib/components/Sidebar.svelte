@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
-  import { authStore, ROLES } from '$lib/auth';
+  import { authStore, ROLES } from '$lib/features/auth/stores/auth';
   import { derived } from 'svelte/store';
   import { fade } from 'svelte/transition';
 

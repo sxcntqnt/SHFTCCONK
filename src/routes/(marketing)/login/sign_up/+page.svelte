@@ -90,7 +90,7 @@
       view="sign_up"
       redirectTo={`${data.url}/auth/callback`}
       showLinks={false}
-      providers={opauthProviders}
+      providers={oauthProviders}
       socialLayout="horizontal"
       appearance={sharedAppearance}
       additionalData={additionalData}

@@ -2,7 +2,7 @@
 
 import type { PageLoad } from './$types';
 import { supabase } from '$lib/supabaseClient';
-import { enforceTenant } from '$lib/auth';
+import { enforceTenant } from '$lib/features/auth/stores/auth';
 import { latLngToCell } from 'h3-js';
 
 export const load: PageLoad = async ({ params }) => {

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { user, ROLES } from '$lib/auth'
+  import { authStore, ROLES } from '$lib/features/auth/stores/auth'
 
   const allowedRoles = [ROLES.ORGANIZATION, ROLES.ADMIN, ROLES.OWNER]
-  $: hasAccess = allowedRoles.includes($user.role as any)
+  $: hasAccess = allowedRoles.includes($authStore.role as any)
 </script>
 
 <div class="flex-1 p-6 md:p-10 bg-gray-50 min-h-screen">

@@ -1,7 +1,7 @@
 <script lang="ts">
   import Sidebar from '$lib/components/Sidebar.svelte'
   import { onMount } from 'svelte'
-  import { setUserFromBootstrap } from '$lib/auth'
+  import { setUserFromBootstrap } from '$lib/features/auth/stores/auth'
 
   export let data: { bootstrap: any }
 

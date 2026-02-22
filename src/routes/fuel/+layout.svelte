@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { user } from '$lib/auth';
+  import { user } from '$lib/features/auth/stores/auth';
 </script>
 
 <div class="fuel-bg min-h-screen w-full flex flex-col items-center px-5 pb-20 pt-[env(safe-area-inset-top)]">

@@ -33,7 +33,7 @@ export type Testimonial = { name: string; userType: string; testimony: string; r
  *       3. Supabase service-role admin  — ADMIN + initial ORG_CHAIR setup
  */
 
-import type { Role } from "$lib/stores/auth.store"
+import type { Role } from "$lib/features/auth/stores/auth"
 
 /* ─────────────────────────────────────────────────────────────────────
    bootstrap_session() RPC
