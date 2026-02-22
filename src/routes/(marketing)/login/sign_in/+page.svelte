@@ -12,7 +12,6 @@
   onMount(() => {
     supabase.auth.onAuthStateChange(async (event) => {
       if (event !== "SIGNED_IN") return
-
       setTimeout(async () => {
         try {
           const { data: rpcData, error } = await supabase.rpc("bootstrap_session")
@@ -22,8 +21,12 @@
             return
           }
           const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
-          // Hydrate the store — role comes from server, never UI
           setUserFromBootstrap(payload)
+          // bootstrap_session resolves the correct dashboard per role:
+          // PASSENGER → /account
+          // OWNER / VEHICLE_OWNER → /operator/fleet or /operator/vehicles
+          // ORG_CHAIR / OPERATIONS_MANAGER → /operator/dashboard
+          // ACCOUNTANT → /operator/finance  etc.
           goto(payload?.route ?? "/account")
         } catch (e) {
           console.error(e)
@@ -52,7 +55,7 @@
   }
   .page-sub { font-size: 0.875rem; color: var(--text-2); line-height: 1.6; }
 
-  /* Verified alert */
+  /* Email verified alert */
   .alert-verified {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px; margin-bottom: 20px;
@@ -62,27 +65,59 @@
   .alert-verified svg { color: var(--teal); flex-shrink: 0; }
   .alert-verified span { font-size: 0.875rem; color: var(--text-1); font-weight: 500; }
 
-  /* Auth wrapper */
   .auth-wrap { margin-bottom: 18px; }
 
-  /* Footer */
-  .auth-footer { padding-top: 16px; border-top: 1px solid var(--rim); display: flex; flex-direction: column; gap: 8px; }
+  /* Footer links */
+  .auth-footer {
+    padding-top: 16px; border-top: 1px solid var(--rim);
+    display: flex; flex-direction: column; gap: 8px;
+  }
   .auth-footer-row { font-size: 0.82rem; color: var(--text-3); }
-  .auth-footer-row a { color: var(--orange); text-decoration: none; font-weight: 600; transition: color 0.2s; }
+  .auth-footer-row a {
+    color: var(--orange); text-decoration: none; font-weight: 600; transition: color 0.2s;
+  }
   .auth-footer-row a:hover { color: #d95618; }
 
-  /* Divider */
-  .divider { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-  .divider-line { flex: 1; height: 1px; background: var(--rim); }
-  .divider-text { font-size: 0.68rem; color: var(--text-3); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+  /* Section divider inside footer */
+  .footer-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .footer-divider-line { flex: 1; height: 1px; background: var(--rim); }
+  .footer-divider-text {
+    font-size: 0.65rem; color: var(--text-3); font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  /* Role context card — shown to help privileged users confirm they're in the right place */
+  .role-context {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 14px; margin-bottom: 20px;
+    background: rgba(255,255,255,0.02); border: 1px solid var(--rim); border-radius: 10px;
+  }
+  .role-context svg { color: var(--text-3); flex-shrink: 0; margin-top: 2px; }
+  .role-context p { font-size: 0.78rem; color: var(--text-3); line-height: 1.6; }
+  .role-context strong { color: var(--text-2); font-weight: 600; }
 </style>
 
 <div class="signin-wrap">
 
   <div class="page-header">
-    <div class="page-eyebrow">Commuter & Rider Access</div>
-    <h1 class="page-title">Sign In</h1>
-    <p class="page-sub">Access your route tracker, alerts, and account settings.</p>
+    <div class="page-eyebrow">Sign In</div>
+    <h1 class="page-title">Welcome Back</h1>
+    <p class="page-sub">
+      Enter your email and password. You'll be routed to the right dashboard automatically.
+    </p>
+  </div>
+
+  <!-- Gentle nudge for anyone who landed here by mistake -->
+  <div class="role-context">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <p>
+      Not sure you're in the right place?
+      <a href="/login" style="color:var(--orange);font-weight:600;">See all sign-in options →</a>
+    </p>
   </div>
 
   {#if $page.url.searchParams.get("verified") === "true"}
@@ -109,12 +144,39 @@
   </div>
 
   <div class="auth-footer">
-    <div class="auth-footer-row"><a href="/login/forgot_password">Forgot your password?</a></div>
-    <div class="divider"><div class="divider-line"></div><span class="divider-text">other access</span><div class="divider-line"></div></div>
-    <div class="auth-footer-row">Sacco / operator staff? <a href="/login/invite">Use your invitation code</a></div>
-    <div class="auth-footer-row">Driver or conductor? <a href="/login/driver">Sign in with phone OTP</a></div>
-    <div class="auth-footer-row">Government / authority? <a href="/login/sso">Use your organisation SSO</a></div>
-    <div class="auth-footer-row">New rider? <a href="/login/sign_up">Create a free account</a></div>
+    <div class="auth-footer-row">
+      <a href="/login/forgot_password">Forgot your password?</a>
+    </div>
+
+    <div class="footer-divider">
+      <div class="footer-divider-line"></div>
+      <span class="footer-divider-text">other sign-in methods</span>
+      <div class="footer-divider-line"></div>
+    </div>
+
+    <div class="auth-footer-row">
+      Driver or conductor? <a href="/login/driver">Sign in with phone OTP</a>
+    </div>
+    <div class="auth-footer-row">
+      Government / authority? <a href="/login/sso">Use your organisation SSO</a>
+    </div>
+
+    <div class="footer-divider">
+      <div class="footer-divider-line"></div>
+      <span class="footer-divider-text">new here</span>
+      <div class="footer-divider-line"></div>
+    </div>
+
+    <div class="auth-footer-row">
+      New rider? <a href="/login/sign_up">Create a free account</a>
+    </div>
+    <div class="auth-footer-row">
+      First-time sacco staff? <a href="/login/invite">Redeem your invitation code</a>
+    </div>
+    <div class="auth-footer-row">
+      Matatu owner not yet onboarded?
+      <a href="/contact?type=partnership">Request access</a>
+    </div>
   </div>
 
 </div>

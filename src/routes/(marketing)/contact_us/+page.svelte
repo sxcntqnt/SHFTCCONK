@@ -1,4 +1,3 @@
-  import TurnstileWidget from '$lib/components/TurnstileWidget.svelte';
 <svelte:head>
   <title>Contact — Matatu Pulse | Get in Touch</title>
   <meta name="description" content="Contact the Matatu Pulse team. Reach us for operator demos, partnership enquiries, press, technical support, or general questions about our Nairobi matatu tracking platform." />
@@ -6,6 +5,8 @@
     src="https://challenges.cloudflare.com/turnstile/v0/api.js"
     async
     defer>
+    import TurnstileWidget from '$lib/components/TurnstileWidget.svelte';
+
   </script>
 </svelte:head>
 

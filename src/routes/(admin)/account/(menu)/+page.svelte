@@ -1,9 +1,16 @@
 <script lang="ts">
-  import { getContext } from "svelte"
-  import type { Writable } from "svelte/store"
+  import { getContext } from "svelte";
+  import type { Writable } from "svelte/store";
+  import { browser } from '$app/environment';
 
-  let adminSection: Writable<string> = getContext("adminSection")
-  adminSection.set("home")
+  let adminSection: Writable<string> = getContext("adminSection");
+
+  $effect(() => {
+    if (browser && adminSection) {
+      let adminSection = getContext('adminSection')
+      adminSection = "home"
+    }
+  });
 </script>
 
 <svelte:head>
