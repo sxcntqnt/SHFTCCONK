@@ -52,7 +52,7 @@
   ];
 
   /* ── STATE ── */
-  let activeMenu: string | null = $state(null);
+  let activeMenu = $state<string | null>(null);
   let mobileOpen = $state(false);
   let scrolled = $state(false);
   let hoverTimeout: ReturnType<typeof setTimeout>;
@@ -76,7 +76,7 @@
     return () => window.removeEventListener("scroll", onScroll);
   });
 
-  let currentPath = $derived($page.url.pathname);
+  let currentPath = $derived(page.url.pathname);
 </script>
 
 <style>
