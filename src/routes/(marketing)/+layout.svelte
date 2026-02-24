@@ -76,7 +76,7 @@
     return () => window.removeEventListener("scroll", onScroll);
   });
 
-  let currentPath = $derived(page.url.pathname);
+  let currentPath = $derived($page.url.pathname);
 </script>
 
 <style>
