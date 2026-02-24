@@ -9,7 +9,7 @@ export async function POST({ request }) {
       return json({ error: 'financeRecords must be an array' }, { status: 400 });
     }
 
-    const trend = getRevenueTrend(financeRecords);
+    const trend = getRevenueTrend(financeRecords);  
 
     return json({
       status: 'OK',

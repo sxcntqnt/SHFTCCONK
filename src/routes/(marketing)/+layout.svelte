@@ -3,8 +3,11 @@
   import { onMount } from "svelte";
   import { fade, fly, slide } from "svelte/transition";
   import { page } from "$app/stores";
+  interface Props {
+    children?: import("svelte").Snippet
+  }
 
-  let { children } = $props();
+  let { children }: Props = $props();
 
   /* ── NAV CONFIG ── */
   const navSections = [
