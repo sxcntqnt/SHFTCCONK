@@ -569,7 +569,11 @@
 
 <!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
 <main>
-  {@render children?.()}
+  {#if typeof children === 'function'}
+    {children()}
+  {:else if children}
+    {children}
+  {/if}
 </main>
 
 <!-- ═══════════════════════ DUAL CTA ═══════════════════════ -->
