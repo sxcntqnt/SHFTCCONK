@@ -1,7 +1,7 @@
 // lib/stores/finance.store.ts
 import { writable, get } from 'svelte/store'
-import { supabase } from '$lib/supabaseClient'
-import { user, enforceTenant } from '../auth'
+import { SupabaseClient } from "@supabase/supabase-js"
+import { user, enforceTenant } from '$lib/features/auth/stores/auth'
 
 /* ============================================================
    LEDGER & RECONCILIATION MODELS

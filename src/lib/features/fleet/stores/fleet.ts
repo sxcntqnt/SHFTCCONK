@@ -1,7 +1,7 @@
 // lib/stores/fleet.store.ts
 import { writable, get } from 'svelte/store'
-import { supabase } from '$lib/supabaseClient'
-import { user, enforceTenant } from '../auth'
+import { SupabaseClient } from "@supabase/supabase-js"
+import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
 
 /* ============================================================
    VEHICLE MODEL (Unified + Strict)
@@ -49,7 +49,7 @@ let fleetChannel: ReturnType<typeof supabase.channel> | null = null
 ============================================================ */
 
 export async function initFleet(): Promise<void> {
-  const currentUser = get(user)
+  const currentUser = get(authStore)
 
   if (!currentUser.organizationId) {
     throw new Error('Cannot initialize fleet: user has no tenant context')

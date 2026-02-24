@@ -5,16 +5,18 @@
 
   let hasError = false;
 
-  // Catch errors in children
-  function handleError(event) {
-    console.error(event.detail);
+  // This function will be called manually by children
+  function reportError(err: any) {
+    console.error(err);
     hasError = true;
-    dispatch('error', event.detail);
+    dispatch('error', err);
   }
 </script>
 
 {#if hasError}
-  <div class="p-6 bg-red-50 text-red-700 rounded-2xl shadow">{fallback}</div>
+  <div class="p-6 bg-red-50 text-red-700 rounded-2xl shadow">
+    {fallback}
+  </div>
 {:else}
-  <svelte:component this={$$slots.default} on:error={handleError} />
+  <slot />
 {/if}

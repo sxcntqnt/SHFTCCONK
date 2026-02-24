@@ -1,7 +1,7 @@
 // lib/stores/compliance.store.ts
 import { writable, get } from 'svelte/store'
-import { supabase } from '$lib/supabaseClient'
-import { user, enforceTenant } from './auth'
+import { SupabaseClient } from "@supabase/supabase-js"
+import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
 
 /* ============================================================
    COMPLIANCE MODELS
@@ -38,14 +38,14 @@ export const complianceAlertStore = writable<ComplianceAlert[]>([])
    INTERNAL STATE
 ============================================================ */
 
-let eventChannel: ReturnType<typeof supabase.channel> | null = null
+let eventChannel: ReturnType<typeof SupabaseClient.channel> | null = null
 
 /* ============================================================
    INITIALIZATION
 ============================================================ */
 
 export async function initCompliance(): Promise<void> {
-  const currentUser = get(user)
+  const currentUser = get(authStore)
   if (!currentUser.organizationId) throw new Error('User has no tenant context')
   const orgId = currentUser.organizationId
 

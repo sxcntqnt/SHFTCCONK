@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { fleetStore, getActiveVehicles } from '$lib/stores/fleet.store';
-  import { financeStore, getTotalRevenueToday } from '$lib/stores/finance.store';
-  import { complianceEventStore, complianceAlertStore, getUnresolvedEvents } from '$lib/stores/compliance.store';
+  import { fleetStore, getActiveVehicles } from '$lib/features/fleet/stores/fleet';
+  import { financeStore, getTotalRevenueToday } from '$lib/features/finance/finance.store';
+  import { complianceEventStore, complianceAlertStore, getUnresolvedEvents } from '$lib/features/compliance/stores/compliance';
 
   import OperatorStatCard from '$lib/components/OperatorStatCard.svelte';
   import GlassCard from '$lib/components/GlassCard.svelte';
   import Chart from '$lib/components/Chart.svelte'; // Chart.js wrapper
 
-  import { getRevenueTrend } from '$lib/finance/reconciliation';
+  import { getRevenueTrend } from '$lib/features/finance/reconciliation.store';
 
   /* ============================================================
      LOCAL REACTIVE STATE
