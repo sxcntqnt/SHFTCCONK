@@ -569,11 +569,7 @@
 
 <!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
 <main>
-  {#if typeof children === 'function'}
-    {children()}
-  {:else if children}
-    {children}
-  {/if}
+  <slot />
 </main>
 
 <!-- ═══════════════════════ DUAL CTA ═══════════════════════ -->
