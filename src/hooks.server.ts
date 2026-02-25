@@ -104,4 +104,19 @@ const authGuard: Handle = async ({ event, resolve }) => {
   return resolve(event)
 }
 
-export const handle: Handle = sequence(supabase, authGuard)
+const cloudflareProxy: Handle = async ({ event, resolve }) => {
+  const proto = event.request.headers.get('x-forwarded-proto')
+  const host = event.request.headers.get('x-forwarded-host')
+           ?? event.request.headers.get('host')
+
+  if (proto && host) {
+    const url = new URL(event.request.url)
+    url.protocol = proto + ':'
+    url.host = host
+    event.request = new Request(url, event.request)
+  }
+
+  return resolve(event)
+}
+
+export const handle: Handle = sequence(cloudflareProxy, supabase, authGuard)
