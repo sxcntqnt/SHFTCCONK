@@ -1,6 +1,5 @@
 <script>
-  import "../app.css"
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
 </script>
 
 <style>
@@ -133,28 +132,28 @@
   <div class="error-inner">
 
     <!-- Big error code -->
-    <div class="error-code">{$page?.status ?? "Err"}</div>
+    <div class="error-code">{page?.status ?? "Err"}</div>
 
     <div class="error-divider"></div>
 
     <h1 class="error-title">
-      {$page?.status === 404
+      {page?.status === 404
         ? "Page Not Found"
-        : $page?.status === 403
+        : page?.status === 403
         ? "Access Denied"
-        : $page?.status === 500
+        : page?.status === 500
         ? "Server Error"
         : "Something Went Wrong"}
     </h1>
 
     <p class="error-message">
-      {$page?.status === 404
+      {page?.status === 404
         ? "This page doesn't exist or has been moved. Check the URL or head back home."
         : "We hit an unexpected issue. Our team has been notified — sorry for the interruption."}
     </p>
 
-    {#if $page?.error?.message}
-      <div class="error-detail">{$page.error.message}</div>
+    {#if page?.error?.message}
+      <div class="error-detail">{page.error.message}</div>
     {/if}
 
     <div class="error-actions">

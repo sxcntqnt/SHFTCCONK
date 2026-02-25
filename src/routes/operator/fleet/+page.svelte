@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { onDestroy } from 'svelte';
   import { fleetStore, getVehicleById, requireVehicleAccess } from '$lib/stores/fleet.store';
   import { complianceStore } from '$lib/stores/compliance.store';
@@ -17,7 +17,7 @@
   const editRoute = writable('');
   const editStatus = writable('');
 
-  $: vehicleId = $page.params.vehicleId;
+  $: vehicleId = page.params.vehicleId;
 
   // Subscriptions
   const fleetUnsub = fleetStore.subscribe(v => {

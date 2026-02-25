@@ -1,7 +1,7 @@
 <script lang="ts">
   import { writable } from "svelte/store"
   import { setContext } from "svelte"
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
   import { WebsiteName } from "../../../config"
 
   interface Props {
@@ -18,7 +18,7 @@
 
   function closeDrawer() { mobileOpen = false }
 
-  let currentPath = $derived($page.url.pathname)
+  let currentPath = $derived(page.url.pathname)
 
   const navItems = [
     {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
   import { browser } from "$app/environment"
   import { onMount } from "svelte"
   import Fuse from "fuse.js"
@@ -50,8 +50,8 @@
   }
   let results: Result[] = $state([])
 
-  // searchQuery is $page.url.hash minus the "#" at the beginning if present
-  let searchQuery = $state(decodeURIComponent($page.url.hash.slice(1) ?? ""))
+  // searchQuery is page.url.hash minus the "#" at the beginning if present
+  let searchQuery = $state(decodeURIComponent(page.url.hash.slice(1) ?? ""))
   $effect(() => {
     if (fuse) {
       results = fuse.search(searchQuery)

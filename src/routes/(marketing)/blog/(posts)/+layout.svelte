@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
   import { error } from "@sveltejs/kit"
   import { sortedBlogPosts, type BlogPost } from "./../posts"
   import { WebsiteName } from "../../../../config"
@@ -21,7 +21,7 @@
     return found
   }
 
-  let currentPost = $derived(getCurrentPost($page.url.pathname))
+  let currentPost = $derived(getCurrentPost(page.url.pathname))
 
   function buildLdJson(post: BlogPost) {
     return {
@@ -39,7 +39,7 @@
   let jsonldScript = $derived(
     `<script type="application/ld+json">${JSON.stringify(buildLdJson(currentPost)) + "<"}/script>`
   )
-  let pageUrl = $derived($page.url.origin + $page.url.pathname)
+  let pageUrl = $derived(page.url.origin + page.url.pathname)
 
   /* Estimated reading time — using description as a seed length proxy;
      real word count comes from the rendered slot but we can't access it here */
