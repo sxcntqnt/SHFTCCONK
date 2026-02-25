@@ -7,7 +7,7 @@
     children?: import("svelte").Snippet
   }
 
-  let { children }: Props = $props();
+  let { children = undefined }: Props = $props();
 
   /* ── NAV CONFIG ── */
   const navSections = [

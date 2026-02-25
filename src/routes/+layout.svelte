@@ -39,7 +39,7 @@
   }
 </style>
 
-{#if navigating.current}
+{#if navigating}
   <!--
     Navigation progress bar:
     - 100ms delay so instant page loads don't flash at all

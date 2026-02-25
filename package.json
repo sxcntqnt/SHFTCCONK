@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "vite dev --debug",
+    "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -60,6 +60,7 @@
     "@threlte/extras": "^9.8.1",
     "@upstash/redis": "^1.36.2",
     "axios": "^1.13.5",
+    "chart.js": "^4.5.1",
     "d3-scale": "^4.0.2",
     "gsap": "^3.14.2",
     "h3-js": "^4.4.0",
@@ -71,7 +72,8 @@
     "stripe": "^13.11.0",
     "three": "^0.183.1",
     "three-stdlib": "^2.36.1",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "zod": "^4.3.6"
   },
   "overrides": {
     "@supabase/auth-ui-svelte": {

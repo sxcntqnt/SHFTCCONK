@@ -4,10 +4,10 @@
   import Contracts from './contracts.svelte';
   import Analytics from './analytics.svelte';
 
-  import { userStore, hasPermission } from '../stores/user';
-  import { initFleet } from '../stores/fleet';
-  import { initContracts } from '../stores/contracts';
-  import { initAnalytics } from '../stores/analytics';
+  import { userStore, hasPermission } from '$lib/features/auth/stores/auth';
+  import { initFleet } from '$lib/features/fleet/stores/fleet';
+  import { initContracts } from '$lib/features/contracts/stores/contracts';
+  import { initAnalytics } from '$lib/features/analytics/stores/analytics';
 
   // Auto-subscribe (no memory leak)
   $: user = $userStore;
