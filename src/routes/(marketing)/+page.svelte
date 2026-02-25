@@ -28,7 +28,6 @@
     analytics:     "point.png",
   }
 
-  type MatatuPartner = { name: string; logo: string }
   export const MATATU_PARTNERS: readonly MatatuPartner[] = [
     { name: "SUPERMETRO", logo: "vehicles/ptrns/super-metro.svg" },
     { name: "NICCO",      logo: "vehicles/ptrns/nicco-sacco.svg" },
