@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "vite dev",
+    "dev": "vite dev --debug",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -56,6 +56,8 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.97.0",
     "@sveltejs/adapter-node": "^5.5.3",
+    "@threlte/core": "^8.4.0",
+    "@threlte/extras": "^9.8.1",
     "@upstash/redis": "^1.36.2",
     "axios": "^1.13.5",
     "d3-scale": "^4.0.2",
