@@ -2,38 +2,30 @@
   import { Auth } from "@supabase/auth-ui-svelte"
   import { sharedAppearance, oauthProviders } from "../login_config"
   import { goto } from "$app/navigation"
-  import { onMount } from "svelte"
-  import { page } from "$app/stores"
+  import { page } from "$app/state"  // Svelte 5 — not $app/stores
   import { setUserFromBootstrap } from "$lib/features/auth/stores/auth"
 
-  // ── Props ─────────────────────────────────────────────────────────
+  // ── Props ──────────────────────────────────────────────────────────
   let { data } = $props<{ data: { supabase: any; url: string } }>()
 
-  // ── Mounted guard ─────────────────────────────────────────────────
-  // Prevents the async auth callback from calling goto() or rpc()
-  // after the component has unmounted during navigation.
-  let mounted = false
+  // ── Mounted guard ──────────────────────────────────────────────────
+  let mounted = $state(false)
 
-  // ── Auth listener ─────────────────────────────────────────────────
-  onMount(() => {
+  // ── Auth listener ──────────────────────────────────────────────────
+  $effect(() => {
     mounted = true
 
     const { data: { subscription } } = data.supabase.auth.onAuthStateChange(
       async (event: string, _session: any) => {
-        // Only react to an explicit sign-in action.
-        // Ignores: INITIAL_SESSION, TOKEN_REFRESHED, SIGNED_OUT,
-        //          PASSWORD_RECOVERY, USER_UPDATED — all safe to skip here.
         if (event !== "SIGNED_IN") return
         if (!mounted) return
 
-        // Small delay so Supabase finishes writing the session cookie
-        // before the RPC runs server-side (prevents a session race).
         await new Promise<void>(r => setTimeout(r, 200))
         if (!mounted) return
 
         try {
           const { data: rpcData, error } = await data.supabase.rpc("bootstrap_session")
-          if (!mounted) return   // navigation may have happened during await
+          if (!mounted) return
 
           if (error) {
             console.error("bootstrap_session:", error)
@@ -41,15 +33,9 @@
             return
           }
 
-          // bootstrap_session resolves the correct route per role:
-          // PASSENGER           → /account
-          // OWNER/VEHICLE_OWNER → /operator/fleet or /operator/vehicles
-          // ORG_CHAIR/OPS_MGR   → /operator/dashboard
-          // ACCOUNTANT          → /operator/finance  etc.
           const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
           setUserFromBootstrap(payload)
           goto(payload?.route ?? "/account")
-
         } catch (err) {
           if (!mounted) return
           console.error("bootstrap_session threw:", err)
@@ -58,17 +44,15 @@
       }
     )
 
-    // Mark unmounted AND unsubscribe when the component is destroyed.
-    // Both steps are required — unsubscribe alone doesn't prevent an
-    // in-flight async callback from resolving after unmount.
+    // $effect cleanup — runs on unmount, equivalent to onMount return fn
     return () => {
       mounted = false
       subscription.unsubscribe()
     }
   })
 
-  // ── Verified email param ──────────────────────────────────────────
-  let verified = $derived($page.url?.searchParams?.get("verified") === "true")
+  // ── Verified email param ───────────────────────────────────────────
+  let verified = $derived(page.url?.searchParams?.get("verified") === "true")
 </script>
 
 <svelte:head>

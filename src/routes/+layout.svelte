@@ -1,6 +1,6 @@
 <script lang="ts">
   import "../app.css"
-  import { navigating } from "$app/stores"
+  import { navigating } from "$app/state"
   import { expoOut } from "svelte/easing"
   import { slide } from "svelte/transition"
 
@@ -39,7 +39,7 @@
   }
 </style>
 
-{#if $navigating}
+{#if navigating}
   <!--
     Navigation progress bar:
     - 100ms delay so instant page loads don't flash at all

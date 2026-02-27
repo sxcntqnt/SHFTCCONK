@@ -2,12 +2,12 @@
   import { WebsiteName } from "./../../config";
   import { onMount } from "svelte";
   import { fade, fly, slide } from "svelte/transition";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   interface Props {
     children?: import("svelte").Snippet
   }
 
-  let { children }: Props = $props();
+  let { children = undefined }: Props = $props();
 
   /* ── NAV CONFIG ── */
   const navSections = [
@@ -76,7 +76,7 @@
     return () => window.removeEventListener("scroll", onScroll);
   });
 
-  let currentPath = $derived($page.url.pathname);
+  let currentPath = $derived(page.url.pathname);
 </script>
 
 <style>

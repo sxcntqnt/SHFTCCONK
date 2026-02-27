@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { onDestroy, onMount } from 'svelte';
   import { fleetStore, getVehicleById, requireVehicleAccess } from '$lib/stores/fleet.store';
   import { complianceStore } from '$lib/stores/compliance.store';
@@ -25,7 +25,7 @@
   let map: L.Map;
   let markerLayer: L.LayerGroup;
 
-  $: vehicleId = $page.params.vehicleId;
+  $: vehicleId = page.params.vehicleId;
 
   // Subscriptions
   const fleetUnsub = fleetStore.subscribe(v => {

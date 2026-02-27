@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { authStore, ROLES } from '$lib/features/auth/stores/auth';
-  import { derived } from 'svelte/store';
   import { fade } from 'svelte/transition';
 
   let collapsed = $state(false);
@@ -21,7 +20,7 @@
   const toggleCollapse = () => collapsed = !collapsed;
   const toggleDrawer = () => showDrawer = !showDrawer;
 
-  const currentPath = derived(page, $page => $page.url.pathname);
+  let currentPath = $derived(page.url.pathname);
   const isActive = (href: string, path: string) => path === href || path.startsWith(href + '/');
 
 let dotColorClass = $derived(() => {
@@ -193,7 +192,7 @@ $effect(() => {
         aria-label={item.label}
         title={collapsed && !canHoverExpand ? item.label : undefined}
         class="flex items-center h-12 px-3 rounded-xl font-bold text-gray-600 transition-all duration-200 ease-out group/link
-               {isActive(item.href, $currentPath) ? 'text-blue-700 bg-white shadow-sm ring-1 ring-black/5' : 'hover:bg-gray-200/40 hover:text-gray-900'}"
+               {isActive(item.href, currentPath) ? 'text-blue-700 bg-white shadow-sm ring-1 ring-black/5' : 'hover:bg-gray-200/40 hover:text-gray-900'}"
       >
         <span class="text-xl w-8 flex justify-center flex-shrink-0 transition-transform duration-200 group-hover/link:scale-110">{item.icon}</span>
         <span class="ml-3 truncate text-sm transition-all duration-300" 

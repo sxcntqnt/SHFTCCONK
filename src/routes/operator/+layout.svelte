@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { Home, Car, Wallet, ShieldCheck, Map, AlertTriangle, Settings } from '@lucide/svelte';
   import { authStore, hasPermission } from '$lib/features/auth/stores/auth';
   import Notification from '$lib/components/NotificationToast.svelte';

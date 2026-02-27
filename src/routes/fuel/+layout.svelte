@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { user } from '$lib/features/auth/stores/auth';
 </script>
 
@@ -8,9 +8,9 @@
 
   <!-- Mini navigation between views -->
   <nav class="mb-10 flex flex-wrap justify-center gap-6 text-lg font-medium">
-    <a href="/fuel" class:active={$page.url.pathname === '/fuel'}>Overview</a>
-    <a href="/fuel/create" class:active={$page.url.pathname === '/fuel/create'}>Add Entry</a>
-    <a href="/fuel/entries" class:active={$page.url.pathname.startsWith('/fuel/entries')}>Entries</a>
+    <a href="/fuel" class:active={page.url.pathname === '/fuel'}>Overview</a>
+    <a href="/fuel/create" class:active={page.url.pathname === '/fuel/create'}>Add Entry</a>
+    <a href="/fuel/entries" class:active={page.url.pathname.startsWith('/fuel/entries')}>Entries</a>
   </nav>
 
   <main class="w-full flex flex-col items-center">

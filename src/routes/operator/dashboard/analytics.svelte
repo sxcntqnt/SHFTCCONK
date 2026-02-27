@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { analyticsStore, type RouteStats } from '../stores/analytics';
+  import { analyticsStore, type RouteStats } from '$lib/features/analytics/stores/analytics';
   import { derived } from 'svelte/store';
 
   // Auto-subscribe

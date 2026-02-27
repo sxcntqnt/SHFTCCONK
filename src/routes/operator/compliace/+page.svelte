@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { complianceStore } from '$lib/stores/compliance.store';
+  import { complianceStore } from '$lib/features/compliance/stores/compliance.store';
   import GlassCard from '$lib/components/GlassCard.svelte';
   import Chart from '$lib/components/Chart.svelte';
   import { writable, get } from 'svelte/store';

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { contracts, initContracts, destroyContracts } from '$lib/stores/contracts.store';
+  import { contracts, initContracts, destroyContracts } from '$lib/features/contracts/stores/contracts.store';
   import ContractCard from '$lib/components/ContractCard.svelte';
   import { onMount, onDestroy } from 'svelte';
 

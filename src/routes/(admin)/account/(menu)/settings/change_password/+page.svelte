@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
   import { getContext } from "svelte"
   import type { Writable } from "svelte/store"
   import SettingsModule from "../settings_module.svelte"
@@ -32,7 +32,7 @@
     if (email) {
       supabase.auth
         .resetPasswordForEmail(email, {
-          redirectTo: `${$page.url.origin}/auth/callback?next=%2Faccount%2Fsettings%2Freset_password`,
+          redirectTo: `${page.url.origin}/auth/callback?next=%2Faccount%2Fsettings%2Freset_password`,
         })
         .then((d) => {
           sentEmail = d.error ? false : true

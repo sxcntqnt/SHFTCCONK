@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance, applyAction } from "$app/forms"
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
   import type { SubmitFunction } from "@sveltejs/kit"
 
   const fieldError = (liveForm: FormAccountUpdateResult, name: string) => {
@@ -109,10 +109,10 @@
               type={field.inputType ?? "text"}
               disabled={!editable}
               placeholder={field.placeholder ?? field.label ?? ""}
-              class="{fieldError($page?.form, field.id)
+              class="{fieldError(page?.form, field.id)
                 ? 'input-error'
                 : ''} input-sm mt-1 input input-bordered w-full max-w-xs mb-3 text-base py-4"
-              value={$page.form ? $page.form[field.id] : field.initialValue}
+              value={page.form ? page.form[field.id] : field.initialValue}
               maxlength={field.maxlength ? field.maxlength : null}
             />
           {:else}
@@ -120,9 +120,9 @@
           {/if}
         {/each}
 
-        {#if $page?.form?.errorMessage}
+        {#if page?.form?.errorMessage}
           <p class="text-red-700 text-sm font-bold mt-1">
-            {$page?.form?.errorMessage}
+            {page?.form?.errorMessage}
           </p>
         {/if}
 

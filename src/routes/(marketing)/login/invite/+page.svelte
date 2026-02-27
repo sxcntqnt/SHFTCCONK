@@ -1,9 +1,9 @@
 <script lang="ts">
   import { goto } from "$app/navigation"
-  import { page } from "$app/stores"
+  import { page } from "$app/state"
 
   // Pre-fill from URL param: /login/invite?code=xxx
-  let code = $state($page.url.searchParams.get("code") ?? "")
+  let code = $state(page.url.searchParams.get("code") ?? "")
   let loading = $state(false)
   let error = $state<string | null>(null)
 
