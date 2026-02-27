@@ -5,6 +5,9 @@
   import RateCrew from '$lib/components/RateCrew.svelte';
   import RememberMatatu from '$lib/components/RememberMatatu.svelte';
   import LearnMore from '$lib/components/LearnMore.svelte';
+  import NextTripCard from '$lib/components/NextTripCard.svelte';
+  import QuickPlanner from '$lib/components/QuickPlanner.svelte';
+  import InsightsSnapshot from '$lib/components/InsightsSnapshot.svelte';
 
   import {
 favoriteDrivers,
@@ -31,7 +34,11 @@ favoriteDrivers,
     </h1>
     <SearchBar />
   </header>
-
+<div class="dashboard">
+  <NextTripCard />
+  <QuickPlanner />
+  <InsightsSnapshot />
+</div>
   {#if $isLoadingFavorites}
     <div class="flex justify-center items-center h-32">
       <span class="loading loading-spinner loading-lg"></span>
@@ -83,3 +90,18 @@ favoriteDrivers,
   {/if}
 </main>
 
+<style>
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  padding: 1rem;
+}
+
+@media(min-width:768px){
+  .dashboard{
+    max-width: 900px;
+    auto;
+  }
+}
+</style>

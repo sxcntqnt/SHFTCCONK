@@ -13,14 +13,52 @@
   }
 
   // Delete geofence
-  function deleteGeofence(id: string) {
-    geofences.update(list => list.filter(g => g.id !== id));
+  async function deleteGeofence(id: string) {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  if (!token) {
+    console.error('User not authenticated');
+    return;
   }
 
-  // Save button (placeholder)
-  function saveGeofence(g: Geofence) {
-    alert(`Geofence "${g.name}" saved!`);
+  const res = await fetch(`/api/geofences?id=${id}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  if (res.ok) {
+    geofences.update(list => list.filter(g => g.id !== id));
+  } else {
+    console.error('Failed to delete geofence');
   }
+}
+
+  // Save button (placeholder)
+  async function saveGeofence(g: Geofence) {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  if (!token) {
+    console.error('User not authenticated');
+    return;
+  }
+
+  const res = await fetch('/api/geofences', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(g)
+  });
+
+  if (!res.ok) {
+    console.error('Failed to save geofence');
+  }
+}
 </script>
 
 <div class="min-h-screen bg-gray-50 p-6 flex flex-col lg:flex-row gap-6">

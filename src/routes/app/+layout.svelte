@@ -2,12 +2,24 @@
   import Sidebar from '$lib/components/Sidebar.svelte'
   import { onMount } from 'svelte'
   import { setUserFromBootstrap } from '$lib/features/auth/stores/auth'
+  import { currentTrip } from '$lib/features/trips/userTripStore';
+
 
   export let data: { bootstrap: any }
 
   onMount(() => {
     if (data?.bootstrap) setUserFromBootstrap(data.bootstrap)
   })
+
+  setInterval(() => {
+    currentTrip.update(trip => {
+      if (!trip) return trip;
+      if (Math.random() > 0.8) {
+        trip.delay += 2;
+      }
+      return trip;
+    });
+  }, 30000);
 </script>
 
 {#if data?.bootstrap}
