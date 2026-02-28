@@ -9,10 +9,10 @@
   import type { Role } from '$lib/types/authTypes';
 
   let role: Role;
-  let currentPath = '';
 
   authStore.subscribe(v => role = v.role);
-  page.subscribe(p => currentPath = p.url.pathname);
+  
+  const currentPath = $derived(page.url.pathname);
 
   onMount(() => {
     if (!role) goto('/auth'); // Redirect if not authenticated

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/sveltekit";
 // src/hooks.server.ts
 import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
 import {
@@ -116,4 +117,5 @@ const cloudflareProxy: Handle = async ({ event, resolve }) => {
 
   return resolve(event)
 }
-export const handle: Handle = sequence(cloudflareProxy, supabase, authGuard)
+export const handle: Handle = sequence(Sentry.sentryHandle(), sequence(cloudflareProxy, supabase, authGuard))
+export const handleError = Sentry.handleErrorWithSentry();
