@@ -2,6 +2,30 @@
   import { getContext } from "svelte";
   import type { Writable } from "svelte/store";
   import { browser } from '$app/environment';
+  import SearchBar from '$lib/components/SearchBar.svelte';
+  import Favorites from '$lib/components/Favorites.svelte';
+  import TipCrew from '$lib/components/TipCrew.svelte';
+  import RateCrew from '$lib/components/RateCrew.svelte';
+  import RememberMatatu from '$lib/components/RememberMatatu.svelte';
+  import LearnMore from '$lib/components/LearnMore.svelte';
+  import NextTripCard from '$lib/components/NextTripCard.svelte';
+  import QuickPlanner from '$lib/components/QuickPlanner.svelte';
+  import InsightsSnapshot from '$lib/components/InsightsSnapshot.svelte';
+   import {
+favoriteDrivers,
+    filteredDrivers,
+    filteredMatatus,
+    filteredConductors,
+    rememberedMatatus,
+    filteredRememberedMatatus,    
+    isLoadingFavorites,
+    loadFavoriteData
+  } from '$lib/features/dashboard/stores/DashboardStore';
+  import { onMount } from 'svelte';
+
+  onMount(() => {
+    loadFavoriteData();
+  });
 
   let adminSection: Writable<string> = getContext("adminSection");
 
@@ -17,79 +41,82 @@
   <title>Account</title>
 </svelte:head>
 
-<h1 class="text-2xl font-bold mb-1">Dashboard</h1>
-<div class="alert alert-error max-w-lg mt-2">
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    class="stroke-current shrink-0 h-6 w-6"
-    fill="none"
-    viewBox="0 0 24 24"
-    ><path
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      stroke-width="2"
-      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-    /></svg
-  >
-  <div>
-    <div class="font-bold">Demo Content</div>
-    <div class="my-2">
-      This page is just a placeholder. Replace this page with your app's content
-      and functionality.
+<main class="min-h-screen bg-base-100 font-sans antialiased">
+  <header class="bg-base-200 shadow p-4">
+    <h1 class="text-2xl font-bold text-center text-base-content">
+      Mobility Transportation Gateway
+    </h1>
+    <SearchBar />
+  </header>
+<
+div class="dashboard">
+  <NextTripCard />
+  <QuickPlanner />
+  <InsightsSnapshot />
+</div>
+  {#if $isLoadingFavorites}
+    <div class="flex justify-center items-center h-32">
+      <span class="loading loading-spinner loading-lg"></span>
     </div>
-    <div class="my-2">
-      The <a href="/account/billing" class="link">billing</a> and
-      <a href="/account/settings" class="link">settings</a> pages are functional
-      demos.
+  {:else}
+    <section class="p-4">
+      <h2 class="text-xl font-semibold mb-4 text-base-content">Favorites</h2>
+      <Favorites
+        filteredDrivers={$filteredDrivers}
+        filteredMatatus={$filteredMatatus}
+        filteredConductors={$filteredConductors}  
+      />
+    </section>
+
+ <section class="p-6 card bg-base-100 shadow-xl mx-4 mb-6">
+  <div class="card-body">
+    <h2 class="card-title text-2xl mb-6 text-base-content">Support the Crew</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Tip Crew -->
+      <div class="w-full">
+        <TipCrew
+          driverName="Selected Driver"
+          conductorName="Selected Conductor"
+          onTip={(d, c) => console.log(`Tip: Driver ${d} KES • Conductor ${c} KES`)}
+        />
+      </div>
+
+      <!-- Rate Crew -->
+      <div class="w-full">
+        <RateCrew
+          onRate={(stars, text) => console.log(`Rated ${stars} stars: ${text}`)}
+        />
+      </div>
     </div>
   </div>
-</div>
+</section>
 
-<div class="my-6">
-  <h1 class="text-xl font-bold mb-1">Users</h1>
-  <div class="stats shadow-sm stats-vertical sm:stats-horizontal sm:w-[420px]">
-    <div class="stat place-items-center">
-      <div class="stat-title">Downloads</div>
-      <div class="stat-value">31K</div>
-      <div class="stat-desc">↗︎ 546 (2%)</div>
-    </div>
+    <section class="p-4 card bg-base-100 shadow-xl mx-4 mb-4">
+      <div class="card-body">
+        <h2 class="card-title text-base-content">Remember Matatu</h2>
+        <RememberMatatu remembered={$rememberedMatatus} />
+      </div>
+    </section>
 
-    <div class="stat place-items-center">
-      <div class="stat-title">Users</div>
-      <div class="stat-value text-secondary">4,200</div>
-      <div class="stat-desc">↗︎ 40 (2%)</div>
-    </div>
-  </div>
-</div>
-<div class="my-6">
-  <h1 class="text-xl font-bold mb-1">Accounts</h1>
-  <div class="stats shadow-sm stats-vertical sm:stats-horizontal sm:w-[420px]">
-    <div class="stat place-items-center">
-      <div class="stat-title">New Registers</div>
-      <div class="stat-value">1,200</div>
-      <div class="stat-desc">↘︎ 90 (14%)</div>
-    </div>
+    <section class="p-4">
+      <LearnMore />
+    </section>
+  {/if}
+</main>
 
-    <div class="stat place-items-center">
-      <div class="stat-title">Churned Accounts</div>
-      <div class="stat-value">42</div>
-      <div class="stat-desc">↘︎ 6 (12%)</div>
-    </div>
-  </div>
-</div>
-<div class="my-6">
-  <h1 class="text-xl font-bold mb-1">Revenue</h1>
-  <div class="stats shadow-sm stats-vertical sm:stats-horizontal sm:w-[420px]">
-    <div class="stat place-items-center">
-      <div class="stat-title text-success">Revenue</div>
-      <div class="stat-value text-success">$4200</div>
-      <div class="stat-desc">↗︎ $180 (4%)</div>
-    </div>
+<style>
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  padding: 1rem;
+}
 
-    <div class="stat place-items-center">
-      <div class="stat-title">New Subscribers</div>
-      <div class="stat-value">16</div>
-      <div class="stat-desc">↘︎ 1 (%7)</div>
-    </div>
-  </div>
-</div>
+@media(min-width:768px){
+  .dashboard{
+    max-width: 900px;
+    auto;
+  }
+}
+</style>

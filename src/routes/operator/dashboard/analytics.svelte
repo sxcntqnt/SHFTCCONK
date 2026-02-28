@@ -1,26 +1,33 @@
 <script lang="ts">
-  import { analyticsStore, type RouteStats } from '$lib/features/analytics/stores/analytics';
-  import { derived } from 'svelte/store';
+  import {
+    analyticsStore,
+    type RouteStats,
+  } from "$lib/features/analytics/+analytics"
+  import { derived } from "svelte/store"
 
   // Auto-subscribe
-  $: stats = $analyticsStore ?? [];
+  $: stats = $analyticsStore ?? []
 
   // Sort by congestion descending (hot routes first)
   $: sortedStats = [...stats].sort(
-    (a, b) => b.congestionScore - a.congestionScore
-  );
+    (a, b) => b.congestionScore - a.congestionScore,
+  )
 
   // Derived aggregates (O(n))
-  $: totalRoutes = stats.length;
-  $: totalActiveVehicles = stats.reduce((sum, r) => sum + r.activeVehicles, 0);
+  $: totalRoutes = stats.length
+  $: totalActiveVehicles = stats.reduce((sum, r) => sum + r.activeVehicles, 0)
   $: avgNetworkSpeed =
     stats.length > 0
-      ? (stats.reduce((sum, r) => sum + r.avgSpeed, 0) / stats.length).toFixed(1)
-      : 0;
+      ? (stats.reduce((sum, r) => sum + r.avgSpeed, 0) / stats.length).toFixed(
+          1,
+        )
+      : 0
 </script>
 
 <!-- NETWORK SUMMARY HEADER -->
-<div class="bg-white/95 backdrop-blur-2xl rounded-3xl p-6 shadow-xl mb-6 border border-white/60">
+<div
+  class="bg-white/95 backdrop-blur-2xl rounded-3xl p-6 shadow-xl mb-6 border border-white/60"
+>
   <h2 class="text-2xl font-bold mb-4">Network Overview</h2>
 
   <div class="grid grid-cols-2 md:grid-cols-3 gap-6 text-center">
@@ -44,8 +51,9 @@
 <!-- ROUTE CARDS -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
   {#each sortedStats as s (s.routeName)}
-    <div class="bg-white/90 backdrop-blur-2xl rounded-3xl p-6 shadow-xl border border-white/60 hover:shadow-2xl transition">
-      
+    <div
+      class="bg-white/90 backdrop-blur-2xl rounded-3xl p-6 shadow-xl border border-white/60 hover:shadow-2xl transition"
+    >
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-bold">{s.routeName}</h3>
 
@@ -54,8 +62,10 @@
           class="px-3 py-1 rounded-full text-xs font-semibold"
           class:bg-green-100={s.congestionScore < 30}
           class:text-green-700={s.congestionScore < 30}
-          class:bg-yellow-100={s.congestionScore >= 30 && s.congestionScore < 70}
-          class:text-yellow-700={s.congestionScore >= 30 && s.congestionScore < 70}
+          class:bg-yellow-100={s.congestionScore >= 30 &&
+            s.congestionScore < 70}
+          class:text-yellow-700={s.congestionScore >= 30 &&
+            s.congestionScore < 70}
           class:bg-red-100={s.congestionScore >= 70}
           class:text-red-700={s.congestionScore >= 70}
         >
@@ -82,7 +92,6 @@
           style="width: {Math.min(s.avgSpeed * 2, 100)}%"
         />
       </div>
-
     </div>
   {/each}
 </div>

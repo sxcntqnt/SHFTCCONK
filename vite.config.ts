@@ -21,7 +21,7 @@ export default defineConfig({
 
   server: {
     host: true, // listen on all network interfaces
-    allowedHosts: ["sxcntcnqunts.com"],
+    allowedHosts: ["sxcntcnqunts.com","chat.sxcntcnqunts.com"],
     fs: {
       allow: [".."], // allow accessing files outside project root
     },

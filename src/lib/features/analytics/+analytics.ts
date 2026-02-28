@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store'
-import { supabase } from '$lib/supabaseClient'
-import { user, enforceTenant } from './user'
+import { SupabaseClient, type AMREntry } from "@supabase/supabase-js"
+import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
 
 /* ============================================================
    ROUTE ANALYTICS MODEL (Strict)

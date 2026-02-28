@@ -9,7 +9,7 @@ interface BootupMessage {
 class SocketConnection {
   private socket: WebSocket;
 
-  constructor(url: string = 'ws://localhost:8081/ws') {
+  constructor(url: string = 'ws://chat.sxcntcnqunts.com/ws') {
     this.socket = new WebSocket(url);
   }
 
