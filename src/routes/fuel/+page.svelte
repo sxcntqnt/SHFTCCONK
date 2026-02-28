@@ -1,73 +1,73 @@
 <script lang="ts">
-  import { user } from '$lib/features/auth/stores/auth';
-  import type { Role } from '$lib/features/auth/stores/auth';
+  import { authStore } from "$lib/features/auth/stores/auth"
+  import type { Role } from "$lib/features/auth/stores/auth"
 
-  let fuelData: Record<string, string | number> = {};
-  let loading = false;
-  let errorMessage = '';
-  let filterQuery = '';
+  let fuelData: Record<string, string | number> = {}
+  let loading = false
+  let errorMessage = ""
+  let filterQuery = ""
 
   async function loadFuelData() {
-    loading = true;
-    errorMessage = '';
+    loading = true
+    errorMessage = ""
     try {
       // Simulate API delay — replace with real fetch later
-      await new Promise(r => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 900))
 
-      const role = $user.role as Role;
+      const role = $authStore.role as Role
 
       switch (role) {
-        case 'DRIVER':
+        case "DRIVER":
           fuelData = {
-            'Fuel Consumed': '120 L',
-            'Avg. Fuel per Trip': '5 L',
-            'Cost': 'KSh 9,500',
-            'Efficiency': '12 km/L',
-            'Last Refuel': 'Feb 15, 2026'
-          };
-          break;
-        case 'CONDUCTOR':
+            "Fuel Consumed": "120 L",
+            "Avg. Fuel per Trip": "5 L",
+            Cost: "KSh 9,500",
+            Efficiency: "12 km/L",
+            "Last Refuel": "Feb 15, 2026",
+          }
+          break
+        case "CONDUCTOR":
           fuelData = {
-            'Fuel Distributed': '450 L',
-            'Trips Assisted': '18',
-            'Cost Distributed': 'KSh 42,500',
-            'Vehicles Supported': '3'
-          };
-          break;
-        case 'MANAGER':
-        case 'FLEET_MANAGER':
+            "Fuel Distributed": "450 L",
+            "Trips Assisted": "18",
+            "Cost Distributed": "KSh 42,500",
+            "Vehicles Supported": "3",
+          }
+          break
+        case "MANAGER":
+        case "FLEET_MANAGER":
           fuelData = {
-            'Total Fuel Used (Fleet)': '3,840 L',
-            'Fleet Avg. Efficiency': '10.8 km/L',
-            'Total Fuel Cost': 'KSh 412,000',
-            'Vehicles Active': '42',
-            'Trips This Month': '318',
-            'Alerts': '7 high-consumption vehicles'
-          };
-          break;
-        case 'OWNER':
+            "Total Fuel Used (Fleet)": "3,840 L",
+            "Fleet Avg. Efficiency": "10.8 km/L",
+            "Total Fuel Cost": "KSh 412,000",
+            "Vehicles Active": "42",
+            "Trips This Month": "318",
+            Alerts: "7 high-consumption vehicles",
+          }
+          break
+        case "OWNER":
           fuelData = {
-            'Total Fuel Expenditure': 'KSh 1,284,000',
-            'Fuel Cost % of Revenue': '14.8%',
-            'Overall Fleet Efficiency': '11.2 km/L',
-            'Total Liters Purchased': '12,650 L',
-            'Savings vs Last Month': '+KSh 92,000',
-            'Active Vehicles': '87',
-            'Organizations/Fleets': '4'
-          };
-          break;
+            "Total Fuel Expenditure": "KSh 1,284,000",
+            "Fuel Cost % of Revenue": "14.8%",
+            "Overall Fleet Efficiency": "11.2 km/L",
+            "Total Liters Purchased": "12,650 L",
+            "Savings vs Last Month": "+KSh 92,000",
+            "Active Vehicles": "87",
+            "Organizations/Fleets": "4",
+          }
+          break
         default:
-          fuelData = { note: 'Fuel data not available for your role.' };
+          fuelData = { note: "Fuel data not available for your role." }
       }
     } catch (err) {
-      console.error(err);
-      errorMessage = 'Failed to load fuel data — please try again';
+      console.error(err)
+      errorMessage = "Failed to load fuel data — please try again"
     } finally {
-      loading = false;
+      loading = false
     }
   }
 
-  $: if ($user.role) loadFuelData();
+  $: if ($authStore.role) loadFuelData()
 </script>
 
 <div class="w-full max-w-6xl">
@@ -77,10 +77,10 @@
       placeholder="Filter by period (e.g., this month, Q1, 2025)…"
       bind:value={filterQuery}
       disabled={loading}
-      on:keydown={(e) => e.key === 'Enter' && loadFuelData()}
+      on:keydown={(e) => e.key === "Enter" && loadFuelData()}
     />
     <button on:click={loadFuelData} disabled={loading}>
-      {loading ? '…' : 'Refresh'}
+      {loading ? "…" : "Refresh"}
     </button>
   </div>
 
@@ -90,10 +90,13 @@
 
   {#if loading}
     <div class="loading mt-20 text-center">Loading your fuel data…</div>
-  {:else if 'note' in fuelData}
+  {:else if "note" in fuelData}
     <div class="empty mt-10 text-center">{fuelData.note}</div>
   {:else}
-    <div class="grid gap-8" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+    <div
+      class="grid gap-8"
+      style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));"
+    >
       {#each Object.entries(fuelData) as [label, value]}
         <div class="analytic-card">
           <div class="value">{value}</div>
@@ -155,7 +158,9 @@
     padding: 32px 24px;
     text-align: center;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
   }
 
   .analytic-card:hover {
@@ -179,7 +184,8 @@
     color: rgba(255, 255, 255, 0.85);
   }
 
-  .loading, .empty {
+  .loading,
+  .empty {
     font-size: 1.25rem;
     opacity: 0.9;
     text-align: center;

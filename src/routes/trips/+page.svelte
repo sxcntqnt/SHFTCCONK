@@ -1,67 +1,69 @@
 <script lang="ts">
-  import { user } from '$lib/features/auth/stores/auth'; 
-  import type { Role } from '$lib/features/auth/stores/auth';
+  import { authStore } from "$lib/features/auth/stores/auth"
+  import type { ROLES } from "$lib/features/auth/stores/auth"
 
-  let tripData: Record<string, string | number> = {};
-  let loading = false;
-  let errorMessage = '';
-  let filterQuery = '';
+  let tripData: Record<string, string | number> = {}
+  let loading = false
+  let errorMessage = ""
+  let filterQuery = ""
 
   async function loadAnalytics() {
-    loading = true;
-    errorMessage = '';
+    loading = true
+    errorMessage = ""
     try {
-      await new Promise(r => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 900))
 
-      switch ($user.role as Role) {
-        case 'PASSENGER':
+      switch ($authStore.role as Role) {
+        case "PASSENGER":
           tripData = {
-            'Total distance': '150 km',
-            'Trips taken': '10',
-            'Total spent': 'KSh 4,800',
-            'Avg. trip time': '32 min'
-          };
-          break;
-        case 'DRIVER':
+            "Total distance": "150 km",
+            "Trips taken": "10",
+            "Total spent": "KSh 4,800",
+            "Avg. trip time": "32 min",
+          }
+          break
+        case "DRIVER":
           tripData = {
-            'Distance driven': '620 km',
-            'Trips completed': '24',
-            'Earnings': 'KSh 18,200',
-            'Avg. rating': '4.7 ★'
-          };
-          break;
-        case 'CONDUCTOR':
+            "Distance driven": "620 km",
+            "Trips completed": "24",
+            Earnings: "KSh 18,200",
+            "Avg. rating": "4.7 ★",
+          }
+          break
+        case "CONDUCTOR":
           tripData = {
-            'Passengers handled': '285',
-            'Trips assisted': '18',
-            'Collections': 'KSh 42,500'
-          };
-          break;
+            "Passengers handled": "285",
+            "Trips assisted": "18",
+            Collections: "KSh 42,500",
+          }
+          break
         default:
-          tripData = { note: 'Analytics not available for this role yet.' };
+          tripData = { note: "Analytics not available for this role yet." }
       }
     } catch (err) {
-      console.error(err);
-      errorMessage = 'Failed to load analytics — please try again';
+      console.error(err)
+      errorMessage = "Failed to load analytics — please try again"
     } finally {
-      loading = false;
+      loading = false
     }
   }
 
-  $: if ($user.role) loadAnalytics();
+  $: if ($authStore.role) loadAnalytics()
 </script>
 
-<div class="trips-bg min-h-screen w-full flex flex-col items-center px-5 pb-20 pt-[env(safe-area-inset-top)]">
+<div
+  class="trips-bg min-h-screen w-full flex flex-col items-center px-5 pb-20 pt-[env(safe-area-inset-top)]"
+>
   <!-- Filter bar -->
   <div class="search mb-12 w-full max-w-md">
     <input
       placeholder="Filter by period (e.g. this month)…"
       bind:value={filterQuery}
       disabled={loading}
-      on:keydown={(e) => e.key === 'Enter' && loadAnalytics()}
+      on:keydown={(e) => e.key === "Enter" && loadAnalytics()}
     />
     <button on:click={loadAnalytics} disabled={loading}>
-      {loading ? '…' : 'Refresh'}
+      {loading ? "…" : "Refresh"}
     </button>
   </div>
 
@@ -75,10 +77,13 @@
   <!-- Loading / Empty / Data -->
   {#if loading}
     <div class="loading mt-20 text-center">Loading your trips…</div>
-  {:else if 'note' in tripData}
+  {:else if "note" in tripData}
     <div class="empty mt-10 text-center">{tripData.note}</div>
   {:else}
-    <div class="grid gap-8 w-full max-w-6xl" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+    <div
+      class="grid gap-8 w-full max-w-6xl"
+      style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));"
+    >
       {#each Object.entries(tripData) as [label, value]}
         <div class="analytic-card">
           <div class="value">{value}</div>
@@ -90,14 +95,18 @@
 
   <!-- Footer info -->
   <p class="footer-info mt-16">
-    {$user.name || 'User'} • {$user.role} • Updated {new Date().toLocaleDateString()}
+    {$authStore.name || "User"} • {$authStore.role} • Updated {new Date().toLocaleDateString()}
   </p>
 </div>
 
 <style>
   .trips-bg {
     background:
-      radial-gradient(1400px 800px at 50% -20%, rgba(255, 255, 255, 0.18), transparent),
+      radial-gradient(
+        1400px 800px at 50% -20%,
+        rgba(255, 255, 255, 0.18),
+        transparent
+      ),
       linear-gradient(180deg, #1e3a8a 0%, #1e40af 30%, #111827 100%);
     color: white;
     display: flex;
@@ -108,7 +117,11 @@
   @media (prefers-color-scheme: light) {
     .trips-bg {
       background:
-        radial-gradient(1400px 800px at 50% -20%, rgba(0, 0, 0, 0.06), transparent),
+        radial-gradient(
+          1400px 800px at 50% -20%,
+          rgba(0, 0, 0, 0.06),
+          transparent
+        ),
         linear-gradient(180deg, #60a5fa 0%, #3b82f6 40%, #1e40af 100%);
     }
   }
@@ -125,7 +138,9 @@
     -webkit-text-fill-color: transparent;
   }
 
-  .error, .loading, .empty {
+  .error,
+  .loading,
+  .empty {
     font-size: 1.25rem;
     max-width: 420px;
     line-height: 1.6;
@@ -175,43 +190,45 @@
     opacity: 0.4;
   }
 
-.analytic-card {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 8px; /* space between value and label */
-  text-align: center;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
-}
+  .analytic-card {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px; /* space between value and label */
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
   .analytic-card:hover {
     transform: translateY(-6px);
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   }
   .value {
-  font-size: 3rem;
-  font-weight: 700;
-  line-height: 1.1; /* reduced to prevent overlap */
-  letter-spacing: -1px;
-  background: linear-gradient(to bottom, #ffffff, #dbeafe);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1.1; /* reduced to prevent overlap */
+    letter-spacing: -1px;
+    background: linear-gradient(to bottom, #ffffff, #dbeafe);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 
-.label {
-  font-size: 1rem; /* slightly smaller */
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
-  white-space: nowrap; /* prevent wrapping under value */
-}
+  .label {
+    font-size: 1rem; /* slightly smaller */
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+    white-space: nowrap; /* prevent wrapping under value */
+  }
 
   .footer-info {
     font-size: 0.9rem;

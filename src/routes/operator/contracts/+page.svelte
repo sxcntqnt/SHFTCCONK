@@ -1,18 +1,22 @@
 <script lang="ts">
-  import { contracts, initContracts, destroyContracts } from '$lib/features/contracts/stores/contracts.store';
-  import ContractCard from '$lib/components/ContractCard.svelte';
-  import { onMount, onDestroy } from 'svelte';
+  import {
+    contracts,
+    initContracts,
+    destroyContracts,
+  } from "$lib/features/contracts/contracts"
+  import ContractCard from "$lib/components/ContractCard.svelte"
+  import { onMount, onDestroy } from "svelte"
 
-  let allContracts = [];
+  let allContracts = []
 
   onMount(async () => {
-    await initContracts();
-    contracts.subscribe(v => allContracts = v);
-  });
+    await initContracts()
+    contracts.subscribe((v) => (allContracts = v))
+  })
 
   onDestroy(async () => {
-    await destroyContracts();
-  });
+    await destroyContracts()
+  })
 </script>
 
 <h2 class="text-3xl font-bold mb-6">Contracts Overview</h2>

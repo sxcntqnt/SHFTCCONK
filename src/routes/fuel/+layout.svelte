@@ -1,16 +1,23 @@
 <script lang="ts">
-  import { page } from '$app/state';
-  import { user } from '$lib/features/auth/stores/auth';
+  import { page } from "$app/state"
+  import { authStore } from "$lib/features/auth/stores/auth"
 </script>
 
-<div class="fuel-bg min-h-screen w-full flex flex-col items-center px-5 pb-20 pt-[env(safe-area-inset-top)]">
+<div
+  class="fuel-bg min-h-screen w-full flex flex-col items-center px-5 pb-20 pt-[env(safe-area-inset-top)]"
+>
   <h1 class="title mb-8">Fuel Tracking & Monitoring</h1>
 
   <!-- Mini navigation between views -->
   <nav class="mb-10 flex flex-wrap justify-center gap-6 text-lg font-medium">
-    <a href="/fuel" class:active={page.url.pathname === '/fuel'}>Overview</a>
-    <a href="/fuel/create" class:active={page.url.pathname === '/fuel/create'}>Add Entry</a>
-    <a href="/fuel/entries" class:active={page.url.pathname.startsWith('/fuel/entries')}>Entries</a>
+    <a href="/fuel" class:active={page.url.pathname === "/fuel"}>Overview</a>
+    <a href="/fuel/create" class:active={page.url.pathname === "/fuel/create"}
+      >Add Entry</a
+    >
+    <a
+      href="/fuel/entries"
+      class:active={page.url.pathname.startsWith("/fuel/entries")}>Entries</a
+    >
   </nav>
 
   <main class="w-full flex flex-col items-center">
@@ -18,8 +25,9 @@
   </main>
 
   <p class="footer-info mt-16">
-    {$user.name || 'User'} • {$user.role}
-    {#if $user.organization} • {$user.organization}{/if}
+    {$authStore.name || "User"} • {$authStore.role}
+    {#if $authStore.organization}
+      • {$authStore.organization}{/if}
     • Updated {new Date().toLocaleDateString()}
   </p>
 </div>
@@ -27,7 +35,11 @@
 <style>
   .fuel-bg {
     background:
-      radial-gradient(1400px 800px at 50% -20%, rgba(255, 255, 255, 0.12), transparent),
+      radial-gradient(
+        1400px 800px at 50% -20%,
+        rgba(255, 255, 255, 0.12),
+        transparent
+      ),
       linear-gradient(180deg, #1e40af 0%, #1e3a8a 30%, #0f172a 100%);
     color: white;
   }
@@ -35,7 +47,11 @@
   @media (prefers-color-scheme: light) {
     .fuel-bg {
       background:
-        radial-gradient(1400px 800px at 50% -20%, rgba(0, 0, 0, 0.06), transparent),
+        radial-gradient(
+          1400px 800px at 50% -20%,
+          rgba(0, 0, 0, 0.06),
+          transparent
+        ),
         linear-gradient(180deg, #60a5fa 0%, #3b82f6 40%, #1e40af 100%);
     }
   }

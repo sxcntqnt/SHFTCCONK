@@ -1,7 +1,7 @@
 // src/routes/track/[matatuId]/+page.ts
 
 import type { PageLoad } from './$types';
-import { supabase } from '$lib/supabaseClient';
+import { SupabaseClient, type AMREntry } from "@supabase/supabase-js";
 import { enforceTenant } from '$lib/features/auth/stores/auth';
 import { latLngToCell } from 'h3-js';
 
