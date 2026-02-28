@@ -1,7 +1,7 @@
 // lib/stores/finance.store.ts
 import { writable, get } from 'svelte/store'
 import { SupabaseClient } from "@supabase/supabase-js"
-import { user, enforceTenant } from '$lib/features/auth/stores/auth'
+import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
 
 /* ============================================================
    LEDGER & RECONCILIATION MODELS
@@ -62,7 +62,7 @@ let reconciliationChannel: ReturnType<typeof supabase.channel> | null = null
 ============================================================ */
 
 export async function initFinance(): Promise<void> {
-  const currentUser = get(user)
+  const currentUser = get(authStore)
   if (!currentUser.organizationId) throw new Error('User has no tenant context')
 
   const orgId = currentUser.organizationId

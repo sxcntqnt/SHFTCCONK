@@ -1,6 +1,8 @@
 <script lang="ts">
   import { authStore } from "$lib/features/auth/stores/auth"
   import type { ROLES } from "$lib/features/auth/stores/auth"
+  import type { Role } from "$lib/features/operations/auth.store"
+  import type { RollerCoasterShadowGeometry } from "three-stdlib"
 
   let tripData: Record<string, string | number> = {}
   let loading = false

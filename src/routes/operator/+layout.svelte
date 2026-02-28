@@ -14,7 +14,7 @@
   import ErrorBoundary from "$lib/components/ErrorBoundary.svelte"
   import { onMount } from "svelte"
   import { goto } from "$app/navigation"
-  import type { Role } from "$lib/types/authTypes"
+  import type { Role } from "$lib/features/auth/stores/auth"
 
   let role: Role
   let currentPath = ""
@@ -100,7 +100,7 @@
       <slot />
     </main>
 
-    <NotificationToast />
+    <Notification />
   </div>
 </ErrorBoundary>
 
