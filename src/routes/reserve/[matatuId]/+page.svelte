@@ -5,9 +5,10 @@
    * Receives matatu data from the load function — never manages it internally.
    * Flow: Feed card → goto(/reserve/[id]) → load() → this page → goto(/track/[id])
    */
-  import { goto } from '$app/navigation'
-  import type { PageData } from './$types'
-  import SeatViewer from '$lib/components/SeatViewer.svelte'
+  import { goto } from "$app/navigation"
+  import type { PageData } from "./$types"
+  import SeatViewer from "$lib/components/SeatViewer.svelte"
+  import posthog from "posthog-js"
 
   export let data: PageData
 
@@ -16,7 +17,7 @@
   let selectedSeats: number[] = []
   let showModal = false
   let processing = false
-  let message = ''
+  let message = ""
 
   $: total = selectedSeats.length * matatu.pricePerSeat
 
@@ -28,11 +29,20 @@
 
   function openModal() {
     if (selectedSeats.length === 0) {
-      message = 'Please select at least one seat.'
+      message = "Please select at least one seat."
       return
     }
-    message = ''
+    message = ""
     showModal = true
+
+    // Capture reservation intent — top of the payment funnel
+    posthog.capture("seat_reservation_initiated", {
+      matatu_id: matatu.id,
+      route: matatu.route,
+      sacco: matatu.sacco,
+      seat_count: selectedSeats.length,
+      amount: total,
+    })
   }
 
   function closeModal() {
@@ -43,29 +53,29 @@
   async function payWithMpesa() {
     processing = true
     try {
-      const res = await fetch('/reserve/pay', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+      const res = await fetch("/reserve/pay", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          matatuId:    matatu.id,
-          capacity:    matatu.capacity,
-          seats:       selectedSeats,
-          amount:      total,
-        })
+          matatuId: matatu.id,
+          capacity: matatu.capacity,
+          seats: selectedSeats,
+          amount: total,
+        }),
       })
 
       const j = await res.json()
 
       if (res.ok) {
-        message = 'Payment started. You will receive an M-Pesa prompt shortly.'
+        message = "Payment started. You will receive an M-Pesa prompt shortly."
         selectedSeats = []
         showModal = false
         goto(`/track/${matatu.id}`)
       } else {
-        message = j.error || 'Payment failed. Please try again.'
+        message = j.error || "Payment failed. Please try again."
       }
     } catch {
-      message = 'Network error while initiating payment.'
+      message = "Network error while initiating payment."
     } finally {
       processing = false
     }
@@ -73,16 +83,27 @@
 </script>
 
 <div class="p-6 max-w-6xl mx-auto">
-
-  <a href="/feed" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <path d="M19 12H5M12 19l-7-7 7-7"/>
+  <a
+    href="/feed"
+    class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-6 transition-colors"
+  >
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+    >
+      <path d="M19 12H5M12 19l-7-7 7-7" />
     </svg>
     Back to live feed
   </a>
 
   <div class="mb-6">
-    <div class="text-xs font-bold uppercase tracking-widest text-orange-500 mb-1">
+    <div
+      class="text-xs font-bold uppercase tracking-widest text-orange-500 mb-1"
+    >
       Route {matatu.route} · {matatu.sacco}
     </div>
     <h1 class="text-2xl font-bold">
@@ -102,13 +123,21 @@
     />
   </div>
 
-  <div class="mt-6 p-4 bg-white rounded shadow flex items-center justify-between gap-4 flex-wrap">
+  <div
+    class="mt-6 p-4 bg-white rounded shadow flex items-center justify-between gap-4 flex-wrap"
+  >
     <div class="space-y-1">
       <div class="text-sm text-gray-500">
-        Selected: <span class="font-bold text-gray-800">{selectedSeats.length} seat{selectedSeats.length === 1 ? '' : 's'}</span>
+        Selected: <span class="font-bold text-gray-800"
+          >{selectedSeats.length} seat{selectedSeats.length === 1
+            ? ""
+            : "s"}</span
+        >
       </div>
       <div class="text-sm text-gray-500">
-        Price: <span class="font-bold text-gray-800">KES {matatu.pricePerSeat} / seat</span>
+        Price: <span class="font-bold text-gray-800"
+          >KES {matatu.pricePerSeat} / seat</span
+        >
       </div>
     </div>
     <div class="text-right">
@@ -125,7 +154,6 @@
   {#if message && !showModal}
     <div class="mt-3 text-sm text-red-600">{message}</div>
   {/if}
-
 </div>
 
 {#if showModal}
@@ -135,18 +163,30 @@
       role="button"
       tabindex="0"
       on:click={closeModal}
-      on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); closeModal() } }}
+      on:keydown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          closeModal()
+        }
+      }}
     />
     <div class="bg-white rounded-lg shadow-xl z-10 max-w-md w-full mx-4 p-6">
       <h3 class="text-xl font-bold mb-1">Confirm Reservation</h3>
-      <p class="text-xs text-gray-400 mb-4">Route {matatu.route} · {matatu.sacco} · {config.title}</p>
+      <p class="text-xs text-gray-400 mb-4">
+        Route {matatu.route} · {matatu.sacco} · {config.title}
+      </p>
       <p class="text-sm text-gray-600 mb-4">
-        You selected <strong>{selectedSeats.length}</strong> seat{selectedSeats.length === 1 ? '' : 's'}:
-        <span class="font-mono">{selectedSeats.sort((a, b) => a - b).join(', ')}</span>
+        You selected <strong>{selectedSeats.length}</strong>
+        seat{selectedSeats.length === 1 ? "" : "s"}:
+        <span class="font-mono"
+          >{selectedSeats.sort((a, b) => a - b).join(", ")}</span
+        >
       </p>
       <div class="space-y-2 mb-6">
         <div class="flex justify-between text-sm">
-          <span class="text-gray-600">{selectedSeats.length} × KES {matatu.pricePerSeat}</span>
+          <span class="text-gray-600"
+            >{selectedSeats.length} × KES {matatu.pricePerSeat}</span
+          >
           <span>KES {total}</span>
         </div>
         <div class="flex justify-between text-sm text-gray-400">
@@ -162,7 +202,11 @@
         <div class="mb-4 text-sm text-red-600">{message}</div>
       {/if}
       <div class="flex gap-2 justify-end">
-        <button class="px-4 py-2 rounded border text-sm" on:click={closeModal} disabled={processing}>
+        <button
+          class="px-4 py-2 rounded border text-sm"
+          on:click={closeModal}
+          disabled={processing}
+        >
           Cancel
         </button>
         <button
@@ -170,7 +214,7 @@
           on:click={payWithMpesa}
           disabled={processing}
         >
-          {processing ? 'Processing…' : 'Pay with M-Pesa'}
+          {processing ? "Processing…" : "Pay with M-Pesa"}
         </button>
       </div>
     </div>

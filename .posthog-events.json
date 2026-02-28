@@ -1,0 +1,52 @@
+[
+  {
+    "event": "user_signed_in",
+    "description": "Fired when a user successfully completes the sign-in flow (Supabase SIGNED_IN event detected). Top of the authenticated user funnel.",
+    "file": "src/routes/(marketing)/login/sign_in/+page.svelte"
+  },
+  {
+    "event": "user_signed_up",
+    "description": "Fired when a new user account is created via the sign-up form. Critical for tracking rider/operator acquisition.",
+    "file": "src/routes/(marketing)/login/sign_up/+page.svelte"
+  },
+  {
+    "event": "user_signed_out",
+    "description": "Fired when a user signs out. Used to measure session churn and calculate session duration.",
+    "file": "src/routes/(admin)/account/sign_out/+page.svelte"
+  },
+  {
+    "event": "seat_reservation_initiated",
+    "description": "Fired when a passenger opens the M-Pesa payment modal. Top of the payment conversion funnel.",
+    "file": "src/routes/reserve/[matatuId]/+page.svelte"
+  },
+  {
+    "event": "seat_reservation_completed",
+    "description": "Fired when the /reserve/pay API succeeds and M-Pesa prompt is initiated. Core revenue/conversion event.",
+    "file": "src/routes/reserve/pay/+server.ts"
+  },
+  {
+    "event": "seat_reservation_failed",
+    "description": "Fired on payment error in the reserve/pay API. Used to track payment failure rate.",
+    "file": "src/routes/reserve/pay/+server.ts"
+  },
+  {
+    "event": "matatu_selected_from_feed",
+    "description": "Fired when a passenger clicks 'Reserve a Seat' on a feed card, navigating to the reservation page.",
+    "file": "src/routes/feed/+page.svelte"
+  },
+  {
+    "event": "contact_form_submitted",
+    "description": "Fired when the contact form is successfully submitted. Tracks inbound business leads and operator enquiries.",
+    "file": "src/routes/(marketing)/contact_us/+page.server.ts"
+  },
+  {
+    "event": "subscription_checkout_started",
+    "description": "Fired when a user is redirected to Stripe checkout. Tracks operator plan adoption and billing funnel start.",
+    "file": "src/routes/(admin)/account/subscribe/[slug]/+page.server.ts"
+  },
+  {
+    "event": "invite_redeemed",
+    "description": "Fired when a sacco staff member redeems an invite code and signs in. Tracks team onboarding conversion.",
+    "file": "src/routes/(marketing)/login/invite/[token]/+page.server.ts"
+  }
+]

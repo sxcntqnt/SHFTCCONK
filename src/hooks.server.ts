@@ -6,8 +6,9 @@ import {
 } from "$env/static/public"
 import { createServerClient } from "@supabase/ssr"
 import { createClient, type AMREntry } from "@supabase/supabase-js"
-import type { Handle } from "@sveltejs/kit"
+import type { Handle, HandleServerError } from "@sveltejs/kit"
 import { sequence } from "@sveltejs/kit/hooks"
+import { getPostHogClient } from "$lib/server/posthog"
 
 export const supabase: Handle = async ({ event, resolve }) => {
   event.locals.supabase = createServerClient(
@@ -104,16 +105,85 @@ const authGuard: Handle = async ({ event, resolve }) => {
   return resolve(event)
 }
 const cloudflareProxy: Handle = async ({ event, resolve }) => {
-  const proto = event.request.headers.get('x-forwarded-proto')
+  const proto = event.request.headers.get("x-forwarded-proto")
 
-  if (proto === 'https') {
+  if (proto === "https") {
     const url = new URL(event.request.url)
-    if (url.protocol === 'http:') {
-      url.protocol = 'https:'
+    if (url.protocol === "http:") {
+      url.protocol = "https:"
       event.request = new Request(url, event.request)
     }
   }
 
   return resolve(event)
 }
-export const handle: Handle = sequence(cloudflareProxy, supabase, authGuard)
+
+// Reverse proxy for PostHog — routes /ingest/* to PostHog EU servers to avoid ad blockers
+const posthogProxy: Handle = async ({ event, resolve }) => {
+  const { pathname } = event.url
+
+  if (pathname.startsWith("/ingest")) {
+    const hostname = pathname.startsWith("/ingest/static/")
+      ? "eu-assets.i.posthog.com"
+      : "eu.i.posthog.com"
+
+    const url = new URL(event.request.url)
+    url.protocol = "https:"
+    url.hostname = hostname
+    url.port = "443"
+    url.pathname = pathname.replace(/^\/ingest/, "")
+
+    const headers = new Headers(event.request.headers)
+    headers.set("host", hostname)
+    headers.set("accept-encoding", "")
+
+    const clientIp =
+      event.request.headers.get("x-forwarded-for") || event.getClientAddress()
+    if (clientIp) {
+      headers.set("x-forwarded-for", clientIp)
+    }
+
+    const response = await fetch(url.toString(), {
+      method: event.request.method,
+      headers,
+      body: event.request.body,
+      // @ts-expect-error - duplex is required for streaming request bodies
+      duplex: "half",
+    })
+
+    return response
+  }
+
+  return resolve(event)
+}
+
+// Capture unhandled server-side errors with PostHog
+export const handleError: HandleServerError = async ({
+  error,
+  status,
+  message,
+}) => {
+  const posthog = getPostHogClient()
+
+  posthog.capture({
+    distinctId: "server",
+    event: "server_error",
+    properties: {
+      error: error instanceof Error ? error.message : String(error),
+      status,
+      message,
+    },
+  })
+
+  return {
+    message,
+    status,
+  }
+}
+
+export const handle: Handle = sequence(
+  cloudflareProxy,
+  posthogProxy,
+  supabase,
+  authGuard,
+)
