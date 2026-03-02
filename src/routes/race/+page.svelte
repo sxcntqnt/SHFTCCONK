@@ -16,7 +16,7 @@
 
   onMount(async () => {
     // dynamically import the JS from lib/features/race
-    raceModule = await import("$lib/features/race/script.js")
+    raceModule = await import("src/lib/index.js")
 
     // call any init functions the submodule exposes
     if (raceModule.init) raceModule.init()

@@ -1,191 +1,206 @@
-import * as Sentry from "@sentry/sveltekit";
-// src/hooks.server.ts
+import * as Sentry from "@sentry/sveltekit"
+
 import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
 import {
   PUBLIC_SUPABASE_ANON_KEY,
-  PUBLIC_SUPABASE_URL,
+  PUBLIC_SUPABASE_URL
 } from "$env/static/public"
+
 import { createServerClient } from "@supabase/ssr"
 import { createClient, type AMREntry } from "@supabase/supabase-js"
+
 import type { Handle, HandleServerError } from "@sveltejs/kit"
 import { sequence } from "@sveltejs/kit/hooks"
+
 import { getPostHogClient } from "$lib/server/posthog"
 
-export const supabase: Handle = async ({ event, resolve }) => {
+/* ============================================================
+   SUPABASE HANDLE
+============================================================ */
+
+const supabase: Handle = async ({ event, resolve }) => {
+
   event.locals.supabase = createServerClient(
     PUBLIC_SUPABASE_URL,
     PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll: () => event.cookies.getAll(),
-        /**
-         * SvelteKit's cookies API requires `path` to be explicitly set in
-         * the cookie options. Setting `path` to `/` replicates previous/
-         * standard behavior.
-         */
-        setAll: (
-          cookiesToSet: {
-            name: string
-            value: string
-            options: Record<string, unknown>
-          }[],
-        ) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
+        setAll: (cookies) => {
+          cookies.forEach(({ name, value, options }) => {
             event.cookies.set(name, value, { ...options, path: "/" })
           })
-        },
-      },
-    },
+        }
+      }
+    }
   )
 
   event.locals.supabaseServiceRole = createClient(
     PUBLIC_SUPABASE_URL,
     PRIVATE_SUPABASE_SERVICE_ROLE,
-    { auth: { persistSession: false } },
+    { auth: { persistSession: false } }
   )
 
-  // https://github.com/supabase/auth-js/issues/888#issuecomment-2189298518
+  // suppress warning workaround
   if ("suppressGetSessionWarning" in event.locals.supabase.auth) {
-    // @ts-expect-error - suppressGetSessionWarning is not part of the official API
+    // @ts-expect-error internal flag
     event.locals.supabase.auth.suppressGetSessionWarning = true
-  } else {
-    console.warn(
-      "SupabaseAuthClient#suppressGetSessionWarning was removed. See https://github.com/supabase/auth-js/issues/888.",
-    )
   }
 
-  /**
-   * Unlike `supabase.auth.getSession()`, which returns the session _without_
-   * validating the JWT, this function also calls `getUser()` to validate the
-   * JWT before returning the session.
-   */
   event.locals.safeGetSession = async () => {
+
     const {
-      data: { session },
+      data: { session }
     } = await event.locals.supabase.auth.getSession()
-    if (!session) {
+
+    if (!session)
       return { session: null, user: null, amr: null }
-    }
 
     const {
       data: { user },
-      error: userError,
+      error
     } = await event.locals.supabase.auth.getUser()
-    if (userError) {
-      // JWT validation has failed
-      return { session: null, user: null, amr: null }
-    }
 
-    const { data: aal, error: amrError } =
-      await event.locals.supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-    if (amrError) {
-      return { session, user, amr: null }
-    }
+    if (error)
+      return { session: null, user: null, amr: null }
+
+    const { data: aal } =
+      await event.locals.supabase.auth.mfa
+        .getAuthenticatorAssuranceLevel()
 
     return {
       session,
       user,
-      amr: aal.currentAuthenticationMethods as AMREntry[],
+      amr: aal?.currentAuthenticationMethods as AMREntry[]
     }
   }
 
   return resolve(event, {
     filterSerializedResponseHeaders(name) {
-      return name === "content-range" || name === "x-supabase-api-version"
-    },
+      return (
+        name === "content-range" ||
+        name === "x-supabase-api-version"
+      )
+    }
   })
 }
 
-// Not called for prerendered marketing pages so generally okay to call on ever server request
-// Next-page CSR will mean relatively minimal calls to this hook
+/* ============================================================
+   AUTH GUARD
+============================================================ */
+
 const authGuard: Handle = async ({ event, resolve }) => {
-  const { session, user } = await event.locals.safeGetSession()
+  const { session, user } =
+    await event.locals.safeGetSession()
+
   event.locals.session = session
   event.locals.user = user
 
   return resolve(event)
 }
+
+/* ============================================================
+   CLOUDFLARE HTTPS FIX
+============================================================ */
+
 const cloudflareProxy: Handle = async ({ event, resolve }) => {
-  const proto = event.request.headers.get("x-forwarded-proto")
+
+  const proto =
+    event.request.headers.get("x-forwarded-proto")
 
   if (proto === "https") {
     const url = new URL(event.request.url)
+
     if (url.protocol === "http:") {
       url.protocol = "https:"
-      event.request = new Request(url, event.request)
+      event.request =
+        new Request(url.toString(), event.request)
     }
   }
 
   return resolve(event)
 }
 
-// Reverse proxy for PostHog — routes /ingest/* to PostHog EU servers to avoid ad blockers
+/* ============================================================
+   POSTHOG REVERSE PROXY
+============================================================ */
+
 const posthogProxy: Handle = async ({ event, resolve }) => {
+
   const { pathname } = event.url
 
-  if (pathname.startsWith("/ingest")) {
-    const hostname = pathname.startsWith("/ingest/static/")
+  if (!pathname.startsWith("/ingest"))
+    return resolve(event)
+
+  const hostname =
+    pathname.startsWith("/ingest/static/")
       ? "eu-assets.i.posthog.com"
       : "eu.i.posthog.com"
 
-    const url = new URL(event.request.url)
-    url.protocol = "https:"
-    url.hostname = hostname
-    url.port = "443"
-    url.pathname = pathname.replace(/^\/ingest/, "")
+  const url = new URL(event.request.url)
 
-    const headers = new Headers(event.request.headers)
-    headers.set("host", hostname)
-    headers.set("accept-encoding", "")
+  url.protocol = "https:"
+  url.hostname = hostname
+  url.port = "443"
+  url.pathname = pathname.replace(/^\/ingest/, "")
 
-    const clientIp =
-      event.request.headers.get("x-forwarded-for") || event.getClientAddress()
-    if (clientIp) {
-      headers.set("x-forwarded-for", clientIp)
-    }
+  const headers = new Headers(event.request.headers)
 
-    const response = await fetch(url.toString(), {
-      method: event.request.method,
-      headers,
-      body: event.request.body,
-      // @ts-expect-error - duplex is required for streaming request bodies
-      duplex: "half",
-    })
+  headers.set("host", hostname)
+  headers.set("accept-encoding", "")
 
-    return response
-  }
+  const clientIp =
+    event.request.headers.get("x-forwarded-for")
+    ?? event.getClientAddress()
 
-  return resolve(event)
-}
+  if (clientIp)
+    headers.set("x-forwarded-for", clientIp)
 
-// Capture unhandled server-side errors with PostHog
-export const handleError: HandleServerError = async ({
-  error,
-  status,
-  message,
-}) => {
-  const posthog = getPostHogClient()
-
-  posthog.capture({
-    distinctId: "server",
-    event: "server_error",
-    properties: {
-      error: error instanceof Error ? error.message : String(error),
-      status,
-      message,
-    },
+  return fetch(url.toString(), {
+    method: event.request.method,
+    headers,
+    body: event.request.body,
+    // required for node streaming
+    // @ts-expect-error
+    duplex: "half"
   })
-
-  return {
-    message,
-    status,
-  }
 }
 
-export const handle: Handle = sequence(Sentry.sentryHandle(), sequence(
+/* ============================================================
+   GLOBAL HANDLE
+============================================================ */
+
+export const handle: Handle = sequence(
+  Sentry.sentryHandle(),
   cloudflareProxy,
   posthogProxy,
   supabase,
-  authGuard,
-))
-export const handleError = Sentry.handleErrorWithSentry();
+  authGuard
+)
+
+/* ============================================================
+   UNIFIED ERROR HANDLER
+============================================================ */
+
+export const handleError: HandleServerError =
+  Sentry.handleErrorWithSentry(
+    async ({ error, status, message }) => {
+
+      const posthog = getPostHogClient()
+
+      posthog.capture({
+        distinctId: "server",
+        event: "server_error",
+        properties: {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+          status,
+          message
+        }
+      })
+
+      return { message, status }
+    }
+  )
