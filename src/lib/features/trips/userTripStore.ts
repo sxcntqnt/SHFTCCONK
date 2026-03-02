@@ -1,17 +1,25 @@
 import { writable, derived } from 'svelte/store';
+import { browser } from '$app/environment';
 import { openDB } from 'idb';
 
 export const currentTrip = writable(null);
 export const savedRoutes = writable([]);
 export const alerts = writable([]);
 
-const dbPromise = openDB('commuter-db', 1, {
-  upgrade(db) {
-    db.createObjectStore('routes', { keyPath: 'id' });
-  }
-});
+let dbPromise: Promise<any> | null = null;
+
+// Only initialize IndexedDB in the browser
+if (browser) {
+  dbPromise = openDB('commuter-db', 1, {
+    upgrade(db) {
+      db.createObjectStore('routes', { keyPath: 'id' });
+    }
+  });
+}
 
 export async function saveRoute(route) {
+  if (!browser || !dbPromise) return;
+
   const db = await dbPromise;
   await db.put('routes', route);
   savedRoutes.update(r => [...r, route]);
@@ -19,6 +27,7 @@ export async function saveRoute(route) {
 
 export const tripScore = derived(currentTrip, ($trip) => {
   if (!$trip) return 0;
+
   return Math.round(
     ($trip.speed * 0.3) +
     ($trip.reliability * 0.3) +
@@ -32,7 +41,7 @@ export function planMockTrip(from, to, mode) {
   const delay = Math.random() > 0.7 ? 5 : 0;
 
   return {
-    id: crypto.randomUUID(),
+    id: browser ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     from,
     to,
     mode,

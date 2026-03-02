@@ -347,3 +347,68 @@ create policy "Admins can update requests" on actor_requests
 -- -------------------------------------------------
 -- Done: Full operator-stage-aware RLS with actors/invite system
 -- -------------------------------------------------
+
+
+
+-- ====================================================
+-- bootstrap_session: returns all session info for frontend
+-- ====================================================
+create or replace function public.bootstrap_session()
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+    user_profile profiles%rowtype;
+    user_actors jsonb;
+    org_memberships jsonb;
+    assigned_stages jsonb;
+    assigned_vehicles jsonb;
+begin
+    -- 1. Get the user's profile
+    select * into user_profile
+    from profiles
+    where id = auth.uid();
+
+    -- 2. Get all actors for this profile
+    select jsonb_agg(row_to_json(a))
+    into user_actors
+    from actors a
+    where a.profile_id = auth.uid();
+
+    -- 3. Get organization memberships
+    select jsonb_agg(jsonb_build_object(
+        'organization_id', om.organization_id,
+        'role', om.role
+    ))
+    into org_memberships
+    from organization_members om
+    join actors act on act.id = om.actor_id
+    where act.profile_id = auth.uid();
+
+    -- 4. Get stage assignments for this user if they are an operator
+    select jsonb_agg(row_to_json(sa))
+    into assigned_stages
+    from stage_assignments sa
+    join actors act on act.id = sa.operator_id
+    where act.profile_id = auth.uid();
+
+    -- 5. Get vehicles assigned via stages
+    select jsonb_agg(row_to_json(v))
+    into assigned_vehicles
+    from vehicles v
+    join stage_assignments sa on sa.organization_id = v.organization_id
+    join actors act on act.id = sa.operator_id
+    where act.profile_id = auth.uid()
+      and v.id::text = any (coalesce(sa.route->'vehicles'::text[], '{}'));
+
+    -- 6. Return JSON
+    return jsonb_build_object(
+        'profile', row_to_json(user_profile),
+        'actors', user_actors,
+        'organization_memberships', coalesce(org_memberships, '[]'::jsonb),
+        'assigned_stages', coalesce(assigned_stages, '[]'::jsonb),
+        'assigned_vehicles', coalesce(assigned_vehicles, '[]'::jsonb)
+    );
+end;
+$$;

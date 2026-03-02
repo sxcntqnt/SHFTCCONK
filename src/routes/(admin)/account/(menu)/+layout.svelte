@@ -8,12 +8,10 @@
   import { setUserFromBootstrap } from "$lib/features/auth/stores/auth"
   import { currentTrip } from "$lib/features/trips/userTripStore"
 
-  export let data: { bootstrap: any }
-
   interface Props {
     children?: import("svelte").Snippet
   }
-  let { children }: Props = $props()
+  const { data } = $props<{ data: { bootstrap: any } }>()
 
   const adminSectionStore = writable("")
   setContext("adminSection", adminSectionStore)
@@ -138,8 +136,8 @@
     },
   ]
 
-  function isActive(item: { key: string; href: string }): boolean {
-    if (adminSection) return adminSection === item.key
+  function isActive(item: { id: string; href: string }): boolean {
+    if (adminSection) return adminSection === item.id
     if (item.href === "/account") return currentPath === "/account"
     return currentPath.startsWith(item.href)
   }
@@ -164,13 +162,6 @@
       .actor_type ?? "PASSENGER"}
   </div>
 {/if}
-
-<div class="flex min-h-screen">
-  <Sidebar />
-  <main class="flex-1 p-6">
-    <slot />
-  </main>
-</div>
 
 <!-- ════════════════════════ MOBILE OVERLAY ════════════════════════ -->
 <div class="mobile-overlay {mobileOpen ? 'open' : ''}" onclick={closeDrawer}>
@@ -315,7 +306,7 @@
           {#if adminSection && adminSection !== "home"}
             <span class="breadcrumb-sep">›</span>
             <span class="breadcrumb-current">
-              {navItems.find((n) => n.key === adminSection)?.label ??
+              {navItems.find((n) => n.id === adminSection)?.label ??
                 adminSection}
             </span>
           {:else if currentPath !== "/account"}
