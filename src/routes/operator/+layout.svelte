@@ -18,7 +18,11 @@
 
   let role: Role
   let currentPath = ""
+  let role: Role
 
+  authStore.subscribe((v) => (role = v.role))
+
+  const currentPath = $derived(page.url.pathname)
   authStore.subscribe((v) => (role = v.role))
   page.subscribe((p) => (currentPath = p.url.pathname))
 
