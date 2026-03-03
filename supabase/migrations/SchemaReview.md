@@ -106,3 +106,7 @@ The migration (`03_migration.sql`) is designed to be:
 - **Verifiable** — includes post-migration queries to validate
 
 Run `03_migration.sql` first, then `02_rls_and_functions.sql` to apply the new policies. Test on staging before production.
+
+
+
+
