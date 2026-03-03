@@ -14,7 +14,7 @@
   import ErrorBoundary from "$lib/components/ErrorBoundary.svelte"
   import { onMount } from "svelte"
   import { goto } from "$app/navigation"
-  import type { Role } from "$lib/features/auth/stores/auth"
+  import type { Role } from "$lib/features/auth/stores/roles"
 
   let role: Role
   let currentPath = ""
