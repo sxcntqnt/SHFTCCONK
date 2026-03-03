@@ -45,8 +45,6 @@ export function formatChatTimestamp(
 /* -------------------------------------------------------------------------- */
 
 export function formatLastActivity(unixSeconds: Timestamp): string {
-  return formatChatTimestamp(unixSeconds, {
-    hour: undefined,
-    minute: undefined
-  });
+  if (!isValidTimestamp(unixSeconds)) return 'Never'
+  return formatChatTimestamp(unixSeconds, { hour: undefined, minute: undefined })
 }

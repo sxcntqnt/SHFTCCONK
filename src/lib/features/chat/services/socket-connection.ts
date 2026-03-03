@@ -48,11 +48,18 @@ class SocketConnection {
    * Set up a connection callback specific to a user
    */
   connected(user: string): void {
-    this.socket.onopen = () => {
-      console.log('Successfully Connected', user);
-      this.mapConnection(user);
-    };
+  if (this.socket.readyState === WebSocket.OPEN) {
+    // Already open — map immediately
+    this.mapConnection(user)
+  } else {
+    // Queue after open
+    const prev = this.socket.onopen
+    this.socket.onopen = (e) => {
+      prev?.(e as Event)
+      this.mapConnection(user)
+    }
   }
+}
 
   /**
    * Send a bootup message for mapping the user

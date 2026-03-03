@@ -1,7 +1,8 @@
 import { socketConn, currentUser, addMessage, markUserTyping } from '$lib/features/chat/stores/store';
 import { get } from 'svelte/store';
 import SocketConnection from './socket-connection';
-import type { ChatMessage, SocketConnection as SocketConnContract } from '$lib/features/chat/stores/chat';
+import type { ChatMessage, SocketConnection as SocketConnContract } 
+  from '$lib/features/chat/stores/store'
 
 /* -------------------------------------------------------------------------- */
 /*                                WS PROTOCOL                                 */

@@ -1,7 +1,7 @@
 // src/hooks.client.ts
 
 import posthog from "posthog-js"
-import { PUBLIC_POSTHOG_KEY } from "$env/dynamic/public"
+import { PUBLIC_POSTHOG_KEY } from "$env/static/public"
 
 import type { HandleClientError } from "@sveltejs/kit"
 import * as Sentry from "@sentry/sveltekit"

@@ -29,8 +29,11 @@ export interface MessagesMap {
 }
 
 export interface SocketConnection {
-  sendMsg(data: unknown): void;
-  reconnect?(): void;
+  sendMsg(data: unknown): void
+  connect(cb: (event: MessageEvent) => void): void
+  connected(user: string): void
+  on(event: string, cb: () => void): void
+  reconnect?(): void
 }
 
 /* ------------------------------ API Responses ----------------------------- */
