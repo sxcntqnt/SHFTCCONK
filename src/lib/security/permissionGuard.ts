@@ -1,58 +1,104 @@
-// lib/security/permissionGuard.ts
+// src/lib/guards/auth.guard.ts
+//
+// Route guards for federated governance.
+// Use in +page.ts or +layout.ts load functions to protect pages.
+//
+// Usage:
+//   import { requireAuth, requirePermission, requireOrgScope } from "$lib/guards/auth.guard"
+//
+//   export const load: PageLoad = async (event) => {
+//     const session = await requireAuth(event)
+//     await requirePermission(event, "vehicle.view")
+//     return { ... }
+//   }
 
-import { get } from 'svelte/store';
-import { user } from '$lib/stores/user';
+import { redirect } from "@sveltejs/kit"
+import { get } from "svelte/store"
+import {
+  sessionStore,
+  can,
+  hasJurisdictionAt,
+  type JurisdictionLevel,
+} from "$lib/stores/auth.store"
 
-/* ============================================================
-   PRODUCTION-GRADE PERMISSION GUARD
-   Ensures users have the required permission before accessing
-   any sensitive action or resource.
-============================================================ */
+interface LoadEvent {
+  url: URL
+  parent: () => Promise<{
+    session: { user: { id: string } } | null
+    bootstrapped: boolean
+  }>
+}
 
-export class PermissionGuardError extends Error {
-  constructor(message = 'Permission denied') {
-    super(message);
-    this.name = 'PermissionGuardError';
+/**
+ * Require authenticated session. Redirects to login if not authenticated.
+ * Returns the session data for convenience.
+ */
+export async function requireAuth(event: LoadEvent) {
+  const { session, bootstrapped } = await event.parent()
+
+  if (!session) {
+    const returnTo = event.url.pathname + event.url.search
+    redirect(303, `/login/sign_in?next=${encodeURIComponent(returnTo)}`)
+  }
+
+  return { session, bootstrapped }
+}
+
+/**
+ * Require a specific permission on the active actor.
+ * Redirects to /unauthorized if the permission is missing.
+ *
+ * IMPORTANT: This is a UI guard only. RLS enforces the real check.
+ */
+export async function requirePermission(
+  event: LoadEvent,
+  ...actions: string[]
+) {
+  await requireAuth(event)
+
+  const s = get(sessionStore)
+  if (!s.initialized) {
+    // Store not ready yet — let the page load; RLS will catch unauthorized queries
+    return
+  }
+
+  const hasAny = actions.some((action) => can(action))
+  if (!hasAny) {
+    redirect(303, `/unauthorized?required=${actions.join(",")}`)
   }
 }
 
 /**
- * Enforces that the current user has a specific permission
- * @param requiredPermission The permission string to check
- * @param throwOnFail If true, throws an error; otherwise returns boolean
- * @returns boolean
+ * Require jurisdiction over a specific org.
+ * Use on org-scoped pages like /org/[orgId]/dashboard.
  */
-export function requirePermission(
-  requiredPermission: string,
-  throwOnFail = true
-): boolean {
-  const currentUser = get(user);
+export async function requireOrgScope(event: LoadEvent, orgId: string) {
+  await requireAuth(event)
 
-  if (!currentUser.permissions || currentUser.permissions.length === 0) {
-    if (throwOnFail) {
-      throw new PermissionGuardError('User has no permissions assigned');
-    }
-    return false;
+  const s = get(sessionStore)
+  if (!s.initialized) return
+
+  const hasScope = hasJurisdictionAt("org", orgId)
+  if (!hasScope) {
+    redirect(303, "/org/select?reason=no_access")
   }
-
-  const hasAccess = currentUser.permissions.includes(requiredPermission);
-
-  if (!hasAccess && throwOnFail) {
-    throw new PermissionGuardError(`Missing permission: ${requiredPermission}`);
-  }
-
-  return hasAccess;
 }
 
 /**
- * Utility: Wraps a function with permission enforcement
+ * Require a specific actor type to be active.
+ * Use for role-specific pages (e.g. /crew/* requires DRIVER or CONDUCTOR).
  */
-export function withPermission<T extends (...args: any[]) => any>(
-  requiredPermission: string,
-  fn: T
-): T {
-  return ((...args: Parameters<T>): ReturnType<T> => {
-    requirePermission(requiredPermission);
-    return fn(...args);
-  }) as T;
+export async function requireActorType(
+  event: LoadEvent,
+  ...types: string[]
+) {
+  await requireAuth(event)
+
+  const s = get(sessionStore)
+  if (!s.initialized) return
+
+  const activeActor = s.actors.find((a) => a.id === s.activeActorId)
+  if (!activeActor || !types.includes(activeActor.type)) {
+    redirect(303, "/dashboard?reason=wrong_actor_type")
+  }
 }

@@ -1,4 +1,4 @@
-import type { LayoutServerLoad } from '../../../app/$types'
+import type { LayoutServerLoad } from '$lib/$types'
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   // Ensure session is valid

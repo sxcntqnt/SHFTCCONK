@@ -1,33 +1,39 @@
+// src/hooks.server.ts
 import * as Sentry from "@sentry/sveltekit"
-
-import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
-import {
-  PUBLIC_SUPABASE_ANON_KEY,
-  PUBLIC_SUPABASE_URL
-} from "$env/static/public"
-
-import { createServerClient } from "@supabase/ssr"
-import { createClient, type AMREntry } from "@supabase/supabase-js"
-
-import type { Handle, HandleServerError } from "@sveltejs/kit"
+import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
 import { sequence } from "@sveltejs/kit/hooks"
-
+import {
+  PUBLIC_SUPABASE_URL,
+  PUBLIC_SUPABASE_ANON_KEY
+} from "$env/static/public"
+import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"  // ← Import CookieOptions here
+import { createClient } from "@supabase/supabase-js"
+import type { Session, User } from "@supabase/supabase-js"
+import type { AuthenticatorAssuranceLevelEntry } from "@supabase/supabase-js"  // ← Proper type (may need to import from auth-js if not re-exported)
 import { getPostHogClient } from "$lib/server/posthog"
 
 /* ============================================================
-   SUPABASE HANDLE
+   TYPES & HELPERS
 ============================================================ */
+type SafeSessionResult = {
+  session: Session | null
+  user: User | null
+  amr: AuthenticatorAssuranceLevelEntry[] | null  // Use the real type (no undefined)
+}
 
-const supabase: Handle = async ({ event, resolve }) => {
-
+/* ============================================================
+   SUPABASE CLIENT + SAFE SESSION HELPER
+============================================================ */
+const supabaseHandle: Handle = async ({ event, resolve }) => {
   event.locals.supabase = createServerClient(
     PUBLIC_SUPABASE_URL,
     PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll: () => event.cookies.getAll(),
-        setAll: (cookies) => {
-          cookies.forEach(({ name, value, options }) => {
+        setAll: (cookiesToSet: { name: string; value: string; options: CookieOptions }[]) => {  // ← Explicit type here
+          cookiesToSet.forEach(({ name, value, options }) => {
             event.cookies.set(name, value, { ...options, path: "/" })
           })
         }
@@ -41,166 +47,140 @@ const supabase: Handle = async ({ event, resolve }) => {
     { auth: { persistSession: false } }
   )
 
-  // suppress warning workaround
+  // Suppress noisy warning (still needed in many versions)
   if ("suppressGetSessionWarning" in event.locals.supabase.auth) {
-    // @ts-expect-error internal flag
+    // @ts-expect-error — internal flag
     event.locals.supabase.auth.suppressGetSessionWarning = true
   }
 
-  event.locals.safeGetSession = async () => {
+  // Safe session: validate with getUser() + include AAL/AMR
+  event.locals.safeGetSession = async (): Promise<SafeSessionResult> => {
+    const { data: { session } } = await event.locals.supabase.auth.getSession()
+    if (!session) return { session: null, user: null, amr: null }
 
-    const {
-      data: { session }
-    } = await event.locals.supabase.auth.getSession()
+    const { data: { user }, error } = await event.locals.supabase.auth.getUser()
+    if (error || !user) return { session: null, user: null, amr: null }
 
-    if (!session)
-      return { session: null, user: null, amr: null }
-
-    const {
-      data: { user },
-      error
-    } = await event.locals.supabase.auth.getUser()
-
-    if (error)
-      return { session: null, user: null, amr: null }
-
-    const { data: aal } =
-      await event.locals.supabase.auth.mfa
-        .getAuthenticatorAssuranceLevel()
+    const { data: aal } = await event.locals.supabase.auth.mfa.getAuthenticatorAssuranceLevel()
 
     return {
       session,
       user,
-      amr: aal?.currentAuthenticationMethods as AMREntry[]
+      amr: aal?.currentAuthenticationMethods ?? null  // Safe null fallback
     }
   }
 
   return resolve(event, {
-    filterSerializedResponseHeaders(name) {
-      return (
-        name === "content-range" ||
-        name === "x-supabase-api-version"
-      )
-    }
+    filterSerializedResponseHeaders: (name) =>
+      name === "content-range" || name === "x-supabase-api-version"
   })
 }
 
 /* ============================================================
-   AUTH GUARD
+   SERVER-SIDE AUTH GUARD + REDIRECT
 ============================================================ */
+const authGuardHandle: Handle = async ({ event, resolve }) => {
+  const protectedPrefixes = ["/account", "/admin", "/org", "/crew", "/onboarding"]
 
-const authGuard: Handle = async ({ event, resolve }) => {
-  const { session, user } =
-    await event.locals.safeGetSession()
+  const isProtectedRoute = protectedPrefixes.some((prefix) =>
+    event.url.pathname.startsWith(prefix)
+  )
 
-  event.locals.session = session
-  event.locals.user = user
+  if (isProtectedRoute) {
+    const { session } = await event.locals.safeGetSession()
 
-  return resolve(event)
-}
-
-/* ============================================================
-   CLOUDFLARE HTTPS FIX
-============================================================ */
-
-const cloudflareProxy: Handle = async ({ event, resolve }) => {
-
-  const proto =
-    event.request.headers.get("x-forwarded-proto")
-
-  if (proto === "https") {
-    const url = new URL(event.request.url)
-
-    if (url.protocol === "http:") {
-      url.protocol = "https:"
-      event.request =
-        new Request(url.toString(), event.request)
+    if (!session) {
+      const loginUrl = new URL("/login/sign_in", event.url.origin)
+      loginUrl.searchParams.set("next", event.url.pathname + event.url.search)
+      throw redirect(303, loginUrl.toString())
     }
+
+    event.locals.session = session
   }
 
   return resolve(event)
 }
 
 /* ============================================================
-   POSTHOG REVERSE PROXY
+   CLOUDFLARE / PROXY HTTPS FIX
 ============================================================ */
+const cloudflareHttpsFix: Handle = async ({ event, resolve }) => {
+  const proto = event.request.headers.get("x-forwarded-proto")
+  if (proto === "https") {
+    const url = new URL(event.request.url)
+    if (url.protocol === "http:") {
+      url.protocol = "https:"
+      event.request = new Request(url.toString(), event.request)
+    }
+  }
+  return resolve(event)
+}
 
+/* ============================================================
+   POSTHOG INGEST REVERSE PROXY
+============================================================ */
 const posthogProxy: Handle = async ({ event, resolve }) => {
-
   const { pathname } = event.url
 
-  if (!pathname.startsWith("/ingest"))
+  if (!pathname.startsWith("/ingest")) {
     return resolve(event)
+  }
 
-  const hostname =
-    pathname.startsWith("/ingest/static/")
-      ? "eu-assets.i.posthog.com"
-      : "eu.i.posthog.com"
+  const isStatic = pathname.startsWith("/ingest/static/")
+  const targetHost = isStatic ? "eu-assets.i.posthog.com" : "eu.i.posthog.com"
 
-  const url = new URL(event.request.url)
-
-  url.protocol = "https:"
-  url.hostname = hostname
-  url.port = "443"
-  url.pathname = pathname.replace(/^\/ingest/, "")
+  const targetUrl = new URL(event.request.url)
+  targetUrl.protocol = "https:"
+  targetUrl.hostname = targetHost
+  targetUrl.port = "443"
+  targetUrl.pathname = pathname.replace(/^\/ingest/, "")
 
   const headers = new Headers(event.request.headers)
+  headers.set("host", targetHost)
+  headers.delete("accept-encoding") // avoid double compression issues
 
-  headers.set("host", hostname)
-  headers.set("accept-encoding", "")
+  const clientIp = event.request.headers.get("x-forwarded-for") ?? event.getClientAddress()
+  if (clientIp) headers.set("x-forwarded-for", clientIp)
 
-  const clientIp =
-    event.request.headers.get("x-forwarded-for")
-    ?? event.getClientAddress()
-
-  if (clientIp)
-    headers.set("x-forwarded-for", clientIp)
-
-  return fetch(url.toString(), {
+  return fetch(targetUrl.toString(), {
     method: event.request.method,
     headers,
     body: event.request.body,
-    // required for node streaming
-    // @ts-expect-error
+    // @ts-expect-error — Node.js fetch duplex support
     duplex: "half"
   })
 }
 
 /* ============================================================
-   GLOBAL HANDLE
+   COMPOSED HOOK
 ============================================================ */
-
-export const handle: Handle = sequence(
-  Sentry.sentryHandle(),
-  cloudflareProxy,
-  posthogProxy,
-  supabase,
-  authGuard
+export const handle = sequence(
+  Sentry.sentryHandle(),        // error reporting & tracing first
+  cloudflareHttpsFix,           // fix protocol before anything else
+  posthogProxy,                 // proxy analytics requests
+  supabaseHandle,               // supabase clients + safeGetSession
+  authGuardHandle               // protect routes & populate locals
 )
 
 /* ============================================================
-   UNIFIED ERROR HANDLER
+   GLOBAL ERROR HANDLER
 ============================================================ */
+export const handleError: HandleServerError = Sentry.handleErrorWithSentry(
+  async ({ error, status, message }) => {
+    const posthog = getPostHogClient()
 
-export const handleError: HandleServerError =
-  Sentry.handleErrorWithSentry(
-    async ({ error, status, message }) => {
+    posthog.capture({
+      distinctId: "server",
+      event: "server_error",
+      properties: {
+        error: error instanceof Error ? error.message : String(error),
+        status,
+        message,
+        stack: error instanceof Error ? error.stack : undefined
+      }
+    })
 
-      const posthog = getPostHogClient()
-
-      posthog.capture({
-        distinctId: "server",
-        event: "server_error",
-        properties: {
-          error:
-            error instanceof Error
-              ? error.message
-              : String(error),
-          status,
-          message
-        }
-      })
-
-      return { message, status }
-    }
-  )
+    // Return minimal info to client
+    return { message, status }
+  }
+)

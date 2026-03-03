@@ -1,86 +1,69 @@
-import {
-  PUBLIC_SUPABASE_ANON_KEY,
-  PUBLIC_SUPABASE_URL,
-} from "$env/static/public"
-import {
-  createBrowserClient,
-  createServerClient,
-  isBrowser,
-} from "@supabase/ssr"
+// src/routes/admin/+layout.ts
+//
+// Admin section: requires platform ADMIN actor.
+// Loads admin-specific data (pending requests, system stats, etc.)
+
 import { redirect } from "@sveltejs/kit"
-import type { Database } from "../../../DatabaseDefinitions.js"
-import { CreateProfileStep } from "../../../config"
-import { load_helper } from "$lib/load_helpers"
+import { get } from "svelte/store"
+import {
+  sessionStore,
+  activeActor,
+  isAdmin,
+  switchActor,
+  ROLES,
+} from "$lib/stores/auth.store"
+import type { LayoutLoad } from "./$types"
 
-export const load = async ({ fetch, data, depends, url }) => {
-  depends("supabase:auth")
+export const load: LayoutLoad = async ({ parent, url }) => {
+  const { supabase, session, user } = await parent()
 
-  const supabase = isBrowser()
-    ? createBrowserClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: {
-          fetch,
-        },
-      })
-    : createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: {
-          fetch,
-        },
-        cookies: {
-          getAll() {
-            return data.cookies
-          },
-        },
-      })
-
-  const { session, user } = await load_helper(data.session, supabase)
+  // ─── Auth guard ───────────────────────────────────────────
   if (!session || !user) {
-    redirect(303, "/login")
+    redirect(303, `/login/sign_in?next=${encodeURIComponent(url.pathname)}`)
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(`*`)
-    .eq("id", user.id)
-    .single()
+  const s = get(sessionStore)
 
-  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+  // ─── Admin actor guard ────────────────────────────────────
+  // Check if user has an ADMIN actor at all
+  const adminActor = s.actors.find(
+    (a) => a.type === ROLES.ADMIN && a.status === "active",
+  )
 
-  const createProfilePath = "/account/create_profile"
-  const signOutPath = "/account/sign_out"
-  if (
-    profile &&
-    !_hasFullProfile(profile) &&
-    url.pathname !== createProfilePath &&
-    url.pathname !== signOutPath &&
-    CreateProfileStep
-  ) {
-    redirect(303, createProfilePath)
+  if (!adminActor) {
+    // No admin actor → redirect to their appropriate dashboard
+    redirect(303, "/dashboard?reason=not_admin")
   }
+
+  // Auto-switch to admin actor if not already active
+  const current = get(activeActor)
+  if (current?.type !== ROLES.ADMIN) {
+    switchActor(adminActor.id)
+  }
+
+  // ─── Load admin-specific data ─────────────────────────────
+  const [
+    { data: pendingRequests },
+    { data: recentAuditLogs },
+  ] = await Promise.all([
+    supabase
+      .from("actor_requests")
+      .select("id, profile_id, requested_type, status, created_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("audit_logs")
+      .select("id, event_type, actor_id, details, created_at")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ])
 
   return {
     supabase,
     session,
-    profile,
     user,
-    amr: aal?.currentAuthenticationMethods,
+    pendingRequests: pendingRequests ?? [],
+    recentAuditLogs: recentAuditLogs ?? [],
   }
-}
-
-export const _hasFullProfile = (
-  profile: Database["public"]["Tables"]["profiles"]["Row"] | null,
-) => {
-  if (!profile) {
-    return false
-  }
-  if (!profile.full_name) {
-    return false
-  }
-  if (!profile.company_name) {
-    return false
-  }
-  if (!profile.website) {
-    return false
-  }
-
-  return true
 }
