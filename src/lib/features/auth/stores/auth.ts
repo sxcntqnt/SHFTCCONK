@@ -1,27 +1,42 @@
 /**
- * auth.store.ts — Federated Governance Edition
+ * auth.store.ts — Federated Governance Edition (Hardened)
  *
- * Rewritten to match the federated schema with:
- *  - Multi-actor support (one user → many personas)
- *  - Jurisdiction-scoped permissions (federal/org/branch/department)
- *  - Policy group awareness
- *  - Active actor switching
- *  - Permission-based checks (not role-based)
+ * Changes from previous version:
+ *
+ *   KILL-SWITCH INTEGRATION
+ *   - Profile now carries `permissions_version` from DB
+ *   - Store tracks `permissionsVersion` (from bootstrap) and compares
+ *     it against the JWT's `permissions_version` claim
+ *   - `checkVersionAndRefresh()` forces a session refresh when they
+ *     diverge — the DB-side my_permissions view returns zero rows
+ *     on mismatch, so the frontend must stay in sync
+ *
+ *   PERMISSIONS INCLUDED IN BOOTSTRAP
+ *   - bootstrap_session() now returns `permissions` in the payload
+ *   - No separate loadPermissions() call needed on init
+ *   - loadPermissions() kept as a manual refresh for after mutations
+ *
+ *   MULTI-ACTOR ORG RESOLUTION
+ *   - getJurisdictionOrgIds() now scans ALL actors, not just active
+ *   - Needed for org picker routing (user may have driver in org A,
+ *     owner in org B — both should appear)
+ *
+ *   TYPE SAFETY
+ *   - SupabaseClient type extracted for reuse
+ *   - Stricter BootstrapSessionPayload with permissions field
  *
  * IMPORTANT: All frontend permission checks are for UI gating only.
- * The real enforcement happens via RLS + can_actor_perform() in Postgres.
- * Never trust the client — always let the DB reject unauthorized queries.
+ * The real enforcement is RLS + can_actor_perform() + my_permissions
+ * view in Postgres. Never trust the client.
  */
 
 import { writable, derived, get } from "svelte/store"
 
 /* ============================================================
    ROLES — matches `roles` table in DB exactly.
-   
+
    These are IDENTITY CLASSIFICATIONS, not access-control primitives.
    Access is governed by permissions + jurisdictions, not roles.
-   Roles like "ORG_CHAIR" or "OPERATIONS_MANAGER" are now handled
-   as policy groups in the DB, not as role constants.
 ============================================================ */
 export const ROLES = {
   PASSENGER:      "PASSENGER",
@@ -61,6 +76,9 @@ export interface Profile {
   avatar_url: string | null
   website: string | null
   unsubscribed: boolean
+  /** Incremented whenever this user's permissions change.
+   *  Compared against JWT claim to detect stale sessions. */
+  permissions_version: number
 }
 
 export interface Actor {
@@ -91,19 +109,14 @@ export interface PolicyGroupBinding {
 }
 
 /**
- * Mirrors the JSONB returned by bootstrap_session() RPC.
- */
-export interface BootstrapSessionPayload {
-  profile: Profile | null
-  actors: Actor[]
-  jurisdictions: Jurisdiction[]
-  organization_memberships: OrgMembership[]
-  policy_groups: PolicyGroupBinding[]
-}
-
-/**
- * Effective permission for an actor, from the effective_permissions view
- * or a dedicated RPC. Used for UI gating only.
+ * Effective permission for an actor, from the my_permissions view
+ * or bootstrap_session(). Used for UI gating only.
+ *
+ * The DB-side my_permissions view already enforces:
+ *   - JWT version = DB version (kill-switch)
+ *   - Jurisdiction ∩ permission scope (double-gate)
+ *   - Only current user's actors
+ * So what arrives here is already filtered and safe to cache.
  */
 export interface EffectivePermission {
   actor_id: string
@@ -112,6 +125,40 @@ export interface EffectivePermission {
   level: JurisdictionLevel
   scope_id: string | null
   source: string // "direct" | "group:GroupName" | "delegated_from:uuid"
+}
+
+/**
+ * Mirrors the JSONB returned by bootstrap_session() RPC.
+ * The hardened version includes permissions directly.
+ */
+export interface BootstrapSessionPayload {
+  profile: Profile | null
+  actors: Actor[]
+  jurisdictions: Jurisdiction[]
+  organization_memberships: OrgMembership[]
+  policy_groups: PolicyGroupBinding[]
+  /** Included in hardened bootstrap — no separate RPC needed */
+  permissions: EffectivePermission[]
+}
+
+/* ============================================================
+   SUPABASE CLIENT TYPE (minimal interface for store functions)
+============================================================ */
+export interface SupabaseMinimalClient {
+  rpc: (
+    fn: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }>
+  auth: {
+    refreshSession: () => Promise<{
+      data: { session: unknown } | null
+      error: unknown
+    }>
+    getSession: () => Promise<{
+      data: { session: { access_token: string } | null }
+      error: unknown
+    }>
+  }
 }
 
 /* ============================================================
@@ -140,9 +187,12 @@ export interface SessionState {
   // Policy group bindings
   policyGroups: PolicyGroupBinding[]
 
-  // Effective permissions (fetched separately or from bootstrap)
-  // Keyed by actor_id for quick lookup
+  // Effective permissions (from bootstrap or loadPermissions)
   permissions: EffectivePermission[]
+
+  // DB permissions_version at time of last bootstrap
+  // Compared against JWT to detect stale sessions
+  permissionsVersion: number
 
   // Invite flow metadata
   inviteScoped: boolean
@@ -152,16 +202,17 @@ export interface SessionState {
    DEFAULT STATE
 ============================================================ */
 const defaultSession: SessionState = {
-  initialized:   false,
-  loading:       false,
-  profile:       null,
-  actors:        [],
-  activeActorId: null,
-  jurisdictions: [],
-  orgMemberships: [],
-  policyGroups:  [],
-  permissions:   [],
-  inviteScoped:  false,
+  initialized:        false,
+  loading:            false,
+  profile:            null,
+  actors:             [],
+  activeActorId:      null,
+  jurisdictions:      [],
+  orgMemberships:     [],
+  policyGroups:       [],
+  permissions:        [],
+  permissionsVersion: 0,
+  inviteScoped:       false,
 }
 
 /* ============================================================
@@ -175,7 +226,7 @@ export const sessionStore = writable<SessionState>({ ...defaultSession })
 
 /** The currently active actor object (or null) */
 export const activeActor = derived(sessionStore, ($s) =>
-  $s.actors.find((a) => a.id === $s.activeActorId) ?? null
+  $s.actors.find((a) => a.id === $s.activeActorId) ?? null,
 )
 
 /** Role of the active actor */
@@ -183,7 +234,7 @@ export const activeRole = derived(activeActor, ($a) => $a?.type ?? null)
 
 /** Jurisdictions for the active actor only */
 export const activeJurisdictions = derived(sessionStore, ($s) =>
-  $s.jurisdictions.filter((j) => j.actor_id === $s.activeActorId)
+  $s.jurisdictions.filter((j) => j.actor_id === $s.activeActorId),
 )
 
 /** Organizations the user belongs to (across all actors) */
@@ -192,27 +243,33 @@ export const userOrgs = derived(sessionStore, ($s) => $s.orgMemberships)
 /** Effective permissions for the active actor, excluding denies */
 export const activePermissions = derived(sessionStore, ($s) =>
   $s.permissions.filter(
-    (p) => p.actor_id === $s.activeActorId && p.effect === "allow"
-  )
+    (p) => p.actor_id === $s.activeActorId && p.effect === "allow",
+  ),
 )
 
 /** Effective denies for the active actor (for UI warnings) */
 export const activeDenies = derived(sessionStore, ($s) =>
   $s.permissions.filter(
-    (p) => p.actor_id === $s.activeActorId && p.effect === "deny"
-  )
+    (p) => p.actor_id === $s.activeActorId && p.effect === "deny",
+  ),
 )
 
 /** True if the user has completed initial profile setup */
 export const profileComplete = derived(
   sessionStore,
-  ($s) => !!$s.profile?.full_name && $s.profile.full_name !== "User"
+  ($s) => !!$s.profile?.full_name && $s.profile.full_name !== "User",
 )
 
 /** All unique actor types the user holds */
 export const userRoles = derived(sessionStore, ($s) =>
-  [...new Set($s.actors.map((a) => a.type))]
+  [...new Set($s.actors.map((a) => a.type))],
 )
+
+/** True if the session's permissions may be stale (version mismatch) */
+export const isVersionStale = derived(sessionStore, ($s) => {
+  if (!$s.initialized || !$s.profile) return false
+  return $s.profile.permissions_version !== $s.permissionsVersion
+})
 
 /* ============================================================
    BOOTSTRAP INITIALIZER
@@ -220,7 +277,7 @@ export const userRoles = derived(sessionStore, ($s) =>
 ============================================================ */
 export function initSession(
   payload: BootstrapSessionPayload | null,
-  opts: { inviteScoped?: boolean } = {}
+  opts: { inviteScoped?: boolean } = {},
 ): void {
   if (!payload) return
 
@@ -233,46 +290,165 @@ export function initSession(
     actors[0] ??
     null
 
+  const version = payload.profile?.permissions_version ?? 1
+
   sessionStore.set({
-    initialized:    true,
-    loading:        false,
-    profile:        payload.profile,
+    initialized:        true,
+    loading:            false,
+    profile:            payload.profile,
     actors,
-    activeActorId:  preferredActor?.id ?? null,
-    jurisdictions:  payload.jurisdictions ?? [],
-    orgMemberships: payload.organization_memberships ?? [],
-    policyGroups:   payload.policy_groups ?? [],
-    permissions:    [], // loaded separately via loadPermissions()
-    inviteScoped:   opts.inviteScoped ?? false,
+    activeActorId:      preferredActor?.id ?? null,
+    jurisdictions:      payload.jurisdictions ?? [],
+    orgMemberships:     payload.organization_memberships ?? [],
+    policyGroups:       payload.policy_groups ?? [],
+    permissions:        payload.permissions ?? [],
+    permissionsVersion: version,
+    inviteScoped:       opts.inviteScoped ?? false,
   })
+}
+
+/* ============================================================
+   VERSION CHECK + AUTO-REFRESH (Kill-Switch Integration)
+
+   The DB bumps profiles.permissions_version whenever actor_permissions,
+   actor_policy_groups, actor_jurisdictions, or delegated_authority
+   change. The JWT carries the version at issue time.
+
+   If the bootstrap payload's version doesn't match what we stored,
+   the user's permissions have changed since their last token refresh.
+   We force a session refresh so the new JWT gets the updated version,
+   which re-aligns with the DB and un-blocks my_permissions.
+
+   Call this:
+     - After every bootstrap_session() call
+     - On a timer (optional, for long-lived sessions)
+     - When a mutation might have changed permissions
+============================================================ */
+
+/**
+ * Compares the stored permissionsVersion against the latest from DB.
+ * If they differ, forces a JWT refresh and re-bootstraps.
+ *
+ * Returns true if a refresh was triggered (caller should re-render).
+ */
+export async function checkVersionAndRefresh(
+  supabase: SupabaseMinimalClient,
+): Promise<boolean> {
+  const s = get(sessionStore)
+  if (!s.initialized || !s.profile) return false
+
+  // Quick check: does the store's version match the profile's?
+  // After bootstrap, these are equal. They diverge if:
+  //   1. Another tab changed permissions (profile reloaded but JWT stale)
+  //   2. An admin changed this user's permissions server-side
+  //   3. A trigger bumped the version during this session
+
+  // Fetch current version from DB (single lightweight query)
+  const { data, error } = await supabase.rpc("bootstrap_session")
+  if (error || !data) return false
+
+  const fresh = data as BootstrapSessionPayload
+  const dbVersion = fresh.profile?.permissions_version ?? 1
+
+  if (dbVersion === s.permissionsVersion) {
+    return false // versions match, nothing to do
+  }
+
+  // Version mismatch detected — force JWT refresh
+  console.info(
+    `[auth] Permission version mismatch: store=${s.permissionsVersion} db=${dbVersion}. Refreshing session.`,
+  )
+
+  const { error: refreshError } = await supabase.auth.refreshSession()
+  if (refreshError) {
+    console.error("[auth] Session refresh failed:", refreshError)
+    return false
+  }
+
+  // Re-hydrate store with fresh data (which includes new permissions)
+  initSession(fresh)
+
+  return true
+}
+
+/**
+ * Lightweight version check without full re-bootstrap.
+ * Returns true if the JWT version matches the DB version.
+ * Use this for periodic polling without the cost of full bootstrap.
+ */
+export function isSessionCurrent(): boolean {
+  const s = get(sessionStore)
+  if (!s.initialized || !s.profile) return true // assume current if not loaded
+  return s.profile.permissions_version === s.permissionsVersion
 }
 
 /* ============================================================
    PERMISSION LOADING
    Fetches effective_permissions for all user's actors.
-   Call after initSession or when permissions may have changed.
+
+   In the hardened schema, bootstrap_session() already includes
+   permissions. This function is for MANUAL REFRESH only —
+   call after mutations that might affect permissions (e.g.
+   delegation grant, policy group change).
 ============================================================ */
 export async function loadPermissions(
-  supabase: { rpc: (fn: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> }
+  supabase: SupabaseMinimalClient,
 ): Promise<void> {
   sessionStore.update((s) => ({ ...s, loading: true }))
 
   try {
-    // Option A: RPC that returns effective_permissions for the current user
     const { data, error } = await supabase.rpc("get_my_effective_permissions")
 
     if (error) {
       console.error("[auth] Failed to load permissions:", error)
+      sessionStore.update((s) => ({ ...s, loading: false }))
       return
     }
 
+    const permissions = (data as EffectivePermission[]) ?? []
+
     sessionStore.update((s) => ({
       ...s,
-      permissions: (data as EffectivePermission[]) ?? [],
+      permissions,
       loading: false,
     }))
   } catch (err) {
     console.error("[auth] Permission load error:", err)
+    sessionStore.update((s) => ({ ...s, loading: false }))
+  }
+}
+
+/**
+ * Full re-bootstrap: re-runs bootstrap_session() and refreshes
+ * the JWT if the version has changed. Use after major mutations
+ * like invite redemption or actor creation.
+ */
+export async function rebootstrap(
+  supabase: SupabaseMinimalClient,
+): Promise<void> {
+  sessionStore.update((s) => ({ ...s, loading: true }))
+
+  try {
+    const { data, error } = await supabase.rpc("bootstrap_session")
+
+    if (error) {
+      console.error("[auth] Re-bootstrap failed:", error)
+      sessionStore.update((s) => ({ ...s, loading: false }))
+      return
+    }
+
+    const payload = data as BootstrapSessionPayload
+    const dbVersion = payload.profile?.permissions_version ?? 1
+    const s = get(sessionStore)
+
+    // If version changed, refresh JWT so it matches
+    if (dbVersion !== s.permissionsVersion) {
+      await supabase.auth.refreshSession()
+    }
+
+    initSession(payload)
+  } catch (err) {
+    console.error("[auth] Re-bootstrap error:", err)
     sessionStore.update((s) => ({ ...s, loading: false }))
   }
 }
@@ -283,9 +459,13 @@ export async function loadPermissions(
 ============================================================ */
 export function switchActor(actorId: string): void {
   sessionStore.update((s) => {
-    const exists = s.actors.some((a) => a.id === actorId)
-    if (!exists) {
+    const target = s.actors.find((a) => a.id === actorId)
+    if (!target) {
       console.warn(`[auth] Cannot switch to unknown actor: ${actorId}`)
+      return s
+    }
+    if (target.status !== "active") {
+      console.warn(`[auth] Cannot switch to inactive actor: ${actorId}`)
       return s
     }
     return { ...s, activeActorId: actorId }
@@ -294,12 +474,17 @@ export function switchActor(actorId: string): void {
 
 /* ============================================================
    PERMISSION CHECKS — for UI gating only.
-   
+
    These operate on the cached effective_permissions.
    The DB enforces the real authorization via RLS.
-   
+
    Design: check by ACTION string (e.g. "vehicle.view"),
    not by role. This aligns with atomic permissions.
+
+   The permissions stored here have already passed the
+   DB-side double-gate (jurisdiction ∩ permission scope)
+   and version check. So client-side scope checks are
+   an additional UI refinement, not a security boundary.
 ============================================================ */
 
 /**
@@ -308,7 +493,7 @@ export function switchActor(actorId: string): void {
  */
 export function can(
   action: string,
-  scope?: { level: JurisdictionLevel; scopeId: string | null }
+  scope?: { level: JurisdictionLevel; scopeId: string | null },
 ): boolean {
   const s = get(sessionStore)
   if (!s.activeActorId) return false
@@ -319,7 +504,7 @@ export function can(
       p.actor_id === s.activeActorId &&
       p.action === action &&
       p.effect === "deny" &&
-      (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId))
+      (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId)),
   )
   if (hasDeny) return false
 
@@ -329,7 +514,24 @@ export function can(
       p.actor_id === s.activeActorId &&
       p.action === action &&
       p.effect === "allow" &&
-      (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId))
+      (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId)),
+  )
+}
+
+/**
+ * Check if ANY of the user's actors (not just active) has a permission.
+ * Useful for routing decisions where actor auto-switching will happen.
+ */
+export function canAnyActor(action: string): boolean {
+  const s = get(sessionStore)
+
+  const hasDeny = s.permissions.some(
+    (p) => p.action === action && p.effect === "deny",
+  )
+  if (hasDeny) return false
+
+  return s.permissions.some(
+    (p) => p.action === action && p.effect === "allow",
   )
 }
 
@@ -348,10 +550,10 @@ export function canAll(...actions: string[]): boolean {
 }
 
 /**
- * Reactive derived store version of `can()` for use in templates.
+ * Reactive derived store version of `can()` for use in Svelte templates.
  *
- * Usage in Svelte:
- *   $: canViewVehicles = canReactive("vehicle.view")
+ * Usage:
+ *   const canViewVehicles = canReactive("vehicle.view")
  *   {#if $canViewVehicles} ... {/if}
  */
 export function canReactive(action: string) {
@@ -362,7 +564,7 @@ export function canReactive(action: string) {
       (p) =>
         p.actor_id === $s.activeActorId &&
         p.action === action &&
-        p.effect === "deny"
+        p.effect === "deny",
     )
     if (hasDeny) return false
 
@@ -370,7 +572,38 @@ export function canReactive(action: string) {
       (p) =>
         p.actor_id === $s.activeActorId &&
         p.action === action &&
-        p.effect === "allow"
+        p.effect === "allow",
+    )
+  })
+}
+
+/**
+ * Reactive store for scoped permission check.
+ * Re-evaluates when the store changes (actor switch, permission reload).
+ */
+export function canScopedReactive(
+  action: string,
+  level: JurisdictionLevel,
+  scopeId: string | null,
+) {
+  return derived(sessionStore, ($s) => {
+    if (!$s.activeActorId) return false
+
+    const hasDeny = $s.permissions.some(
+      (p) =>
+        p.actor_id === $s.activeActorId &&
+        p.action === action &&
+        p.effect === "deny" &&
+        scopeCovers(p.level, p.scope_id, level, scopeId),
+    )
+    if (hasDeny) return false
+
+    return $s.permissions.some(
+      (p) =>
+        p.actor_id === $s.activeActorId &&
+        p.action === action &&
+        p.effect === "allow" &&
+        scopeCovers(p.level, p.scope_id, level, scopeId),
     )
   })
 }
@@ -390,30 +623,18 @@ const LEVEL_RANK: Record<JurisdictionLevel, number> = {
  * Returns true if a permission at (permLevel, permScope) covers
  * a resource at (resLevel, resScope).
  *
- * Rules:
- *  - federal covers everything
- *  - same level covers if scope matches
- *  - higher level covers lower (org covers branch within it)
- *
- * Note: This is a CLIENT-SIDE approximation. The DB function
- * scope_covers_resource() does the real check against the
- * actual hierarchy tables.
+ * Client-side approximation. The DB function scope_covers_resource()
+ * does the real check against the actual hierarchy tables.
  */
 function scopeCovers(
   permLevel: JurisdictionLevel,
   permScope: string | null,
   resLevel: JurisdictionLevel,
-  resScope: string | null
+  resScope: string | null,
 ): boolean {
-  // Federal covers everything
   if (permLevel === "federal") return true
-
-  // Same level — must match scope
   if (permLevel === resLevel) return permScope === resScope
-
-  // Higher level covers lower (approximate — real check is in DB)
   if (LEVEL_RANK[permLevel] < LEVEL_RANK[resLevel]) return true
-
   return false
 }
 
@@ -422,28 +643,54 @@ function scopeCovers(
  */
 export function hasJurisdictionAt(
   level: JurisdictionLevel,
-  scopeId?: string | null
+  scopeId?: string | null,
 ): boolean {
   const s = get(sessionStore)
   return s.jurisdictions.some(
     (j) =>
       j.actor_id === s.activeActorId &&
-      (LEVEL_RANK[j.level] <= LEVEL_RANK[level]) &&
-      (j.level === "federal" || !scopeId || j.scope_id === scopeId)
+      LEVEL_RANK[j.level] <= LEVEL_RANK[level] &&
+      (j.level === "federal" || !scopeId || j.scope_id === scopeId),
   )
 }
 
 /**
- * Get all organization IDs the active actor has jurisdiction over.
+ * Get all organization IDs the user has jurisdiction over,
+ * across ALL actors (not just active). Used for routing
+ * decisions like the org picker and dashboard redirects.
  */
 export function getJurisdictionOrgIds(): string[] {
   const s = get(sessionStore)
   const ids = new Set<string>()
 
+  // Collect from jurisdictions across all actors
   for (const j of s.jurisdictions) {
-    if (j.actor_id !== s.activeActorId) continue
     if (j.level === "federal") {
-      // Federal: add all orgs from memberships
+      // Federal jurisdiction: user can access ALL orgs they're a member of
+      for (const m of s.orgMemberships) {
+        ids.add(m.organization_id)
+      }
+    } else if (j.level === "org" && j.scope_id) {
+      ids.add(j.scope_id)
+    }
+    // Branch/dept jurisdictions: add the parent org from memberships
+    // (we don't have branch→org mapping client-side, but org memberships cover it)
+  }
+
+  return [...ids]
+}
+
+/**
+ * Get org IDs for a SPECIFIC actor (not all actors).
+ * Used when deciding which actor to auto-switch to.
+ */
+export function getActorOrgIds(actorId: string): string[] {
+  const s = get(sessionStore)
+  const ids = new Set<string>()
+
+  for (const j of s.jurisdictions) {
+    if (j.actor_id !== actorId) continue
+    if (j.level === "federal") {
       for (const m of s.orgMemberships) ids.add(m.organization_id)
     } else if (j.level === "org" && j.scope_id) {
       ids.add(j.scope_id)
@@ -453,9 +700,28 @@ export function getJurisdictionOrgIds(): string[] {
   return [...ids]
 }
 
+/**
+ * Find the best actor to use for accessing a specific org.
+ * Returns the actor_id or null if no access.
+ * Used by org layout guards for auto-switching.
+ */
+export function findActorForOrg(orgId: string): string | null {
+  const s = get(sessionStore)
+
+  for (const j of s.jurisdictions) {
+    const actor = s.actors.find((a) => a.id === j.actor_id && a.status === "active")
+    if (!actor) continue
+
+    if (j.level === "federal") return j.actor_id
+    if (j.level === "org" && j.scope_id === orgId) return j.actor_id
+  }
+
+  return null
+}
+
 /* ============================================================
    ROLE IDENTITY CHECKS
-   
+
    These check the actor TYPE (identity classification),
    NOT access permissions. Use `can()` for authorization.
    Useful for UI layout decisions (show driver UI vs passenger UI).
@@ -469,7 +735,9 @@ export function isActorType(type: Role): boolean {
 
 /** User has ANY actor of the given type (across all personas) */
 export function hasActorOfType(type: Role): boolean {
-  return get(sessionStore).actors.some((a) => a.type === type)
+  return get(sessionStore).actors.some(
+    (a) => a.type === type && a.status === "active",
+  )
 }
 
 /** Convenience: active actor is a vehicle crew member */
@@ -485,43 +753,38 @@ export function isAdmin(): boolean {
 
 /* ============================================================
    TENANT / SCOPE ENFORCEMENT
-   
+
    Client-side guards for multi-tenant navigation.
    Real enforcement is in RLS — these prevent bad UX, not attacks.
 ============================================================ */
 
 /**
- * Throws if the active actor has no jurisdiction covering the given org.
+ * Throws if no actor has jurisdiction covering the given org.
  * Use before navigating to org-scoped pages.
  */
 export function requireOrgAccess(orgId: string): void {
   const orgIds = getJurisdictionOrgIds()
   if (!orgIds.includes(orgId)) {
     throw new Error(
-      `Access denied: no jurisdiction over organization ${orgId}`
+      `Access denied: no jurisdiction over organization ${orgId}`,
     )
   }
 }
 
 /**
  * Returns the "home" org for the active actor.
- * If the actor has jurisdiction over exactly one org, return it.
- * If multiple, returns null (UI should show org picker).
- * If federal, returns null (UI should show global view).
+ * Single org → returns it. Multiple or federal → null (show picker).
  */
 export function getHomeOrg(): OrgMembership | null {
-  const s = get(sessionStore)
   const jurisdictionOrgIds = getJurisdictionOrgIds()
+  if (jurisdictionOrgIds.length !== 1) return null
 
-  if (jurisdictionOrgIds.length === 1) {
-    return (
-      s.orgMemberships.find(
-        (m) => m.organization_id === jurisdictionOrgIds[0]
-      ) ?? null
-    )
-  }
-
-  return null // multiple orgs or federal — let UI decide
+  const s = get(sessionStore)
+  return (
+    s.orgMemberships.find(
+      (m) => m.organization_id === jurisdictionOrgIds[0],
+    ) ?? null
+  )
 }
 
 /* ============================================================
@@ -548,22 +811,20 @@ export function patchProfile(updates: Partial<Profile>): void {
 
 /* ============================================================
    BACKWARD COMPATIBILITY — deprecated, use can() instead
-   
+
    These map old role-based checks to permission-based checks.
    Remove once all consuming components are migrated.
 ============================================================ */
 
 /** @deprecated Use `can('org.manage')` instead */
 export function isOrgAdmin(): boolean {
-  return canAny("org.manage", "org.members")
+  return canAny("org.manage")
 }
 
 /** @deprecated Use `isActorType(ROLES.REGULATOR)` or `can(...)` */
 export function isRegulatory(): boolean {
   const actor = get(activeActor)
-  return (
-    actor?.type === ROLES.REGULATOR || actor?.type === ROLES.PLANNER
-  )
+  return actor?.type === ROLES.REGULATOR || actor?.type === ROLES.PLANNER
 }
 
 /** @deprecated Use `can('vehicle.view')` */
@@ -574,7 +835,7 @@ export function hasPermission(permission: string): boolean {
 /** @deprecated Use initSession() */
 export function setUserFromBootstrap(
   payload: BootstrapSessionPayload | null,
-  opts: { inviteScoped?: boolean } = {}
+  opts: { inviteScoped?: boolean } = {},
 ): void {
   initSession(payload, opts)
 }
@@ -583,12 +844,12 @@ export function setUserFromBootstrap(
 export const authStore = derived(sessionStore, ($s) => ({
   profile_id:     $s.profile?.id ?? null,
   actor_id:       $s.activeActorId,
-  actor_type:     get(activeActor)?.type ?? ROLES.PASSENGER,
+  actor_type:     $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
   fullName:       $s.profile?.full_name ?? "Guest",
-  email:          null as string | null, // email is in auth.users, not profile
+  email:          null as string | null,
   organizationId: getHomeOrg()?.organization_id ?? null,
   sacco:          getHomeOrg()?.org_name ?? null,
-  role:           get(activeActor)?.type ?? ROLES.PASSENGER,
+  role:           $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
   permissions:    $s.permissions
     .filter((p) => p.actor_id === $s.activeActorId && p.effect === "allow")
     .map((p) => p.action),

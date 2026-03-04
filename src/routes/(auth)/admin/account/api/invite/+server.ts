@@ -3,7 +3,7 @@ import { json } from '@sveltejs/kit';
 import { v4 as uuidv4 } from 'uuid';
 import { sendEmail } from '$lib/utils/email';
 import { db } from '$lib/db'; // your database helper
-import { requirePermission } from '$lib/security/permissionGuard';
+import { requirePermission } from '$lib/security/authGuard';
 
 /* ============================================================
    POST /api/invite

@@ -1,0 +1,129 @@
+-- =========================================================
+-- ci/00_mock_supabase.sql
+-- =========================================================
+-- Mocks the Supabase internals that our schema depends on.
+-- Only used in CI. In production, Supabase provides these.
+--
+-- Creates:
+--   • auth schema + auth.users table
+--   • auth.uid() — reads from request.jwt.claim.sub
+--   • auth.jwt()  — reads from request.jwt.claims
+--   • auth.role() — reads from request.jwt.claim.role
+--   • storage schema + storage.buckets/objects stubs
+--   • Roles: anon, authenticated, supabase_auth_admin
+--   • pgcrypto + pgtap extensions
+-- =========================================================
+
+-- Extensions
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pgtap";
+
+-- ─── Roles ──────────────────────────────────────────────
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+    CREATE ROLE authenticated NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    CREATE ROLE supabase_auth_admin NOLOGIN;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN;
+  END IF;
+END $$;
+
+-- Grant basic access so SET ROLE works in tests
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated;
+
+
+-- ─── Auth Schema ────────────────────────────────────────
+CREATE SCHEMA IF NOT EXISTS auth;
+
+CREATE TABLE IF NOT EXISTS auth.users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text,
+  raw_user_meta_data jsonb DEFAULT '{}',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- auth.uid() — returns current user ID from JWT claims
+-- In Supabase, this reads the 'sub' claim from the JWT.
+-- In CI, we mock it via set_config('request.jwt.claim.sub', ...).
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid,
+    NULL
+  );
+$$;
+
+-- auth.jwt() — returns full JWT claims as jsonb
+-- In Supabase, this is the decoded JWT payload.
+-- In CI, we mock it via set_config('request.jwt.claims', ...).
+CREATE OR REPLACE FUNCTION auth.jwt()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(current_setting('request.jwt.claims', true), '')::jsonb,
+    '{}'::jsonb
+  );
+$$;
+
+-- auth.role() — returns the current role
+CREATE OR REPLACE FUNCTION auth.role()
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(current_setting('request.jwt.claim.role', true), ''),
+    'anon'
+  );
+$$;
+
+-- Grant auth schema access
+GRANT USAGE ON SCHEMA auth TO anon, authenticated, supabase_auth_admin, service_role;
+GRANT SELECT ON auth.users TO authenticated, supabase_auth_admin, service_role;
+GRANT INSERT ON auth.users TO supabase_auth_admin, service_role;
+
+
+-- ─── Storage Schema (stub) ──────────────────────────────
+-- Our schema references storage.buckets and storage.objects
+-- in 00_extensions_domains.sql. We create empty stubs so
+-- those statements don't fail, but we don't test storage.
+
+CREATE SCHEMA IF NOT EXISTS storage;
+
+CREATE TABLE IF NOT EXISTS storage.buckets (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS storage.objects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  bucket_id text REFERENCES storage.buckets(id),
+  name text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Enable RLS on storage objects (so policy creation doesn't fail)
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+GRANT SELECT ON storage.objects TO anon, authenticated;
+GRANT INSERT ON storage.objects TO authenticated;
+GRANT SELECT ON storage.buckets TO anon, authenticated;

@@ -2,23 +2,27 @@
 <!--
   Root layout: auth state listener + navigation progress bar.
 
-  The auth listener was previously in /account/+layout.svelte.
-  Moved here so auth state changes (login, logout, token refresh)
-  trigger re-bootstrap globally, not just inside /account.
+  HARDENING CHANGES:
+    - On TOKEN_REFRESHED: calls checkVersionAndRefresh() to detect
+      permission changes that happened while the session was active
+    - Periodic version polling (every 60s) for long-lived sessions
+      so revoked users get kicked within ~1 minute instead of waiting
+      for the next navigation
+    - SIGNED_OUT handler clears the session store before redirect
 -->
 <script lang="ts">
   import "../app.css"
   import { invalidate, goto } from "$app/navigation"
   import { navigating } from "$app/state"
-  import { page } from "$app/stores"
   import { onMount } from "svelte"
   import { expoOut } from "svelte/easing"
   import { slide } from "svelte/transition"
   import {
     sessionStore,
     clearSession,
-    activeActor,
-  } from "$lib/stores/auth.store"
+    checkVersionAndRefresh,
+    isVersionStale,
+  } from "$lib/features/auth/stores/auth"
 
   interface Props {
     children?: import("svelte").Snippet
@@ -38,14 +42,27 @@
 
   // ─── Auth state listener ────────────────────────────────────
   // Triggers re-bootstrap when session changes (login, logout,
-  // token refresh, MFA step-up). This replaces the old listener
-  // that was buried inside /account/+layout.svelte.
+  // token refresh, MFA step-up).
   onMount(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      async (event, newSession) => {
         // Session expiry changed → invalidate to re-run load functions
         if (newSession?.expires_at !== session?.expires_at) {
           invalidate("supabase:auth")
+        }
+
+        // Token refreshed → check if permission version has changed.
+        // This catches the scenario where an admin revoked permissions
+        // while the user's session was active. The new JWT from
+        // refreshSession() will have an updated permissions_version,
+        // and if it doesn't match the DB, my_permissions returns nothing.
+        if (event === "TOKEN_REFRESHED") {
+          const refreshed = await checkVersionAndRefresh(supabase)
+          if (refreshed) {
+            // Store was re-hydrated with new permissions.
+            // Invalidate to re-run load functions with fresh data.
+            invalidate("supabase:auth")
+          }
         }
 
         // Signed out → clear store, redirect to home
@@ -55,7 +72,26 @@
         }
       },
     )
-    return () => subscription.subscription.unsubscribe()
+
+    // ─── Periodic version polling ─────────────────────────────
+    // For long-lived sessions (user leaves tab open for hours),
+    // check every 60s whether their permissions were revoked.
+    // checkVersionAndRefresh() is cheap: one RPC call, and it
+    // only triggers a full refresh if the version diverged.
+    const versionPollInterval = setInterval(async () => {
+      const s = $sessionStore
+      if (!s.initialized || !s.profile) return
+
+      const refreshed = await checkVersionAndRefresh(supabase)
+      if (refreshed) {
+        invalidate("supabase:auth")
+      }
+    }, 60_000) // 60 seconds
+
+    return () => {
+      subscription.subscription.unsubscribe()
+      clearInterval(versionPollInterval)
+    }
   })
 </script>
 

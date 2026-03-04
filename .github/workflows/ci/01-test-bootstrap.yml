@@ -1,0 +1,32 @@
+-- =========================================================
+-- ci/01_test_bootstrap.sql
+-- =========================================================
+-- Run after all schema files but before tests.
+-- Creates auth.users records so FK constraints on profiles
+-- don't block test data insertion.
+-- Also grants the authenticated role access to new tables
+-- created by the schema files.
+-- =========================================================
+
+-- Insert auth.users records that match our test profile IDs
+-- (the test file inserts profiles referencing these)
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'admin@test.local'),
+  ('00000000-0000-0000-0000-000000000002', 'driver@test.local'),
+  ('00000000-0000-0000-0000-000000000003', 'outsider@test.local'),
+  ('00000000-0000-0000-0000-000000000004', 'revoked@test.local')
+ON CONFLICT DO NOTHING;
+
+-- Ensure authenticated role can access all public tables
+-- (some were created after the DEFAULT PRIVILEGES grant)
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT USAGE ON SCHEMA public TO authenticated;
+
+-- The test needs to read access_denied_log as postgres (superuser)
+-- after tests run, so no special grants needed there.
+
+-- Grant execute on test helper functions to authenticated
+-- (the test file creates these, but we pre-grant on schema)
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO authenticated;

@@ -3,6 +3,11 @@
 // Route guards for federated governance.
 // Use in +page.ts or +layout.ts load functions to protect pages.
 //
+// HARDENING CHANGES:
+//   - requireAuth checks isSessionCurrent() and triggers re-bootstrap
+//     if the permission version is stale
+//   - requirePermission uses the deny-first logic from can()
+//
 // Usage:
 //   import { requireAuth, requirePermission, requireOrgScope } from "$lib/guards/auth.guard"
 //
@@ -18,12 +23,14 @@ import {
   sessionStore,
   can,
   hasJurisdictionAt,
+  isSessionCurrent,
   type JurisdictionLevel,
-} from "$lib/stores/auth.store"
+} from "$lib/features/auth/stores/auth"
 
 interface LoadEvent {
   url: URL
   parent: () => Promise<{
+    supabase: import("@supabase/supabase-js").SupabaseClient
     session: { user: { id: string } } | null
     bootstrapped: boolean
   }>
@@ -31,14 +38,22 @@ interface LoadEvent {
 
 /**
  * Require authenticated session. Redirects to login if not authenticated.
- * Returns the session data for convenience.
+ * If the session is stale (version mismatch), forces a re-bootstrap
+ * by redirecting with ?rebootstrap param.
  */
 export async function requireAuth(event: LoadEvent) {
-  const { session, bootstrapped } = await event.parent()
+  const { session, bootstrapped, supabase } = await event.parent()
 
   if (!session) {
     const returnTo = event.url.pathname + event.url.search
     redirect(303, `/login/sign_in?next=${encodeURIComponent(returnTo)}`)
+  }
+
+  // If bootstrapped but version is stale, force re-bootstrap
+  // This catches the case where permissions changed between navigations
+  if (bootstrapped && !isSessionCurrent()) {
+    const returnTo = event.url.pathname + event.url.search
+    redirect(303, `${returnTo}${returnTo.includes("?") ? "&" : "?"}rebootstrap=1`)
   }
 
   return { session, bootstrapped }

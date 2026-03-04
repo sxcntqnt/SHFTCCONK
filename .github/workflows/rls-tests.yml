@@ -1,0 +1,281 @@
+# =========================================================
+# .github/workflows/rls-tests.yml
+# =========================================================
+# Runs the pgTAP test suite against the hardened federated
+# governance schema on every push/PR.
+#
+# Architecture:
+#   1. Install Postgres 16 + pgTAP locally on the runner
+#      (not a service container — gives full control)
+#   2. Create mock Supabase environment (auth schema, roles, JWT stubs)
+#   3. Apply all 9 schema files in order
+#   4. Bootstrap test data (auth.users records for FK constraints)
+#   5. Run pgTAP tests via pg_prove
+#
+# Why not a service container?
+#   - Can't install pgTAP extension into a service container
+#   - Can't configure auth/storage schemas
+#   - Local install gives us pg_prove + psql + full control
+# =========================================================
+
+name: Database RLS Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'supabase/schema/**'
+      - 'supabase/test/**'
+      - '.github/workflows/rls-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/schema/**'
+      - 'supabase/test/**'
+      - '.github/workflows/rls-tests.yml'
+
+env:
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  PGDATABASE: test_federated
+  PGHOST: localhost
+  PGPORT: 5432
+
+jobs:
+  test-rls:
+    name: RLS & Permission Engine Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ─── 1. Checkout ────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ─── 2. Install Postgres 16 + pgTAP + pg_prove ─────
+      - name: Install PostgreSQL 16 with pgTAP
+        run: |
+          # Add the official PostgreSQL APT repository (PGDG)
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            postgresql-16 \
+            postgresql-16-pgtap \
+            libtap-parser-sourcehandler-pgtap-perl
+
+          # pg_prove comes from libtap-parser-sourcehandler-pgtap-perl
+          which pg_prove && echo "pg_prove installed" || echo "pg_prove NOT found"
+
+      # ─── 3. Configure Postgres ──────────────────────────
+      - name: Start PostgreSQL and create test database
+        run: |
+          # Start the cluster
+          sudo pg_ctlcluster 16 main start
+
+          # Allow local connections with password auth
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+
+          # Update pg_hba.conf to allow md5 auth on localhost
+          PG_HBA=$(sudo -u postgres psql -t -c "SHOW hba_file;" | xargs)
+          sudo sed -i 's/local\s\+all\s\+all\s\+peer/local all all md5/' "$PG_HBA"
+          sudo sed -i 's/host\s\+all\s\+all\s\+127.0.0.1\/32\s\+scram-sha-256/host all all 127.0.0.0\/8 md5/' "$PG_HBA"
+
+          # Reload config
+          sudo pg_ctlcluster 16 main reload
+
+          # Create test database
+          PGPASSWORD=postgres psql -U postgres -h localhost -c "CREATE DATABASE $PGDATABASE;"
+
+          # Verify connection
+          PGPASSWORD=postgres psql -U postgres -h localhost -d $PGDATABASE -c "SELECT version();"
+
+      # ─── 4. Apply mock Supabase environment ─────────────
+      - name: Create mock Supabase environment
+        run: |
+          echo "::group::Applying Supabase mocks (auth schema, roles, JWT stubs)"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/ci/00_mock_supabase.sql
+          echo "::endgroup::"
+
+          echo "✅ Mock Supabase environment ready"
+
+      # ─── 5. Apply schema files in order ─────────────────
+      - name: Apply schema (00-08)
+        run: |
+          SCHEMA_DIR="supabase/schema"
+          SCHEMA_FILES=(
+            "00_extensions_domains.sql"
+            "01_tables.sql"
+            "02_indexes.sql"
+            "03_functions.sql"
+            "04_views.sql"
+            "05_triggers.sql"
+            "06_rls.sql"
+            "07_seed.sql"
+            "08_privileges.sql"
+          )
+
+          for file in "${SCHEMA_FILES[@]}"; do
+            filepath="${SCHEMA_DIR}/${file}"
+            if [ ! -f "$filepath" ]; then
+              echo "❌ Missing schema file: $filepath"
+              exit 1
+            fi
+
+            echo "::group::Applying $file"
+            psql -h $PGHOST -U $PGUSER -d $PGDATABASE \
+              -v ON_ERROR_STOP=1 \
+              -f "$filepath" 2>&1
+            echo "::endgroup::"
+
+            echo "✅ $file applied"
+          done
+
+          echo ""
+          echo "═══════════════════════════════════════════"
+          echo "  All 9 schema files applied successfully"
+          echo "═══════════════════════════════════════════"
+
+      # ─── 6. Verify schema health ────────────────────────
+      - name: Verify schema integrity
+        run: |
+          echo "Checking table count..."
+          TABLE_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+          " | xargs)
+          echo "Tables: $TABLE_COUNT"
+
+          echo "Checking view count..."
+          VIEW_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM pg_views WHERE schemaname = 'public';
+          " | xargs)
+          echo "Views: $VIEW_COUNT"
+
+          echo "Checking function count..."
+          FUNC_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public';
+          " | xargs)
+          echo "Functions: $FUNC_COUNT"
+
+          echo "Checking SECURITY DEFINER functions have search_path..."
+          UNSAFE_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public'
+              AND p.prosecdef = true
+              AND pg_get_functiondef(p.oid) NOT ILIKE '%set search_path%';
+          " | xargs)
+
+          if [ "$UNSAFE_COUNT" -gt 0 ]; then
+            echo "❌ $UNSAFE_COUNT SECURITY DEFINER functions missing search_path!"
+            psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+              SELECT p.proname FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public'
+                AND p.prosecdef = true
+                AND pg_get_functiondef(p.oid) NOT ILIKE '%set search_path%';
+            "
+            exit 1
+          fi
+          echo "✅ All SECURITY DEFINER functions have search_path locked"
+
+          echo "Checking seed data..."
+          ROLE_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM roles;
+          " | xargs)
+          PERM_COUNT=$(psql -h $PGHOST -U $PGUSER -d $PGDATABASE -t -c "
+            SELECT count(*) FROM permissions;
+          " | xargs)
+          echo "Roles: $ROLE_COUNT | Permissions: $PERM_COUNT"
+
+          if [ "$ROLE_COUNT" -lt 9 ] || [ "$PERM_COUNT" -lt 25 ]; then
+            echo "❌ Seed data incomplete!"
+            exit 1
+          fi
+          echo "✅ Schema integrity verified"
+
+      # ─── 7. Bootstrap test data ─────────────────────────
+      - name: Bootstrap test environment
+        run: |
+          echo "::group::Inserting auth.users records for test FK constraints"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/ci/01_test_bootstrap.sql
+          echo "::endgroup::"
+
+          echo "✅ Test bootstrap complete"
+
+      # ─── 8. Run pgTAP tests ─────────────────────────────
+      - name: Run RLS tests
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  Running pgTAP test suite"
+          echo "═══════════════════════════════════════════"
+          echo ""
+
+          pg_prove \
+            -h $PGHOST \
+            -U $PGUSER \
+            -d $PGDATABASE \
+            --verbose \
+            supabase/test/rls_test.sql
+
+      # ─── 9. On failure: dump diagnostics ────────────────
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "═══════════════════════════════════════════"
+          echo "  DIAGNOSTICS: Schema state at failure"
+          echo "═══════════════════════════════════════════"
+
+          echo ""
+          echo "── Tables ──────────────────────────────────"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+            SELECT tablename, rowsecurity
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY tablename;
+          "
+
+          echo ""
+          echo "── RLS Policies ────────────────────────────"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+            SELECT schemaname, tablename, policyname, permissive, cmd
+            FROM pg_policies
+            WHERE schemaname = 'public'
+            ORDER BY tablename, policyname;
+          "
+
+          echo ""
+          echo "── SECURITY DEFINER functions ──────────────"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+            SELECT p.proname,
+                   pg_get_functiondef(p.oid) ILIKE '%set search_path%' AS has_search_path
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public' AND p.prosecdef = true
+            ORDER BY p.proname;
+          "
+
+          echo ""
+          echo "── Access denied log (last 20) ─────────────"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+            SELECT actor_id, action_attempted, denial_reason, created_at
+            FROM access_denied_log
+            ORDER BY created_at DESC
+            LIMIT 20;
+          "
+
+          echo ""
+          echo "── Permissions version state ───────────────"
+          psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c "
+            SELECT id, full_name, permissions_version
+            FROM profiles
+            ORDER BY id;
+          "
