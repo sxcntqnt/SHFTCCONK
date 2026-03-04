@@ -1,14 +1,18 @@
 // src/routes/auth/callback/+server.ts
 //
-// Supabase Auth Callback — Federated Governance Edition (merged & modernized)
+// Supabase Auth Callback — Federated Governance Edition (Hardened)
 //
-// Handles:
-//  - OAuth / magic-link code → session exchange
-//  - Invite token redemption (creates actor/jurisdiction/membership)
-//  - Session bootstrapping via RPC for routing decisions
-//  - Intelligent post-login routing based on profile, actors, orgs, etc.
+// Flow:
+//   1. Exchange OAuth/magic-link code for Supabase session
+//   2. If invite token present, redeem it (creates actor + jurisdiction + membership)
+//   3. Bootstrap session via RPC for routing decision
+//   4. Route to correct landing page based on actors, profile, orgs
 //
-// Client-side layout will re-hydrate via load_helper() — this is mainly for correct initial redirect.
+// HARDENING CHANGES:
+//   - Uses getUser() after code exchange to validate JWT (not just getSession)
+//   - BootstrapPayload includes permissions_version for completeness
+//   - Invite redemption captures the result for richer routing
+//   - Error responses include structured context for the login page
 
 import { redirect } from "@sveltejs/kit"
 import { isAuthApiError } from "@supabase/supabase-js"
@@ -19,63 +23,73 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
   const inviteToken = url.searchParams.get("invite")
   const next        = url.searchParams.get("next")
 
-  // ─── 1. Exchange code for session (OAuth / magic link / email OTP) ───────
+  // ─── 1. Exchange code for session ────────────────────────────
   if (code) {
     try {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
       if (error) throw error
     } catch (err) {
       if (isAuthApiError(err)) {
-        // Invalid/expired code → back to login with context
         const params = new URLSearchParams({ verified: "true" })
         if (inviteToken) params.set("invite", inviteToken)
         redirect(303, `/login/sign_in?${params.toString()}`)
       }
-      // Unexpected error — log & rethrow (or handle gracefully)
       console.error("[auth/callback] Code exchange failed:", err)
-      redirect(303, "/auth/auth-code-error") // or your error page
+      redirect(303, "/auth/auth-code-error")
     }
   }
 
-  // ─── 2. Redeem invite token if present ───────────────────────────────────
-  // Runs BEFORE bootstrap so new actor/org shows up in bootstrap payload
+  // ─── 2. Validate the session is real ─────────────────────────
+  // getUser() hits the Supabase auth server to validate the JWT.
+  // getSession() only reads cookies and is faster but less secure.
+  // Since this is a one-time callback, we use getUser() for safety.
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    console.error("[auth/callback] No valid user after code exchange:", userError)
+    redirect(303, "/login/sign_in?error=session_expired")
+  }
+
+  // ─── 3. Redeem invite token if present ───────────────────────
+  // Runs BEFORE bootstrap so the new actor appears in the payload.
+  // redeem_invite() is idempotent — if the user already has this
+  // actor+org combo, it returns { status: 'already_exists' }.
   let inviteRedeemed = false
+  let inviteResult: { status: string; actor_type?: string; organization_id?: string } | null = null
+
   if (inviteToken) {
-    const { error: inviteError } = await supabase.rpc("redeem_invite", {
+    const { data, error: inviteError } = await supabase.rpc("redeem_invite", {
       invite_token: inviteToken,
     })
 
     if (inviteError) {
       console.error("[auth/callback] Invite redemption failed:", inviteError)
-      // Non-blocking: user can still log in with existing permissions
-      // UI can show error via invite_error param if desired
+      // Non-blocking: user can still log in with existing permissions.
+      // Pass error context to the landing page if needed.
     } else {
-      inviteRedeemed = true
+      inviteResult = data as typeof inviteResult
+      inviteRedeemed = inviteResult?.status === "success"
     }
   }
 
-  // ─── 3. Bootstrap session (RPC that returns rich user context) ───────────
+  // ─── 4. Bootstrap session for routing decision ───────────────
   const { data: bootstrapData, error: bootstrapError } = await supabase.rpc(
-    "bootstrap_session"
+    "bootstrap_session",
   )
 
   if (bootstrapError || !bootstrapData) {
     console.error("[auth/callback] Bootstrap failed:", bootstrapError)
-    // Fallback — client will retry bootstrap
     redirect(303, "/account")
   }
 
-  // ─── 4. Decide final destination ─────────────────────────────────────────
-  // Priority order:
-  //   1. Explicit ?next= (if not just-redeemed invite)
-  //   2. Invite-based routing (onboarding / profile / org dashboard)
-  //   3. Actor/role-based landing page
+  // ─── 5. Route to final destination ───────────────────────────
   if (next && !inviteRedeemed) {
     redirect(303, sanitizeRedirect(next))
   }
 
-  const destination = resolveDestination(bootstrapData, {
+  const destination = resolveDestination(bootstrapData as BootstrapPayload, {
     inviteRedeemed,
+    inviteResult,
     inviteToken,
     next,
   })
@@ -83,32 +97,48 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
   redirect(303, destination)
 }
 
-// ─── Routing Decision Logic ────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────
+// Minimal shape of bootstrap_session() for routing decisions.
+// We don't need the full EffectivePermission[] here — just
+// enough to decide where to redirect.
 interface BootstrapPayload {
-  profile: { id: string; full_name: string | null } | null
+  profile: {
+    id: string
+    full_name: string | null
+    permissions_version: number
+  } | null
   actors: Array<{ id: string; type: string; status: string }>
   jurisdictions: Array<{ actor_id: string; level: string; scope_id: string | null }>
   organization_memberships: Array<{ organization_id: string; role: string; org_name: string }>
   policy_groups: Array<{ group_name: string; level: string; scope_id: string | null }>
 }
 
+interface RoutingContext {
+  inviteRedeemed: boolean
+  inviteResult: { status: string; actor_type?: string; organization_id?: string } | null
+  inviteToken: string | null
+  next: string | null
+}
+
+// ─── Routing Decision Logic ────────────────────────────────────
 function resolveDestination(
   session: BootstrapPayload,
-  ctx: { inviteRedeemed: boolean; inviteToken: string | null; next: string | null }
+  ctx: RoutingContext,
 ): string {
   if (!session.profile) {
     return "/account"
   }
 
   const { profile, actors, organization_memberships: orgs } = session
-  const activeActors = actors.filter(a => a.status === "active")
-  const profileIncomplete = !profile.full_name || profile.full_name.trim() === "User"
+  const activeActors = actors.filter((a) => a.status === "active")
+  const profileIncomplete =
+    !profile.full_name || profile.full_name.trim() === "User"
 
   const hasOnlyPassenger =
     activeActors.length === 0 ||
     (activeActors.length === 1 && activeActors[0].type === "PASSENGER")
 
-  // New / incomplete user with passenger-only → onboarding
+  // New/incomplete user with passenger-only → onboarding
   if (hasOnlyPassenger && profileIncomplete) {
     const params = new URLSearchParams()
     if (ctx.inviteRedeemed && ctx.inviteToken) {
@@ -118,16 +148,23 @@ function resolveDestination(
     return `/onboarding${qs ? `?${qs}` : ""}`
   }
 
-  // Just accepted invite → complete profile if needed, else org dashboard
-  if (ctx.inviteRedeemed) {
+  // Just accepted invite → profile completion or org dashboard
+  if (ctx.inviteRedeemed && ctx.inviteResult) {
     if (profileIncomplete) {
       return "/account?complete_profile=true"
     }
-    // Single org → go straight there
+
+    // If the invite specified an org, go straight to that org's dashboard
+    const inviteOrgId = ctx.inviteResult.organization_id
+    if (inviteOrgId) {
+      return `/org/${inviteOrgId}/dashboard`
+    }
+
+    // Fallback: single org → go there, else dashboard
     if (orgs.length === 1) {
       return `/org/${orgs[0].organization_id}/dashboard`
     }
-    return "/dashboard" // or "/org/select" if you prefer
+    return "/dashboard"
   }
 
   // Explicit next (already checked !inviteRedeemed above)
@@ -135,8 +172,8 @@ function resolveDestination(
     return sanitizeRedirect(ctx.next)
   }
 
-  // ─── Actor/role-based priority routing ────────────────────────────────
-  const actorTypes = new Set(activeActors.map(a => a.type))
+  // ─── Actor/role-based priority routing ───────────────────────
+  const actorTypes = new Set(activeActors.map((a) => a.type))
 
   if (actorTypes.has("ADMIN")) {
     return "/admin/dashboard"
@@ -147,7 +184,7 @@ function resolveDestination(
   }
 
   const orgActorTypes = ["ORGANIZATION", "STAGE_OPERATOR", "OWNER"]
-  if (orgActorTypes.some(t => actorTypes.has(t))) {
+  if (orgActorTypes.some((t) => actorTypes.has(t))) {
     if (orgs.length === 1) {
       return `/org/${orgs[0].organization_id}/dashboard`
     }
@@ -165,13 +202,12 @@ function resolveDestination(
   return "/dashboard"
 }
 
-// ─── Prevent open redirect attacks ─────────────────────────────────────────
+// ─── Prevent open redirect attacks ─────────────────────────────
 function sanitizeRedirect(path: string): string {
   if (!path || !path.startsWith("/") || path.startsWith("//")) {
     return "/dashboard"
   }
 
-  // Block protocol-relative or absolute external URLs
   try {
     const url = new URL(path, "http://localhost")
     if (url.hostname !== "localhost") {

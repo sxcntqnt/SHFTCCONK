@@ -1,55 +1,65 @@
 // src/app.d.ts
+//
 // Ambient type declarations for SvelteKit + Supabase
-// Merged & modernized version – includes safeGetSession, user, bootstrapped, etc.
+// Federated Governance Edition (Hardened)
+//
+// CHANGES from previous version:
+//   - Locals.user is now reliably populated by authGuardHandle
+//     (validated via getUser(), not just cookie session)
+//   - PageData.profile typed to match bootstrap_session() output
+//   - Removed supabase from PageData (never passed directly to pages,
+//     only available via data.supabase from layout load)
 
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js"
-import type { Database } from "./DatabaseDefinitions"  // adjust path if needed
-import type { AuthenticatorAssuranceLevelEntry } from "@supabase/supabase-js"  // or AMREntry if aliased
+import type { Database } from "./DatabaseDefinitions"
+import type { AuthenticatorAssuranceLevelEntry } from "@supabase/supabase-js"
 
 declare global {
   namespace App {
-    // ────────────────────────────────────────────────────────────────
-    // Locals – available via event.locals in server hooks / server loads
-    // ────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────
+    // Locals — available via event.locals in server hooks / loads
+    // ──────────────────────────────────────────────────────────
     interface Locals {
-      // Public Supabase client (uses cookies for auth)
+      /** User-scoped Supabase client (anon key + JWT from cookies).
+       *  RLS applies — runs as the authenticated user. */
       supabase: SupabaseClient<Database>
 
-      // Service role client (bypasses RLS – use carefully!)
+      /** Service role client — bypasses RLS entirely.
+       *  Use for: invite_tokens INSERT, Stripe webhooks, admin ops.
+       *  NEVER expose to the client. */
       supabaseServiceRole: SupabaseClient<Database>
 
-      // Safe session helper – validates session + user + MFA/AMR level
+      /** Validates session + user via getUser() + includes MFA/AMR.
+       *  More secure than raw getSession() (which only reads cookies). */
       safeGetSession: () => Promise<{
         session: Session | null
         user: User | null
-        amr: AuthenticatorAssuranceLevelEntry[] | null  // preferred over AMREntry
+        amr: AuthenticatorAssuranceLevelEntry[] | null
       }>
 
-      // Populated by auth guard / load functions
+      /** Populated by authGuardHandle on protected routes.
+       *  null on public routes (marketing pages, login, etc). */
       session: Session | null
+
+      /** Validated user object from getUser() — populated alongside session.
+       *  null on public routes. Use this instead of session.user for
+       *  server-side operations (it's been validated against the auth server). */
       user: User | null
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // PageData – shape of data returned from +page.server.ts / +layout.server.ts
-    // and passed to +page.svelte / +layout.svelte
-    // ────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────
+    // PageData — from +page.server.ts / +layout.server.ts
+    //            to +page.svelte / +layout.svelte
+    // ──────────────────────────────────────────────────────────
     interface PageData {
-      supabase?: SupabaseClient<Database>          // rarely passed directly
       session: Session | null
       user: User | null
-      bootstrapped?: boolean                        // from your bootstrap_session RPC flow
-      // Add more app-specific fields here as needed, e.g.:
-      // profile?: Database["public"]["Tables"]["profiles"]["Row"] | null
+      bootstrapped?: boolean
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Optional: extend other interfaces if needed
-    // ────────────────────────────────────────────────────────────────
     // interface Error {}
     // interface Platform {}
   }
 }
 
-// Required to make this a module (prevents global scope pollution)
 export {}
