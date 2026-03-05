@@ -8,7 +8,7 @@ import { redirect } from "@sveltejs/kit"
 import { get } from "svelte/store"
 import { sessionStore, profileComplete } from "$lib/stores/auth.store"
 import { CreateProfileStep } from "../../config"
-import type { LayoutLoad } from "./$types"
+import type { LayoutLoad } from "../../admin/account/(menu)/$types"
 
 export const load: LayoutLoad = async ({ parent, url }) => {
   const { supabase, session, user, bootstrapped } = await parent()
