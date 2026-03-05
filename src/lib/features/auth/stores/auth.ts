@@ -1,29 +1,33 @@
 /**
- * auth.store.ts — Federated Governance Edition (Hardened)
+ * auth.store.ts — Federated Governance Edition (Optimized)
  *
- * Changes from previous version:
+ * Changes from previous hardened version:
  *
- *   KILL-SWITCH INTEGRATION
- *   - Profile now carries `permissions_version` from DB
- *   - Store tracks `permissionsVersion` (from bootstrap) and compares
- *     it against the JWT's `permissions_version` claim
- *   - `checkVersionAndRefresh()` forces a session refresh when they
- *     diverge — the DB-side my_permissions view returns zero rows
- *     on mismatch, so the frontend must stay in sync
+ *   AGGREGATION-AWARE PERMISSION CHECKS
+ *   - The my_permissions view now aggregates per (actor, action, scope, level)
+ *     and resolves deny > allow within the same scope at the DB level.
+ *   - Client-side can() no longer needs to de-duplicate same-scope conflicts.
+ *   - Cross-scope deny precedence is still checked client-side (a federal
+ *     deny and an org allow are two separate rows from the view).
  *
- *   PERMISSIONS INCLUDED IN BOOTSTRAP
- *   - bootstrap_session() now returns `permissions` in the payload
- *   - No separate loadPermissions() call needed on init
- *   - loadPermissions() kept as a manual refresh for after mutations
+ *   canAnyActor() FIX
+ *   - Previously checked ALL denies across ALL actors globally, which meant
+ *     a deny on Actor A would block Actor B even if B had an allow.
+ *   - Now checks deny/allow per-actor and returns true if ANY actor
+ *     has an unblocked allow.
  *
- *   MULTI-ACTOR ORG RESOLUTION
- *   - getJurisdictionOrgIds() now scans ALL actors, not just active
- *   - Needed for org picker routing (user may have driver in org A,
- *     owner in org B — both should appear)
+ *   FEDERAL PERMISSIONS NOW WORK
+ *   - The my_permissions view fix (BUG 6) restores federal-level
+ *     permissions. Admin/regulator queries now return actual results.
+ *   - Added admin-aware helpers: canManageUsers(), canViewAudit()
  *
- *   TYPE SAFETY
- *   - SupabaseClient type extracted for reuse
- *   - Stricter BootstrapSessionPayload with permissions field
+ *   NEW HELPERS
+ *   - canInOrg(action, orgId) — most common permission check pattern
+ *   - canInOrgReactive(action, orgId) — reactive version
+ *   - canManageUsers() — checks admin.users at federal level
+ *   - canManageOrg(orgId) — checks org.manage scoped to org
+ *   - canViewAudit() — checks audit.view at federal level
+ *   - getPermittedActions(actorId?) — lists allowed actions for an actor
  *
  * IMPORTANT: All frontend permission checks are for UI gating only.
  * The real enforcement is RLS + can_actor_perform() + my_permissions
@@ -112,11 +116,14 @@ export interface PolicyGroupBinding {
  * Effective permission for an actor, from the my_permissions view
  * or bootstrap_session(). Used for UI gating only.
  *
- * The DB-side my_permissions view already enforces:
- *   - JWT version = DB version (kill-switch)
- *   - Jurisdiction ∩ permission scope (double-gate)
- *   - Only current user's actors
- * So what arrives here is already filtered and safe to cache.
+ * POST-OPTIMIZATION GUARANTEE:
+ *   The DB view aggregates per (actor_id, action, scope_id, level)
+ *   and resolves deny > allow within that group. So for any given
+ *   (actor, action, scope, level) there is exactly ONE row — either
+ *   'allow' or 'deny', never both.
+ *
+ *   Cross-scope conflicts (e.g., federal deny + org allow) still
+ *   produce two separate rows and must be handled client-side.
  */
 export interface EffectivePermission {
   actor_id: string
@@ -188,6 +195,7 @@ export interface SessionState {
   policyGroups: PolicyGroupBinding[]
 
   // Effective permissions (from bootstrap or loadPermissions)
+  // POST-OPTIMIZATION: pre-aggregated, one row per (actor, action, scope, level)
   permissions: EffectivePermission[]
 
   // DB permissions_version at time of last bootstrap
@@ -271,6 +279,32 @@ export const isVersionStale = derived(sessionStore, ($s) => {
   return $s.profile.permissions_version !== $s.permissionsVersion
 })
 
+/**
+ * True if the user has any federal-level jurisdiction (admin/regulator).
+ * Reactive — updates on actor switch or permission reload.
+ */
+export const hasFederalAccess = derived(sessionStore, ($s) =>
+  $s.jurisdictions.some(
+    (j) => j.actor_id === $s.activeActorId && j.level === "federal",
+  ),
+)
+
+/**
+ * List of distinct allowed actions for the active actor.
+ * Useful for feature-flag style UI gating.
+ */
+export const allowedActions = derived(sessionStore, ($s) =>
+  [
+    ...new Set(
+      $s.permissions
+        .filter(
+          (p) => p.actor_id === $s.activeActorId && p.effect === "allow",
+        )
+        .map((p) => p.action),
+    ),
+  ],
+)
+
 /* ============================================================
    BOOTSTRAP INITIALIZER
    Called with the payload from: supabase.rpc('bootstrap_session')
@@ -336,12 +370,6 @@ export async function checkVersionAndRefresh(
 ): Promise<boolean> {
   const s = get(sessionStore)
   if (!s.initialized || !s.profile) return false
-
-  // Quick check: does the store's version match the profile's?
-  // After bootstrap, these are equal. They diverge if:
-  //   1. Another tab changed permissions (profile reloaded but JWT stale)
-  //   2. An admin changed this user's permissions server-side
-  //   3. A trigger bumped the version during this session
 
   // Fetch current version from DB (single lightweight query)
   const { data, error } = await supabase.rpc("bootstrap_session")
@@ -475,21 +503,27 @@ export function switchActor(actorId: string): void {
 /* ============================================================
    PERMISSION CHECKS — for UI gating only.
 
-   These operate on the cached effective_permissions.
-   The DB enforces the real authorization via RLS.
+   POST-OPTIMIZATION DESIGN:
+   The my_permissions view now aggregates per (actor, action, scope, level)
+   and resolves deny > allow within that scope group. So for any given
+   (actor, action, scope, level) tuple there is exactly ONE row.
 
-   Design: check by ACTION string (e.g. "vehicle.view"),
-   not by role. This aligns with atomic permissions.
+   Cross-scope deny precedence still applies:
+     - A deny at federal scope blocks everything
+     - A deny at org scope blocks branch/dept allows within that org
+   The client handles this via scopeCovers() in the deny check.
 
-   The permissions stored here have already passed the
-   DB-side double-gate (jurisdiction ∩ permission scope)
-   and version check. So client-side scope checks are
-   an additional UI refinement, not a security boundary.
+   Check by ACTION string (e.g. "vehicle.view"), not by role.
+   This aligns with atomic, revocable, jurisdiction-scoped permissions.
 ============================================================ */
 
 /**
  * Check if the active actor has a specific permission.
  * Optionally scope to a jurisdiction level + scope_id.
+ *
+ * Deny precedence: a deny at a broader scope overrides an allow
+ * at a narrower scope (e.g., federal deny blocks org allow).
+ * Same-scope conflicts are pre-resolved by the DB (deny wins).
  */
 export function can(
   action: string,
@@ -498,41 +532,75 @@ export function can(
   const s = get(sessionStore)
   if (!s.activeActorId) return false
 
-  // Check for deny first (deny overrides allow, matching DB behavior)
-  const hasDeny = s.permissions.some(
+  return _canForActor(s, s.activeActorId, action, scope)
+}
+
+/**
+ * Check if ANY of the user's active actors has an unblocked permission.
+ * Useful for routing decisions where actor auto-switching will happen.
+ *
+ * FIX: Previous version checked denies globally across all actors.
+ * A deny on Actor A would block Actor B even if B had an allow.
+ * Now checks per-actor: returns true if at least one actor has
+ * an unblocked allow.
+ */
+export function canAnyActor(action: string): boolean {
+  const s = get(sessionStore)
+
+  // Check each active actor independently
+  for (const actor of s.actors) {
+    if (actor.status !== "active") continue
+    if (_canForActor(s, actor.id, action)) return true
+  }
+
+  return false
+}
+
+/**
+ * Internal: check permission for a specific actor, with deny precedence.
+ * Shared by can() and canAnyActor() to avoid logic duplication.
+ */
+function _canForActor(
+  s: SessionState,
+  actorId: string,
+  action: string,
+  scope?: { level: JurisdictionLevel; scopeId: string | null },
+): boolean {
+  const actorPerms = s.permissions.filter(
+    (p) => p.actor_id === actorId && p.action === action,
+  )
+
+  // No permissions for this action at all
+  if (actorPerms.length === 0) return false
+
+  // Check for deny at covering scope (broader scope denies override narrower allows)
+  const hasDeny = actorPerms.some(
     (p) =>
-      p.actor_id === s.activeActorId &&
-      p.action === action &&
       p.effect === "deny" &&
       (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId)),
   )
   if (hasDeny) return false
 
   // Check for allow
-  return s.permissions.some(
+  return actorPerms.some(
     (p) =>
-      p.actor_id === s.activeActorId &&
-      p.action === action &&
       p.effect === "allow" &&
       (!scope || scopeCovers(p.level, p.scope_id, scope.level, scope.scopeId)),
   )
 }
 
 /**
- * Check if ANY of the user's actors (not just active) has a permission.
- * Useful for routing decisions where actor auto-switching will happen.
+ * Check permission scoped to a specific organization.
+ * This is the most common check pattern in the app.
+ *
+ * Equivalent to: can(action, { level: "org", scopeId: orgId })
+ * but more readable in templates and route guards.
+ *
+ * Usage:
+ *   if (canInOrg("vehicle.view", orgId)) { ... }
  */
-export function canAnyActor(action: string): boolean {
-  const s = get(sessionStore)
-
-  const hasDeny = s.permissions.some(
-    (p) => p.action === action && p.effect === "deny",
-  )
-  if (hasDeny) return false
-
-  return s.permissions.some(
-    (p) => p.action === action && p.effect === "allow",
-  )
+export function canInOrg(action: string, orgId: string): boolean {
+  return can(action, { level: "org", scopeId: orgId })
 }
 
 /**
@@ -559,21 +627,24 @@ export function canAll(...actions: string[]): boolean {
 export function canReactive(action: string) {
   return derived(sessionStore, ($s) => {
     if (!$s.activeActorId) return false
+    return _canForActor($s, $s.activeActorId, action)
+  })
+}
 
-    const hasDeny = $s.permissions.some(
-      (p) =>
-        p.actor_id === $s.activeActorId &&
-        p.action === action &&
-        p.effect === "deny",
-    )
-    if (hasDeny) return false
-
-    return $s.permissions.some(
-      (p) =>
-        p.actor_id === $s.activeActorId &&
-        p.action === action &&
-        p.effect === "allow",
-    )
+/**
+ * Reactive store for org-scoped permission check.
+ *
+ * Usage:
+ *   const canManage = canInOrgReactive("org.manage", orgId)
+ *   {#if $canManage} ... {/if}
+ */
+export function canInOrgReactive(action: string, orgId: string) {
+  return derived(sessionStore, ($s) => {
+    if (!$s.activeActorId) return false
+    return _canForActor($s, $s.activeActorId, action, {
+      level: "org",
+      scopeId: orgId,
+    })
   })
 }
 
@@ -588,24 +659,87 @@ export function canScopedReactive(
 ) {
   return derived(sessionStore, ($s) => {
     if (!$s.activeActorId) return false
-
-    const hasDeny = $s.permissions.some(
-      (p) =>
-        p.actor_id === $s.activeActorId &&
-        p.action === action &&
-        p.effect === "deny" &&
-        scopeCovers(p.level, p.scope_id, level, scopeId),
-    )
-    if (hasDeny) return false
-
-    return $s.permissions.some(
-      (p) =>
-        p.actor_id === $s.activeActorId &&
-        p.action === action &&
-        p.effect === "allow" &&
-        scopeCovers(p.level, p.scope_id, level, scopeId),
-    )
+    return _canForActor($s, $s.activeActorId, action, { level, scopeId })
   })
+}
+
+/* ============================================================
+   ADMIN / PLATFORM PERMISSION HELPERS
+
+   These check federal-level permissions that were previously
+   broken (BUG 6: federal permissions silently dropped).
+   Now that the my_permissions view properly handles federal
+   jurisdiction, these actually return correct results.
+
+   Backed by RLS policies:
+     - profiles_select_admin (admin.users at federal)
+     - actors_select_admin (admin.users at federal)
+     - audit_logs_select (audit.view at federal)
+============================================================ */
+
+/**
+ * Check if the active actor can manage user accounts.
+ * Maps to `admin.users` permission at federal level.
+ * Used to gate: user list, profile editing, actor deactivation.
+ */
+export function canManageUsers(): boolean {
+  return can("admin.users", { level: "federal", scopeId: null })
+}
+
+/**
+ * Check if the active actor can manage a specific organization.
+ * Maps to `org.manage` permission scoped to the org.
+ * Used to gate: member management, invite sending, settings.
+ */
+export function canManageOrg(orgId: string): boolean {
+  return canInOrg("org.manage", orgId)
+}
+
+/**
+ * Check if the active actor can view audit logs.
+ * Maps to `audit.view` permission at federal level.
+ * Used to gate: audit log pages, access denied log.
+ */
+export function canViewAudit(): boolean {
+  return can("audit.view", { level: "federal", scopeId: null })
+}
+
+/**
+ * Check if the active actor has full platform admin access.
+ * Maps to `admin.full` permission at federal level.
+ */
+export function canAdminFull(): boolean {
+  return can("admin.full", { level: "federal", scopeId: null })
+}
+
+/**
+ * Get the list of allowed actions for a specific actor (or active actor).
+ * Useful for feature-flag style checks and debugging.
+ */
+export function getPermittedActions(actorId?: string): string[] {
+  const s = get(sessionStore)
+  const targetId = actorId ?? s.activeActorId
+  if (!targetId) return []
+
+  const allowed = new Set<string>()
+  const denied = new Set<string>()
+
+  for (const p of s.permissions) {
+    if (p.actor_id !== targetId) continue
+    if (p.effect === "deny") {
+      denied.add(p.action)
+    } else {
+      allowed.add(p.action)
+    }
+  }
+
+  // Remove any actions that have a deny at any scope
+  // (conservative — a federal deny blocks even if org allow exists)
+  for (const action of denied) {
+    allowed.delete(action)
+  }
+
+  return [...allowed]
 }
 
 /* ============================================================
@@ -613,9 +747,9 @@ export function canScopedReactive(
 ============================================================ */
 
 const LEVEL_RANK: Record<JurisdictionLevel, number> = {
-  federal: 0,
-  org: 1,
-  branch: 2,
+  federal:    0,
+  org:        1,
+  branch:     2,
   department: 3,
 }
 
@@ -623,8 +757,16 @@ const LEVEL_RANK: Record<JurisdictionLevel, number> = {
  * Returns true if a permission at (permLevel, permScope) covers
  * a resource at (resLevel, resScope).
  *
- * Client-side approximation. The DB function scope_covers_resource()
- * does the real check against the actual hierarchy tables.
+ * This is a client-side approximation. The DB-side scope join in
+ * my_permissions does the real check against the actual hierarchy
+ * tables (branches → organizations, departments → branches).
+ *
+ * Client-side simplification:
+ *   - Federal covers everything
+ *   - Same level: must match scope_id
+ *   - Broader level (lower rank): assumed to cover narrower
+ *     (imprecise — we don't have branch→org mapping client-side,
+ *      but the DB already filtered, so this is a safe approximation)
  */
 function scopeCovers(
   permLevel: JurisdictionLevel,
@@ -632,9 +774,13 @@ function scopeCovers(
   resLevel: JurisdictionLevel,
   resScope: string | null,
 ): boolean {
+  // Federal covers everything
   if (permLevel === "federal") return true
+  // Same level: must be same scope
   if (permLevel === resLevel) return permScope === resScope
+  // Broader level covers narrower (org covers branch, branch covers dept)
   if (LEVEL_RANK[permLevel] < LEVEL_RANK[resLevel]) return true
+  // Narrower cannot cover broader
   return false
 }
 
@@ -652,6 +798,14 @@ export function hasJurisdictionAt(
       LEVEL_RANK[j.level] <= LEVEL_RANK[level] &&
       (j.level === "federal" || !scopeId || j.scope_id === scopeId),
   )
+}
+
+/**
+ * Check if the active actor has federal-level jurisdiction.
+ * Shortcut for hasJurisdictionAt("federal").
+ */
+export function hasFederalJurisdiction(): boolean {
+  return hasJurisdictionAt("federal")
 }
 
 /**
@@ -704,16 +858,29 @@ export function getActorOrgIds(actorId: string): string[] {
  * Find the best actor to use for accessing a specific org.
  * Returns the actor_id or null if no access.
  * Used by org layout guards for auto-switching.
+ *
+ * Priority: federal jurisdiction first (broadest access),
+ * then org-level jurisdiction matching the target org.
  */
 export function findActorForOrg(orgId: string): string | null {
   const s = get(sessionStore)
 
+  // First pass: prefer federal-jurisdiction actors
   for (const j of s.jurisdictions) {
-    const actor = s.actors.find((a) => a.id === j.actor_id && a.status === "active")
-    if (!actor) continue
+    if (j.level !== "federal") continue
+    const actor = s.actors.find(
+      (a) => a.id === j.actor_id && a.status === "active",
+    )
+    if (actor) return actor.id
+  }
 
-    if (j.level === "federal") return j.actor_id
-    if (j.level === "org" && j.scope_id === orgId) return j.actor_id
+  // Second pass: org-level jurisdiction for this specific org
+  for (const j of s.jurisdictions) {
+    if (j.level !== "org" || j.scope_id !== orgId) continue
+    const actor = s.actors.find(
+      (a) => a.id === j.actor_id && a.status === "active",
+    )
+    if (actor) return actor.id
   }
 
   return null
@@ -816,12 +983,12 @@ export function patchProfile(updates: Partial<Profile>): void {
    Remove once all consuming components are migrated.
 ============================================================ */
 
-/** @deprecated Use `can('org.manage')` instead */
+/** @deprecated Use `can('org.manage')` or `canManageOrg(orgId)` */
 export function isOrgAdmin(): boolean {
   return canAny("org.manage")
 }
 
-/** @deprecated Use `isActorType(ROLES.REGULATOR)` or `can(...)` */
+/** @deprecated Use `isActorType(ROLES.REGULATOR)` or `canViewAudit()` */
 export function isRegulatory(): boolean {
   const actor = get(activeActor)
   return actor?.type === ROLES.REGULATOR || actor?.type === ROLES.PLANNER
