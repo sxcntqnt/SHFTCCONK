@@ -1,51 +1,36 @@
-// src/routes/crew/+layout.ts
+// src/routes/(auth)/crew/+layout.ts
 //
-// Crew section: for drivers and conductors.
-// Auto-switches to the operational actor, loads assignment data.
+// Crew section layout (drivers + conductors).
+// Guard: requireCrewAccess → DRIVER or CONDUCTOR actor, auto-switches.
+//
+// Data: loads the active crew member's vehicle assignment.
+// This IS layout-level data (not page-level) because the crew
+// sidebar/header shows the assigned vehicle across all crew pages
+// (dashboard, incidents, etc.)
 
-import { redirect } from "@sveltejs/kit"
-import { get } from "svelte/store"
-import {
-  sessionStore,
-  activeActor,
-  switchActor,
-  ROLES,
-} from "$lib/stores/auth.store"
 import type { LayoutLoad } from "./$types"
+import { get } from "svelte/store"
+import { requireCrewAccess } from "$lib/guards/auth.guard"
+import { sessionStore, ROLES } from "$lib/features/auth/stores/auth"
 
-const CREW_TYPES = [ROLES.DRIVER, ROLES.CONDUCTOR] as string[]
+export const load: LayoutLoad = async (event) => {
+  await requireCrewAccess(event)
 
-export const load: LayoutLoad = async ({ parent, url }) => {
-  const { supabase, session, user } = await parent()
-
-  // ─── Auth guard ───────────────────────────────────────────
-  if (!session || !user) {
-    redirect(303, `/login/sign_in?next=${encodeURIComponent(url.pathname)}`)
-  }
-
+  const { supabase, session, user } = await event.parent()
   const s = get(sessionStore)
 
-  // ─── Crew actor guard ─────────────────────────────────────
-  const crewActor = s.actors.find(
-    (a) => CREW_TYPES.includes(a.type) && a.status === "active",
-  )
-
-  if (!crewActor) {
-    redirect(303, "/dashboard?reason=not_crew")
-  }
-
-  // Auto-switch to crew actor
-  const current = get(activeActor)
-  if (!current || !CREW_TYPES.includes(current.type)) {
-    switchActor(crewActor.id)
-  }
-
-  // ─── Load crew-specific data ──────────────────────────────
-  const activeCrewActorId = crewActor.id
-
-  // Load assignment based on actor type
+  // After requireCrewAccess, the active actor is guaranteed to be
+  // DRIVER or CONDUCTOR (guard auto-switched if needed).
+  const crewActorId = s.activeActorId!
+  const crewActor = s.actors.find((a) => a.id === crewActorId)!
   const isDriver = crewActor.type === ROLES.DRIVER
-  const assignmentTable = isDriver ? "driver_assignments" : "conductor_assignments"
+
+  // ─── Load vehicle assignment ──────────────────────────────
+  // driver_assignments and conductor_assignments have the same
+  // shape (actor_id, vehicle_id, active_trip_id) but different tables.
+  const assignmentTable = isDriver
+    ? "driver_assignments"
+    : "conductor_assignments"
 
   const { data: assignment } = await supabase
     .from(assignmentTable)
@@ -62,7 +47,7 @@ export const load: LayoutLoad = async ({ parent, url }) => {
         organizations ( id, name )
       )
     `)
-    .eq("actor_id", activeCrewActorId)
+    .eq("actor_id", crewActorId)
     .maybeSingle()
 
   return {

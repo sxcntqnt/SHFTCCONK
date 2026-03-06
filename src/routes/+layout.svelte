@@ -2,13 +2,22 @@
 <!--
   Root layout: auth state listener + navigation progress bar.
 
-  HARDENING CHANGES:
-    - On TOKEN_REFRESHED: calls checkVersionAndRefresh() to detect
-      permission changes that happened while the session was active
-    - Periodic version polling (every 60s) for long-lived sessions
-      so revoked users get kicked within ~1 minute instead of waiting
-      for the next navigation
-    - SIGNED_OUT handler clears the session store before redirect
+  RESPONSIBILITIES:
+    - Listens to Supabase auth state changes (login, logout, token refresh)
+    - Triggers permission version checks on TOKEN_REFRESHED events
+    - Polls for permission revocations every 60s (long-lived sessions)
+    - Shows a navigation progress bar during page transitions
+
+  KILL-SWITCH INTEGRATION:
+    When an admin revokes permissions while a user is active:
+      1. TOKEN_REFRESHED event → checkVersionAndRefresh() detects mismatch
+      2. Periodic polling (60s) → catches it even without a token refresh
+      3. Either path: re-bootstraps store → UI re-renders with new permissions
+
+  ALIGNED WITH:
+    - auth.store.ts: checkVersionAndRefresh(), clearSession(), sessionStore
+    - hooks.server.ts: supabase client from locals
+    - +layout.ts: provides { supabase, session } via data
 -->
 <script lang="ts">
   import "../app.css"
@@ -21,7 +30,6 @@
     sessionStore,
     clearSession,
     checkVersionAndRefresh,
-    isVersionStale,
   } from "$lib/features/auth/stores/auth"
 
   interface Props {
@@ -35,37 +43,31 @@
 
   let { supabase, session } = $state(data)
 
-  // Keep local refs in sync with load data
+  // Keep local refs in sync when load data changes (navigation, invalidation)
   $effect(() => {
     ;({ supabase, session } = data)
   })
 
-  // ─── Auth state listener ────────────────────────────────────
-  // Triggers re-bootstrap when session changes (login, logout,
-  // token refresh, MFA step-up).
+  // ─── Auth state listener + version polling ──────────────────
   onMount(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        // Session expiry changed → invalidate to re-run load functions
+        // Session expiry changed → re-run load functions
         if (newSession?.expires_at !== session?.expires_at) {
           invalidate("supabase:auth")
         }
 
-        // Token refreshed → check if permission version has changed.
-        // This catches the scenario where an admin revoked permissions
-        // while the user's session was active. The new JWT from
-        // refreshSession() will have an updated permissions_version,
-        // and if it doesn't match the DB, my_permissions returns nothing.
+        // Token refreshed → check if permissions were revoked/changed.
+        // checkVersionAndRefresh() compares store version vs DB version.
+        // If they diverge, it forces a JWT refresh + store re-hydration.
         if (event === "TOKEN_REFRESHED") {
           const refreshed = await checkVersionAndRefresh(supabase)
           if (refreshed) {
-            // Store was re-hydrated with new permissions.
-            // Invalidate to re-run load functions with fresh data.
             invalidate("supabase:auth")
           }
         }
 
-        // Signed out → clear store, redirect to home
+        // Signed out → clear store, go home
         if (event === "SIGNED_OUT") {
           clearSession()
           goto("/")
@@ -74,10 +76,13 @@
     )
 
     // ─── Periodic version polling ─────────────────────────────
-    // For long-lived sessions (user leaves tab open for hours),
-    // check every 60s whether their permissions were revoked.
-    // checkVersionAndRefresh() is cheap: one RPC call, and it
-    // only triggers a full refresh if the version diverged.
+    // For long-lived sessions (user leaves tab open for hours).
+    // checkVersionAndRefresh() is cheap:
+    //   - One bootstrap_session() RPC call
+    //   - Early exit if versions match (no JWT refresh, no store update)
+    //   - Only triggers full refresh when permissions actually changed
+    const POLL_INTERVAL_MS = 60_000 // 60 seconds
+
     const versionPollInterval = setInterval(async () => {
       const s = $sessionStore
       if (!s.initialized || !s.profile) return
@@ -86,8 +91,9 @@
       if (refreshed) {
         invalidate("supabase:auth")
       }
-    }, 60_000) // 60 seconds
+    }, POLL_INTERVAL_MS)
 
+    // Cleanup on unmount
     return () => {
       subscription.subscription.unsubscribe()
       clearInterval(versionPollInterval)

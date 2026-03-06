@@ -1,56 +1,42 @@
 // src/routes/+layout.server.ts
-import type { LayoutServerLoad } from './$types'
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public'
-import { createServerClient } from '@supabase/ssr'
-import { initSession, clearSession, type BootstrapSessionPayload } from '$lib/features/auth/stores/auth' // if you want server-side init too (optional)
+//
+// Server-side root layout — passes session context to the client.
+//
+// ARCHITECTURE:
+//   hooks.server.ts creates the Supabase client and validates the
+//   session via safeGetSession(). This file just passes the results
+//   through to the client-side +layout.ts, which handles:
+//     - Creating the browser Supabase client
+//     - Running bootstrap_session() RPC (one call, client-side only)
+//     - Hydrating the auth store
+//
+//   We do NOT bootstrap server-side because:
+//     1. It would double the RPC calls (server bootstrap + client re-bootstrap)
+//     2. The Svelte store is client-side only — server can't hydrate it
+//     3. SvelteKit's data flow (server load → client load) already handles
+//        passing the session, and the client load creates the browser client
+//        that the store and all components use
+//
+// WHAT THIS FILE DOES:
+//   - Reads session + user from locals (set by hooks.server.ts authGuardHandle)
+//   - Passes cookies for the client-side Supabase client (SSR cookie sync)
+//   - Returns session, user, cookies to +layout.ts via `data`
 
-export const load: LayoutServerLoad = async ({ cookies, url }) => {
-  const supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-    cookies: {
-      getAll: () => cookies.getAll(),
-      setAll: (cookiesToSet) => {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          cookies.set(name, value, { ...options, path: '/' })
-        })
-      }
-    }
-  })
+import type { LayoutServerLoad } from "./$types"
 
-  const { data: { session } } = await supabase.auth.getSession()
-
-  if (!session) {
-    return {
-      session: null,
-      user: null,
-      profile: null,
-      bootstrapped: false
-    }
-  }
-
-  // Optional: you can bootstrap here on server if RPC is fast & doesn't depend on client-only things
-  const { data: payload, error } = await supabase.rpc('bootstrap_session')
-
-  if (error || !payload) {
-    console.error('[layout.server] Bootstrap failed', error)
-    return {
-      session,
-      user: session.user,
-      profile: null,
-      bootstrapped: false
-    }
-  }
-
-  const bootstrapData = payload as BootstrapSessionPayload & { permissions?: any[] }
-
-  // You can init store here too if you want (but usually better on client for reactivity)
-  // initSession(bootstrapData, { inviteScoped: url.searchParams.get('complete_profile') === 'true' })
-
+export const load: LayoutServerLoad = async ({
+  locals: { session, user },
+  cookies,
+}) => {
   return {
+    // Session object (from safeGetSession in hooks)
     session,
-    user: session.user,
-    profile: bootstrapData.profile,
-    bootstrapped: true,
-    // Pass any other needed data (permissions, actors, etc.)
-    bootstrapData // or just the fields you need
+
+    // Validated user (from getUser() — not just cookie parsing)
+    // null on public routes where authGuardHandle didn't run
+    user,
+
+    // All cookies for the client-side Supabase client to sync with
+    cookies: cookies.getAll(),
   }
 }

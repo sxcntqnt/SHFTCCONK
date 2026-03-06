@@ -1,52 +1,48 @@
-// src/routes/api/invite/+server.ts
+// src/routes/(auth)/admin/account/api/invite/+server.ts
 //
-// Invite Management — Federated Governance Edition
+// Invite Management — Federated Governance (Production)
 //
-// Replaces the old flat invite system. Key differences:
+// Aligned with:
+//   - DatabaseDefinitions.ts (full schema types)
+//   - hooks.server.ts (safeGetSession → locals.session + locals.user)
+//   - can_actor_perform() actual signature (actor_uuid, action_text, res_org)
+//   - Optimized my_permissions view (aggregated, deny-wins, federal-aware)
+//   - auth.store.ts patterns (canInOrg, canManageOrg)
 //
-//   OLD                              NEW
-//   ───────────────────────────────   ──────────────────────────────────
-//   Custom `db` helper               Supabase client (RLS-aware)
-//   Flat role strings                 Actor types + policy groups
-//   requirePermission('INVITE_OP')   can_actor_perform('org.invite')
-//   POST_accept endpoint             Handled by redeem_invite() RPC
-//   SHA256 password hashing          Supabase Auth (server-managed)
-//   Manual user creation             auth.users + handle_new_user trigger
-//
-// Flow:
-//   1. Admin/org-manager calls POST /api/invite with email + actor_type
-//   2. Server verifies org.invite permission via RPC (user's JWT)
-//   3. Server inserts into invite_tokens via service role (no INSERT RLS)
-//   4. Server sends email with invite link
-//   5. Recipient clicks link → /login/sign_in?invite=TOKEN
-//   6. After auth, callback calls redeem_invite() RPC
-//      → creates actor, jurisdiction, org membership, policy group binding
-//
-// There is no accept-invite endpoint. The auth callback + redeem_invite
-// RPC handle everything atomically inside Postgres.
+// Endpoints:
+//   POST   /api/invite          — create + send invitation
+//   GET    /api/invite?org=UUID — list invites (RLS-gated)
+//   DELETE /api/invite?token=UUID — revoke pending invite
 
 import { json } from "@sveltejs/kit"
 import type { RequestHandler } from "./$types"
 
-// ─── POST /api/invite ──────────────────────────────────────────
-// Create and send an invitation.
-//
-// Body: {
-//   email: string          — recipient email
-//   actor_type: string     — role to assign (DRIVER, CONDUCTOR, OWNER, etc.)
-//   organization_id: string — target org UUID
-//   metadata?: object      — optional extra data (department, notes, etc.)
-// }
+/* ============================================================
+   POST /api/invite
+   Create and send an invitation.
+
+   Body: {
+     email: string
+     actor_type: string        — DRIVER, CONDUCTOR, OWNER, etc. (roles.id)
+     organization_id: string   — target org UUID
+     metadata?: object         — optional extra (department, notes)
+   }
+
+   Permission: org.invite scoped to the target organization.
+   Any of the caller's active actors can satisfy this.
+============================================================ */
 export const POST: RequestHandler = async ({
   request,
-  locals: { supabase, supabaseServiceRole, session },
+  locals: { supabase, supabaseServiceRole, session, user },
   url,
 }) => {
-  if (!session) {
+  // hooks.server.ts authGuardHandle already verified session + user
+  // for /api/* routes, returning 401 if missing. Belt-and-suspenders:
+  if (!session || !user) {
     return json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // ─── Parse and validate input ─────────────────────────────
+  // ─── Parse & validate ─────────────────────────────────────
   let body: {
     email?: string
     actor_type?: string
@@ -69,40 +65,37 @@ export const POST: RequestHandler = async ({
     )
   }
 
-  // Basic email format check
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return json({ error: "Invalid email format" }, { status: 400 })
   }
 
-  // ─── Verify caller has org.invite permission ──────────────
-  // This uses the user-scoped client (their JWT), so the
-  // permission check runs through the real engine:
-  //   can_actor_perform → my_permissions → double-gate
+  // ─── Permission check: org.invite ─────────────────────────
+  // Fetch caller's active actors, then check if ANY can invite
+  // in the target org via can_actor_perform() RPC.
   //
-  // We check against the target org's scope to ensure the
-  // caller has jurisdiction over THAT specific organization.
-  const { data: actors } = await supabase
+  // can_actor_perform is SECURITY DEFINER — it reads
+  // my_permissions (aggregated, deny-wins) and enforces:
+  //   - JWT version = DB version (kill-switch)
+  //   - Jurisdiction covers the target org (double-gate)
+  //   - Deny precedence at all scope levels
+  const { data: callerActors } = await supabase
     .from("actors")
     .select("id")
-    .eq("profile_id", session.user.id)
+    .eq("profile_id", user.id)
     .eq("status", "active")
 
-  if (!actors || actors.length === 0) {
+  if (!callerActors || callerActors.length === 0) {
     return json({ error: "No active actor found" }, { status: 403 })
   }
 
-  // Check if ANY of the caller's actors can invite in this org
   let hasPermission = false
-  for (const actor of actors) {
-    const { data: canInvite } = await supabase.rpc("can_actor_perform", {
-      p_actor_id: actor.id,
-      p_action: "org.invite",
-      p_org_id: organization_id,
-      p_branch_id: null,
-      p_dept_id: null,
+  for (const actor of callerActors) {
+    const { data: allowed } = await supabase.rpc("can_actor_perform", {
+      actor_uuid: actor.id,
+      action_text: "org.invite",
+      res_org: organization_id,
     })
-
-    if (canInvite === true) {
+    if (allowed === true) {
       hasPermission = true
       break
     }
@@ -115,37 +108,33 @@ export const POST: RequestHandler = async ({
     )
   }
 
-  // ─── Validate actor_type exists in roles table ────────────
-  const { data: roleExists } = await supabaseServiceRole
+  // ─── Validate actor_type ──────────────────────────────────
+  const { data: roleRow } = await supabaseServiceRole
     .from("roles")
     .select("id")
     .eq("id", actor_type)
     .single()
 
-  if (!roleExists) {
+  if (!roleRow) {
     return json(
       { error: `Invalid actor_type: ${actor_type}` },
       { status: 400 },
     )
   }
 
-  // ─── Validate organization exists ─────────────────────────
-  const { data: orgExists } = await supabaseServiceRole
+  // ─── Validate organization ────────────────────────────────
+  const { data: orgRow } = await supabaseServiceRole
     .from("organizations")
     .select("id, name")
     .eq("id", organization_id)
     .single()
 
-  if (!orgExists) {
-    return json(
-      { error: "Organization not found" },
-      { status: 404 },
-    )
+  if (!orgRow) {
+    return json({ error: "Organization not found" }, { status: 404 })
   }
 
-  // ─── Check for existing pending invite ────────────────────
-  // Prevent duplicate invites for same email + org + role
-  const { data: existingInvite } = await supabaseServiceRole
+  // ─── Duplicate check ──────────────────────────────────────
+  const { data: existing } = await supabaseServiceRole
     .from("invite_tokens")
     .select("token, expires_at")
     .eq("organization_id", organization_id)
@@ -155,33 +144,33 @@ export const POST: RequestHandler = async ({
     .gt("expires_at", new Date().toISOString())
     .maybeSingle()
 
-  if (existingInvite) {
+  if (existing) {
     return json(
       {
         error: "A pending invite already exists for this email and role",
-        existing_token: existingInvite.token,
-        expires_at: existingInvite.expires_at,
+        existing_token: existing.token,
+        expires_at: existing.expires_at,
       },
       { status: 409 },
     )
   }
 
   // ─── Create invite token ──────────────────────────────────
-  // Uses service role because invite_tokens has no INSERT RLS
-  // policy (by design — creation is server-only).
+  // Service role: invite_tokens has no INSERT policy by design
+  // (contact_requests pattern — server-only writes).
   const expiresAt = new Date(
     Date.now() + 7 * 24 * 60 * 60 * 1000,
-  ).toISOString() // 7 days
+  ).toISOString()
 
   const { data: invite, error: insertError } = await supabaseServiceRole
     .from("invite_tokens")
     .insert({
-      created_by: session.user.id,
+      created_by: user.id,
       organization_id,
       actor_type,
       metadata: {
         email,
-        invited_by_name: session.user.user_metadata?.full_name ?? "Unknown",
+        invited_by_name: user.user_metadata?.full_name ?? "Unknown",
         ...(metadata ?? {}),
       },
       expires_at: expiresAt,
@@ -195,38 +184,25 @@ export const POST: RequestHandler = async ({
   }
 
   // ─── Send invite email ────────────────────────────────────
-  // The link goes to the login page with the invite token.
-  // After signup/login, the auth callback picks up ?invite=TOKEN
-  // and calls redeem_invite() RPC.
+  // inviteUserByEmail creates the user if new, or sends a
+  // login link if they exist. The redirect URL includes the
+  // invite token for the auth callback to redeem.
   const appUrl = url.origin
   const inviteLink = `${appUrl}/login/sign_in?invite=${invite.token}`
 
   try {
-    // Use Supabase Auth admin to send a custom invite email
-    // This is the recommended approach — Supabase handles
-    // the magic link + redirect, and we pass the invite token
-    // through the URL.
-    //
-    // Option A: Send via Supabase Auth (magic link invite)
-    const { error: emailError } = await supabaseServiceRole.auth.admin.inviteUserByEmail(
-      email,
-      {
+    const { error: emailError } =
+      await supabaseServiceRole.auth.admin.inviteUserByEmail(email, {
         redirectTo: `${appUrl}/auth/callback?invite=${invite.token}`,
         data: {
           invite_token: invite.token,
-          organization_name: orgExists.name,
+          organization_name: orgRow.name,
           actor_type,
         },
-      },
-    )
+      })
 
     if (emailError) {
-      // If Supabase email fails (user already exists, rate limit, etc.),
-      // fall back to a simple notification approach
       console.warn("[api/invite] Supabase invite email failed:", emailError)
-
-      // For existing users, we could send a custom email instead.
-      // For now, return the invite link so the UI can handle it.
       return json({
         status: "created",
         token: invite.token,
@@ -238,17 +214,17 @@ export const POST: RequestHandler = async ({
       })
     }
 
-    // ─── Audit log ────────────────────────────────────────────
+    // Audit
     await supabaseServiceRole.from("audit_logs").insert({
       event_type: "INVITE_SENT",
-      profile_id: session.user.id,
-      performed_by: session.user.id,
+      profile_id: user.id,
+      performed_by: user.id,
       details: {
         invite_token: invite.token,
         email,
         actor_type,
         organization_id,
-        organization_name: orgExists.name,
+        organization_name: orgRow.name,
       },
     })
 
@@ -261,7 +237,6 @@ export const POST: RequestHandler = async ({
     })
   } catch (err) {
     console.error("[api/invite] Email send failed:", err)
-    // Invite was created successfully, just email failed
     return json({
       status: "created",
       token: invite.token,
@@ -273,9 +248,15 @@ export const POST: RequestHandler = async ({
   }
 }
 
-// ─── GET /api/invite?org=UUID ──────────────────────────────────
-// List invites visible to the current user.
-// RLS handles visibility (creator sees own, org.manage sees org's).
+/* ============================================================
+   GET /api/invite?org=UUID
+   List invites visible to the current user.
+
+   RLS handles visibility:
+     - invite_tokens_select_creator: created_by = auth.uid()
+     - invite_tokens_select_org: org.manage at org scope
+   So this endpoint just queries — no manual permission check needed.
+============================================================ */
 export const GET: RequestHandler = async ({
   url: reqUrl,
   locals: { supabase, session },
@@ -288,7 +269,9 @@ export const GET: RequestHandler = async ({
 
   let query = supabase
     .from("invite_tokens")
-    .select("token, organization_id, actor_type, metadata, expires_at, used, used_by, used_at, created_at")
+    .select(
+      "token, organization_id, actor_type, metadata, expires_at, used, used_by, used_at, created_at",
+    )
     .order("created_at", { ascending: false })
 
   if (orgId) {
@@ -302,28 +285,46 @@ export const GET: RequestHandler = async ({
     return json({ error: "Failed to fetch invites" }, { status: 500 })
   }
 
-  // Enrich with status for UI
   const now = new Date()
-  const enriched = (data ?? []).map((inv) => ({
-    ...inv,
-    email: (inv.metadata as Record<string, unknown>)?.email ?? null,
-    status: inv.used
-      ? "accepted"
-      : new Date(inv.expires_at) < now
-        ? "expired"
-        : "pending",
-  }))
+  const enriched = (data ?? []).map((inv) => {
+    // Safely extract email from Json metadata
+    const meta =
+      inv.metadata &&
+      typeof inv.metadata === "object" &&
+      !Array.isArray(inv.metadata)
+        ? (inv.metadata as Record<string, unknown>)
+        : {}
+
+    return {
+      token: inv.token,
+      organization_id: inv.organization_id,
+      actor_type: inv.actor_type,
+      email: (meta.email as string) ?? null,
+      invited_by: (meta.invited_by_name as string) ?? null,
+      expires_at: inv.expires_at,
+      created_at: inv.created_at,
+      status: inv.used
+        ? "accepted"
+        : new Date(inv.expires_at) < now
+          ? "expired"
+          : "pending",
+    }
+  })
 
   return json({ invites: enriched })
 }
 
-// ─── DELETE /api/invite?token=UUID ─────────────────────────────
-// Revoke a pending invite.
+/* ============================================================
+   DELETE /api/invite?token=UUID
+   Revoke a pending invite.
+
+   Authorization: creator OR org.manage for the invite's org.
+============================================================ */
 export const DELETE: RequestHandler = async ({
   url: reqUrl,
-  locals: { supabase, supabaseServiceRole, session },
+  locals: { supabase, supabaseServiceRole, session, user },
 }) => {
-  if (!session) {
+  if (!session || !user) {
     return json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -332,10 +333,10 @@ export const DELETE: RequestHandler = async ({
     return json({ error: "token parameter required" }, { status: 400 })
   }
 
-  // Fetch the invite to check ownership / org permission
+  // Fetch via service role (RLS SELECT might not cover all callers)
   const { data: invite } = await supabaseServiceRole
     .from("invite_tokens")
-    .select("token, organization_id, created_by, used")
+    .select("token, organization_id, created_by, used, metadata")
     .eq("token", token)
     .single()
 
@@ -344,30 +345,30 @@ export const DELETE: RequestHandler = async ({
   }
 
   if (invite.used) {
-    return json({ error: "Cannot revoke an already-used invite" }, { status: 400 })
+    return json(
+      { error: "Cannot revoke an already-used invite" },
+      { status: 400 },
+    )
   }
 
-  // Check: either the creator or someone with org.manage
-  const isCreator = invite.created_by === session.user.id
+  // Authorization: creator OR org.manage
+  const isCreator = invite.created_by === user.id
 
   if (!isCreator) {
-    // Check org.manage permission
-    const { data: actors } = await supabase
+    const { data: callerActors } = await supabase
       .from("actors")
       .select("id")
-      .eq("profile_id", session.user.id)
+      .eq("profile_id", user.id)
       .eq("status", "active")
 
     let canManage = false
-    for (const actor of actors ?? []) {
-      const { data: result } = await supabase.rpc("can_actor_perform", {
-        p_actor_id: actor.id,
-        p_action: "org.manage",
-        p_org_id: invite.organization_id,
-        p_branch_id: null,
-        p_dept_id: null,
+    for (const actor of callerActors ?? []) {
+      const { data: allowed } = await supabase.rpc("can_actor_perform", {
+        actor_uuid: actor.id,
+        action_text: "org.manage",
+        res_org: invite.organization_id ?? "",
       })
-      if (result === true) {
+      if (allowed === true) {
         canManage = true
         break
       }
@@ -378,18 +379,26 @@ export const DELETE: RequestHandler = async ({
     }
   }
 
-  // Soft-revoke: mark as used with a revocation note
+  // Safely extract existing metadata
+  const existingMeta =
+    invite.metadata &&
+    typeof invite.metadata === "object" &&
+    !Array.isArray(invite.metadata)
+      ? (invite.metadata as Record<string, unknown>)
+      : {}
+
+  // Soft-revoke: mark used with revocation context
   const { error: revokeError } = await supabaseServiceRole
     .from("invite_tokens")
     .update({
       used: true,
       used_at: new Date().toISOString(),
       metadata: {
-        ...(invite as Record<string, unknown>).metadata,
+        ...existingMeta,
         revoked: true,
-        revoked_by: session.user.id,
+        revoked_by: user.id,
         revoked_at: new Date().toISOString(),
-      } as unknown as Record<string, unknown>,
+      },
     })
     .eq("token", token)
 
@@ -401,9 +410,12 @@ export const DELETE: RequestHandler = async ({
   // Audit
   await supabaseServiceRole.from("audit_logs").insert({
     event_type: "INVITE_REVOKED",
-    profile_id: session.user.id,
-    performed_by: session.user.id,
-    details: { invite_token: token, organization_id: invite.organization_id },
+    profile_id: user.id,
+    performed_by: user.id,
+    details: {
+      invite_token: token,
+      organization_id: invite.organization_id,
+    },
   })
 
   return json({ status: "revoked" })

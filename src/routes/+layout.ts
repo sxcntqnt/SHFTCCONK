@@ -1,15 +1,32 @@
 // src/routes/+layout.ts
 //
-// Root client layout — creates the Supabase client and bootstraps
-// the federated session store. Every child route inherits `supabase`,
-// `session`, and the hydrated store.
+// Root client layout — creates the Supabase browser client and
+// bootstraps the federated session store.
 //
-// HARDENING CHANGES:
-//   - initSession() now accepts permissions in the bootstrap payload,
-//     so the manual sessionStore.update for permissions is gone
-//   - BootstrapSessionPayload type already includes `permissions` field
-//   - No separate type cast needed
-//   - `rebootstrap` URL param preserved for forced refresh
+// ARCHITECTURE:
+//   +layout.server.ts passes { session, user, cookies } from hooks.
+//   This file:
+//     1. Creates the browser/SSR Supabase client (typed with Database)
+//     2. Checks if the session store needs (re)hydration
+//     3. Runs bootstrap_session() RPC if needed (single call)
+//     4. Returns { supabase, session } for all child routes
+//
+//   Bootstrap runs here (not server-side) because:
+//     - The Svelte store lives client-side
+//     - One RPC call, not two (no server+client double-bootstrap)
+//     - The browser client has the user's JWT for RLS
+//
+// STORE HYDRATION SKIP LOGIC:
+//   On SvelteKit client-side navigations, this load function re-runs.
+//   We skip re-bootstrapping if:
+//     - Store is already initialized
+//     - Same user (profile ID matches session user)
+//     - No ?rebootstrap param (used after invite redemption, permission changes)
+//
+// HARDENING:
+//   - initSession() stores permissions + permissionsVersion in one call
+//   - No separate permission patching needed
+//   - ?rebootstrap param forces full re-hydration
 
 import {
   PUBLIC_SUPABASE_ANON_KEY,
@@ -21,6 +38,7 @@ import {
   isBrowser,
 } from "@supabase/ssr"
 import type { LayoutLoad } from "./$types"
+import type { Database } from "../DatabaseDefinitions"
 import {
   initSession,
   sessionStore,
@@ -29,27 +47,45 @@ import {
 } from "$lib/features/auth/stores/auth"
 import { get } from "svelte/store"
 
+
+
+// /operator/+layout.ts
+import { requireOperatorAccess } from "$lib/security/authGuard"
+export const load = async (event) => { await requireOperatorAccess(event); return {} }
+
+// /org/[orgId]/+layout.ts
+import { requireOrgAccess } from "$lib/security/authGuard"
+export const load = async (event) => { await requireOrgAccess(event, event.params.orgId); return {} }
+
+
+
 export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   depends("supabase:auth")
 
   // ─── Create Supabase client (browser or SSR) ─────────────
+  // Browser: uses browser fetch + cookie storage
+  // SSR: uses server cookies passed from +layout.server.ts
   const supabase = isBrowser()
-    ? createBrowserClient<Database>(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: { fetch },
-      })
-    : createServerClient<Database>(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: { fetch },
-        cookies: {
-          getAll() {
-            return data.cookies
+    ? createBrowserClient<Database>(
+        PUBLIC_SUPABASE_URL,
+        PUBLIC_SUPABASE_ANON_KEY,
+        { global: { fetch } },
+      )
+    : createServerClient<Database>(
+        PUBLIC_SUPABASE_URL,
+        PUBLIC_SUPABASE_ANON_KEY,
+        {
+          global: { fetch },
+          cookies: {
+            getAll() {
+              return data.cookies
+            },
           },
         },
-      })
+      )
 
-  // ─── Resolve session from server data ─────────────────────
+  // ─── No session → clear store, return minimal context ─────
   const session = data.session
-
-  // No session → clear store, return minimal context
   if (!session) {
     clearSession()
     return {
@@ -61,12 +97,18 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   }
 
   // ─── Skip re-bootstrap if store is already hydrated ───────
-  // Unless ?rebootstrap is in the URL (forced refresh after mutations)
+  // SvelteKit re-runs layout loads on every client navigation.
+  // We only need to bootstrap when:
+  //   - First load (store not initialized)
+  //   - Different user (e.g., after account switch)
+  //   - Forced refresh via ?rebootstrap (after invite, permission change)
   const current = get(sessionStore)
+  const forceRefresh = url.searchParams.has("rebootstrap")
+
   if (
     current.initialized &&
     current.profile?.id === session.user.id &&
-    !url.searchParams.has("rebootstrap")
+    !forceRefresh
   ) {
     return {
       supabase,
@@ -77,10 +119,13 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   }
 
   // ─── Bootstrap: single RPC for full federated session ─────
-  // The hardened bootstrap_session() returns profile, actors,
-  // jurisdictions, org_memberships, policy_groups, AND permissions.
-  // initSession() stores everything including permissions and
-  // permissionsVersion in one call — no separate patching needed.
+  // Returns: profile, actors, jurisdictions, org_memberships,
+  //          policy_groups, permissions (aggregated by optimized view)
+  //
+  // initSession() stores everything in one call:
+  //   - permissions (pre-aggregated, deny-wins)
+  //   - permissionsVersion (for kill-switch comparison)
+  //   - actors, jurisdictions, orgMemberships, policyGroups
   const { data: payload, error: bootstrapError } = await supabase.rpc(
     "bootstrap_session",
   )
@@ -98,10 +143,10 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
 
   const bootstrapData = payload as BootstrapSessionPayload
 
-  // Detect invite flow context
+  // Detect invite flow context (redirected from callback with ?complete_profile)
   const inviteScoped = url.searchParams.get("complete_profile") === "true"
 
-  // Hydrate the store (permissions + version included in one call)
+  // Hydrate the store — permissions + version included
   initSession(bootstrapData, { inviteScoped })
 
   return {

@@ -14,6 +14,10 @@
 //     (previously only page routes were guarded with redirects)
 //   - safeGetSession populates locals.user alongside locals.session
 //   - autoRefreshToken: false on service role client (was missing)
+//   - locals.session/user initialized to null in supabaseHandle
+//     (were undefined on public routes, violating app.d.ts types)
+//   - /app and /operator added to protected page prefixes
+//     (were accessible without auth — no data leak but bad UX)
 
 import * as Sentry from "@sentry/sveltekit"
 import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
@@ -42,6 +46,13 @@ type SafeSessionResult = {
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
 const supabaseHandle: Handle = async ({ event, resolve }) => {
+  // ─── Initialize session/user to null ────────────────────────
+  // authGuardHandle only populates these on protected routes.
+  // Without this, they'd be undefined (not null) on public routes,
+  // violating the app.d.ts type contract (Session | null, User | null).
+  event.locals.session = null
+  event.locals.user = null
+
   // ─── User-scoped client (anon key + user JWT from cookies) ──
   // RLS applies. Runs as the authenticated user.
   event.locals.supabase = createServerClient(
@@ -131,12 +142,24 @@ const authGuardHandle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url
 
   // Routes that require authentication
+  // Routes that require authentication.
+  // Must match every directory under routes/(auth)/ that resolves
+  // to a URL path. SvelteKit route groups like (auth) don't affect
+  // the URL — routes/(auth)/admin → /admin.
+  //
+  // Note: dashboards are nested (/admin/dashboard, /app/dashboard,
+  // /crew/dashboard, /org/[orgId]/dashboard) — all covered by their
+  // parent prefix. No top-level /dashboard route exists.
+  //
+  // If you add a new authenticated route directory, add it here.
   const protectedPagePrefixes = [
-    "/account",
-    "/admin",
-    "/org",
-    "/crew",
-    "/onboarding",
+    "/admin",       // routes/(auth)/admin — platform admin, account, audit
+    "/app",         // routes/(auth)/app — main app (passenger, chat, map, etc.)
+    "/crew",        // routes/(auth)/crew — driver/conductor dashboard
+    "/onboarding",  // routes/(auth)/onboarding — new user setup
+    "/operator",    // routes/(auth)/operator — stage operator (fuel, trips)
+    "/org",         // routes/(auth)/org — org management, join-sacco
+    "/account",     // if accessed as top-level (may be under /admin/account)
   ]
   const isProtectedPage = protectedPagePrefixes.some((prefix) =>
     pathname.startsWith(prefix),
