@@ -1,49 +1,64 @@
 <script lang="ts">
-  import { financeStore, getRevenueTrend } from '$lib/stores/finance.store';
-  import GlassCard from '$lib/components/GlassCard.svelte';
-  import Chart from '$lib/components/Chart.svelte';
-  import { writable, get } from 'svelte/store';
+  import { financeStore, getRevenueTrend } from "$lib/stores/finance.store"
+  import GlassCard from "$lib/components/GlassCard.svelte"
+  import Chart from "$lib/components/Chart.svelte"
+  import { writable, get } from "svelte/store"
 
   /* ============================================================
      Reactive Stores
   ============================================================ */
-  let finance = [];
-  financeStore.subscribe(v => finance = v);
+  let finance = []
+  financeStore.subscribe((v) => (finance = v))
 
   // Derived analytics: revenue trends per vehicle
-  const vehicleTrends = writable<{ vehicle: string; trend: number[] }[]>([]);
+  const vehicleTrends = writable<{ vehicle: string; trend: number[] }[]>([])
 
-  $: vehicleTrends.set(
-    finance.map(f => ({
-      vehicle: f.vehicle,
-      trend: getRevenueTrend([f]) // single vehicle trend
-    }))
-  );
+  // 1. vehicleTrends – this is a SIDE EFFECT (mutating a store) → use $effect
+  $effect(() => {
+    // Runs whenever finance changes (because finance is read here)
+    vehicleTrends.set(
+      finance.map((f) => ({
+        vehicle: f.vehicle,
+        trend: getRevenueTrend([f]), // single vehicle trend
+      })),
+    )
+  })
 
-  // Total revenue for header
-  $: totalRevenue = finance.reduce((sum, f) => sum + f.collected, 0);
+  // 2. totalRevenue – pure derived value → $derived
+  let totalRevenue = $derived(
+    finance.reduce((sum, f) => sum + (f.collected ?? 0), 0), // added ?? 0 guard
+  )
 
-  // Global revenue trend combining all vehicles
-  $: globalTrend = getRevenueTrend(finance);
+  // 3. globalTrend – pure derived → $derived
+  let globalTrend = $derived(getRevenueTrend(finance))
 
-  // Route-level analytics (example, aggregate by route)
-  $: routeRevenue = finance.reduce((acc, f) => {
-    if (!acc[f.route]) acc[f.route] = { collected: 0, target: 0, variance: 0 };
-    acc[f.route].collected += f.collected;
-    acc[f.route].target += f.target;
-    acc[f.route].variance += f.variance;
-    return acc;
-  }, {} as Record<string, { collected: number; target: number; variance: number }>);
+  // 4. routeRevenue – pure aggregation (object) → $derived.by for readability
+  let routeRevenue = $derived.by(() => {
+    const acc: Record<
+      string,
+      { collected: number; target: number; variance: number }
+    > = {}
+
+    for (const f of finance) {
+      const r = f.route
+      if (!acc[r]) {
+        acc[r] = { collected: 0, target: 0, variance: 0 }
+      }
+      acc[r].collected += f.collected ?? 0
+      acc[r].target += f.target ?? 0
+      acc[r].variance += f.variance ?? 0
+    }
+
+    return acc
+  })
 
   const routeTrends = Object.entries(routeRevenue).map(([route, data]) => ({
     route,
     collected: data.collected,
     target: data.target,
     variance: data.variance,
-    trend: getRevenueTrend(
-      finance.filter(f => f.route === route)
-    )
-  }));
+    trend: getRevenueTrend(finance.filter((f) => f.route === route)),
+  }))
 </script>
 
 <!-- =========================
@@ -65,7 +80,9 @@
 <!-- =========================
      Total Revenue Summary
 ========================= -->
-<GlassCard class="mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+<GlassCard
+  class="mb-6 flex flex-col md:flex-row items-center justify-between gap-4"
+>
   <div>
     <h3 class="text-xl font-semibold mb-2">Total Revenue Today</h3>
     <p class="text-2xl font-bold">KES {totalRevenue.toLocaleString()}</p>
@@ -81,13 +98,18 @@
       <div class="flex justify-between items-center mb-2">
         <h4 class="font-semibold">{vt.vehicle}</h4>
         <span class="text-gray-600">
-          KES {finance.find(f => f.vehicle === vt.vehicle)?.collected.toLocaleString()}
+          KES {finance
+            .find((f) => f.vehicle === vt.vehicle)
+            ?.collected.toLocaleString()}
         </span>
       </div>
       <Chart data={vt.trend} type="line" class="h-28" />
       <div class="mt-2 text-sm text-gray-500">
-        Target: KES {finance.find(f => f.vehicle === vt.vehicle)?.target?.toLocaleString()} | 
-        Variance: KES {finance.find(f => f.vehicle === vt.vehicle)?.variance?.toLocaleString()}
+        Target: KES {finance
+          .find((f) => f.vehicle === vt.vehicle)
+          ?.target?.toLocaleString()} | Variance: KES {finance
+          .find((f) => f.vehicle === vt.vehicle)
+          ?.variance?.toLocaleString()}
       </div>
     </GlassCard>
   {/each}

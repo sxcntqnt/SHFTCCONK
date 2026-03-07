@@ -36,23 +36,31 @@
       s.toLowerCase().includes(searchState.toLowerCase()),
     )
   })
+  // PRO_ROLES is probably a const array — no change needed
+  const PRO_ROLES = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"] as const
 
-  $: filteredSaccos = saccos.filter((s) =>
-    s.toLowerCase().includes(searchState.toLowerCase()),
-  )
-
-  // ── PRO role type guard ─────────────────────────────────
+  // Type guard stays exactly the same (it's not reactive)
   function isProRole(
     role: Role,
   ): role is "DRIVER" | "CONDUCTOR" | "STAGE_OPERATOR" {
     return PRO_ROLES.includes(role)
   }
 
-  $: isPro = isProRole(selectedRole as Role)
+  // ── Now the derived values ───────────────────────────────────────────────
 
-  $: totalSteps = isPro ? 4 : 3
-  $: saccoStep = isPro ? 3 : 2
-  $: finalStep = isPro ? 4 : 3
+  let filteredSaccos = $derived(
+    saccos.filter((s) => s.toLowerCase().includes(searchState.toLowerCase())),
+  )
+
+  let isPro = $derived(selectedRole != null && isProRole(selectedRole as Role))
+  // ↑ Added `selectedRole != null` guard to avoid type error/runtime issues
+  //    if selectedRole can be null/undefined at first
+
+  let totalSteps = $derived(isPro ? 4 : 3)
+
+  let saccoStep = $derived(isPro ? 3 : 2)
+
+  let finalStep = $derived(isPro ? 4 : 3)
 
   // ── Role metadata ───────────────────────────────────────    // Role metadata for richer cards
   const ROLE_META: Record<string, { icon: string; desc: string }> = {

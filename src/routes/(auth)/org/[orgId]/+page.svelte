@@ -1,59 +1,76 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
-  import { fleetStore, getActiveVehicles } from '$lib/features/fleet/stores/fleet';
-  import { financeStore, getTotalRevenueToday } from '$lib/features/finance/finance.store';
-  import { complianceEventStore, complianceAlertStore, getUnresolvedEvents } from '$lib/features/compliance/stores/compliance';
+  import { onDestroy } from "svelte"
+  import {
+    fleetStore,
+    getActiveVehicles,
+  } from "$lib/features/fleet/stores/fleet"
+  import {
+    financeStore,
+    getTotalRevenueToday,
+  } from "$lib/features/finance/finance.store"
+  import {
+    complianceEventStore,
+    complianceAlertStore,
+    getUnresolvedEvents,
+  } from "$lib/features/compliance/stores/compliance"
 
-  import OperatorStatCard from '$lib/components/OperatorStatCard.svelte';
-  import GlassCard from '$lib/components/GlassCard.svelte';
-  import Chart from '$lib/components/Chart.svelte'; // Chart.js wrapper
+  import OperatorStatCard from "$lib/components/OperatorStatCard.svelte"
+  import GlassCard from "$lib/components/GlassCard.svelte"
+  import Chart from "$lib/components/Chart.svelte" // Chart.js wrapper
 
-  import { getRevenueTrend } from '$lib/features/finance/reconciliation.store';
+  import { getRevenueTrend } from "$lib/features/finance/reconciliation.store"
 
   /* ============================================================
      LOCAL REACTIVE STATE
   =========================================================== */
-  let fleet = [];
-  let finance = [];
-  let complianceAlerts = [];
-  let incidents = [];
+  let fleet = []
+  let finance = []
+  let complianceAlerts = []
+  let incidents = []
 
-  let revenueTrend = [];
+  let revenueTrend = []
 
   /* ============================================================
      SUBSCRIPTIONS
   =========================================================== */
-  const fleetUnsub = fleetStore.subscribe(v => {
-    fleet = v;
-  });
+  const fleetUnsub = fleetStore.subscribe((v) => {
+    fleet = v
+  })
 
-  const financeUnsub = financeStore.subscribe(v => {
-    finance = v;
-    revenueTrend = getRevenueTrend(v);
-  });
+  const financeUnsub = financeStore.subscribe((v) => {
+    finance = v
+    revenueTrend = getRevenueTrend(v)
+  })
 
-  const complianceUnsub = complianceAlertStore.subscribe(v => {
-    complianceAlerts = v;
-  });
+  const complianceUnsub = complianceAlertStore.subscribe((v) => {
+    complianceAlerts = v
+  })
 
-  const incidentsUnsub = complianceEventStore.subscribe(v => {
-    incidents = getUnresolvedEvents();
-  });
+  const incidentsUnsub = complianceEventStore.subscribe((v) => {
+    incidents = getUnresolvedEvents()
+  })
 
   onDestroy(() => {
-    fleetUnsub();
-    financeUnsub();
-    complianceUnsub();
-    incidentsUnsub();
-  });
+    fleetUnsub()
+    financeUnsub()
+    complianceUnsub()
+    incidentsUnsub()
+  })
 
   /* ============================================================
      DERIVED VALUES
   =========================================================== */
-  $: activeVehicleCount = getActiveVehicles().length;
-  $: totalRevenueToday = getTotalRevenueToday();
-  $: totalComplianceAlerts = complianceAlerts.length;
-  $: totalIncidents = incidents.length;
+  let dashboardStats = $derived.by(() => {
+    const active = getActiveVehicles()
+    const revenue = getTotalRevenueToday()
+
+    return {
+      activeVehicleCount: active.length,
+      totalRevenueToday: revenue,
+      totalComplianceAlerts: complianceAlerts.length,
+      totalIncidents: incidents.length,
+    }
+  })
 </script>
 
 <h2 class="text-3xl font-bold mb-8">Fleet Command Center</h2>
@@ -61,7 +78,10 @@
 <!-- Top Stats -->
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
   <OperatorStatCard title="Active Vehicles" value={activeVehicleCount} />
-  <OperatorStatCard title="Revenue Today" value={`KES ${totalRevenueToday.toLocaleString()}`} />
+  <OperatorStatCard
+    title="Revenue Today"
+    value={`KES ${totalRevenueToday.toLocaleString()}`}
+  />
   <OperatorStatCard title="Compliance Alerts" value={totalComplianceAlerts} />
   <OperatorStatCard title="Incidents" value={totalIncidents} />
 </div>

@@ -5,23 +5,24 @@
   } from "$lib/features/analytics/+analytics"
   import { derived } from "svelte/store"
 
-  // Auto-subscribe
-  $: stats = $analyticsStore ?? []
+  let stats = $derived($analyticsStore ?? [])
 
-  // Sort by congestion descending (hot routes first)
-  $: sortedStats = [...stats].sort(
-    (a, b) => b.congestionScore - a.congestionScore,
+  let sortedStats = $derived(
+    [...stats].sort((a, b) => b.congestionScore - a.congestionScore),
   )
 
-  // Derived aggregates (O(n))
-  $: totalRoutes = stats.length
-  $: totalActiveVehicles = stats.reduce((sum, r) => sum + r.activeVehicles, 0)
-  $: avgNetworkSpeed =
-    stats.length > 0
-      ? (stats.reduce((sum, r) => sum + r.avgSpeed, 0) / stats.length).toFixed(
-          1,
-        )
-      : 0
+  let totalRoutes = $derived(stats.length)
+
+  let totalActiveVehicles = $derived(
+    stats.reduce((sum, r) => sum + r.activeVehicles, 0),
+  )
+
+  let avgNetworkSpeed = $derived.by(() => {
+    if (stats.length === 0) return 0
+    const avg = stats.reduce((sum, r) => sum + r.avgSpeed, 0) / stats.length
+    return Number(avg.toFixed(1)) // keep it as number (better for math later)
+    // or return avg.toFixed(1) if you really need string
+  })
 </script>
 
 <!-- NETWORK SUMMARY HEADER -->

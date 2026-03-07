@@ -9,12 +9,14 @@
   import { initContracts } from "$lib/features/contracts/contracts"
   import { initAnalytics } from "$lib/features/analytics/+analytics"
 
-  // Auto-subscribe (no memory leak)
-  $: user = $authStore
+  let user = $derived($authStore)
 
-  // Reactive permission flags
-  $: canAssignContracts = hasPermission("contract.assign")
-  $: canViewAnalytics = hasPermission("analytics.view")
+  // 2. Permission flags – assuming hasPermission(...) is a pure function
+  //    that reads some reactive source internally (e.g. $authStore.role, user.permissions, etc.)
+  //    → use $derived for each flag
+  let canAssignContracts = $derived(hasPermission("contract.assign"))
+
+  let canViewAnalytics = $derived(hasPermission("analytics.view"))
 
   let initialized = false
   let loading = true

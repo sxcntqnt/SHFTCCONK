@@ -21,7 +21,7 @@
   const editRoute = writable("")
   const editStatus = writable("")
 
-  $: vehicleId = page.params.vehicleId
+  let vehicleId = $derived(page.params.vehicleId)
 
   // Subscriptions
   const fleetUnsub = fleetStore.subscribe((v) => {

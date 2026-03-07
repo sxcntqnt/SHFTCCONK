@@ -67,7 +67,11 @@
     }
   }
 
-  $: if ($authStore.role) loadFuelData()
+  $effect(() => {
+    if ($authStore.role) {
+      loadFuelData()
+    }
+  })
 </script>
 
 <div class="w-full max-w-6xl">

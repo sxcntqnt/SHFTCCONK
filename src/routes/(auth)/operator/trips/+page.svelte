@@ -50,7 +50,13 @@
     }
   }
 
-  $: if ($authStore.role) loadAnalytics()
+  $effect(() => {
+    const role = $authStore.role
+    if (role && role !== previousRole) {
+      loadAnalytics() // or loadAnalytics(role) if you pass it
+      previousRole = role
+    }
+  })
 </script>
 
 <div

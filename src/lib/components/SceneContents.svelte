@@ -408,41 +408,57 @@
 
   // ── Seat reactivity ───────────────────────────────────────────────────────
 
-  $: {
-    seatMeshes.forEach((mesh, seatNumber) => {
-      const material = mesh.material as THREE.MeshStandardMaterial
-      if (!material) return
+  // Map<seatNumber, GSAP Tween>
+  let glowTweens = new Map<number, gsap.core.Tween>()
 
-      material.transparent = false
+  // When creating seatMeshes (once):
+  seatMeshes.forEach((mesh, i) => {
+    const mat = mesh.material as THREE.MeshStandardMaterial
+    const tween = gsap.to(mat.emissive, {
+      r: 0.6,
+      g: 0.9,
+      b: 1,
+      duration: 0.8,
+      yoyo: true,
+      repeat: -1,
+      ease: "sine.inOut",
+      paused: true, // ← start paused
+    })
+    glowTweens.set(i, tween)
+  })
+
+  // Then in the $effect:
+  $effect(() => {
+    reservedSeats.length
+    selectedSeats.length
+
+    seatMeshes.forEach((mesh, seatNumber) => {
+      const mat = mesh.material as THREE.MeshStandardMaterial
+      if (!mat) return
+
+      mat.transparent = false
+
+      const tween = glowTweens.get(seatNumber)
 
       if (reservedSeats.includes(seatNumber)) {
-        material.color.set(0xff0000)
-        material.emissive.set(0x000000)
+        mat.color.set(0xff0000)
+        mat.emissive.set(0x000000)
+        tween?.pause().kill() // or just pause if you want to resume later
         mesh.userData.disabled = true
       } else if (selectedSeats.includes(seatNumber)) {
-        material.color.set(0x0ea5e9)
-        material.emissive.set(0x0ea5e9)
-        gsap.to(material.emissive, {
-          r: 0.6,
-          g: 0.9,
-          b: 1,
-          duration: 0.8,
-          yoyo: true,
-          repeat: -1,
-          ease: "sine.inOut",
-        })
+        mat.color.set(0x0ea5e9)
+        tween?.restart() // or .play()
         mesh.userData.disabled = false
       } else {
-        gsap.killTweensOf(material.emissive)
-        material.color.set(0xffffff)
-        material.emissive.set(0x000000)
+        tween?.pause().kill() // or just pause
+        mat.color.set(0xffffff)
+        mat.emissive.set(0x000000)
         mesh.userData.disabled = false
       }
     })
 
     requestRender()
-  }
-
+  })
   onDestroy(() => {
     gsap.killTweensOf(cam?.position)
   })

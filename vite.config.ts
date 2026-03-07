@@ -32,6 +32,9 @@ export default defineConfig({
     host: true,
     allowedHosts: ["sxcntcnqunts.com"],
   },
+ssr: {
+  noExternal: ["three"]
+},
 
   test: {
     include: ["src/**/*.{test,spec}.{js,ts}"],

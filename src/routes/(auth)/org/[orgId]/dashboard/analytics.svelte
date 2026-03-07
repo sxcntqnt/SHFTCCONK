@@ -6,22 +6,30 @@
   import { derived } from "svelte/store"
 
   // Auto-subscribe
-  $: stats = $analyticsStore ?? []
+  // 1. stats – safe fallback to empty array
+  let stats = $derived($analyticsStore ?? [])
 
-  // Sort by congestion descending (hot routes first)
-  $: sortedStats = [...stats].sort(
-    (a, b) => b.congestionScore - a.congestionScore,
+  // 2. sortedStats – derived sorted copy (shallow copy is fine here)
+  let sortedStats = $derived(
+    [...stats].sort((a, b) => b.congestionScore - a.congestionScore),
   )
 
-  // Derived aggregates (O(n))
-  $: totalRoutes = stats.length
-  $: totalActiveVehicles = stats.reduce((sum, r) => sum + r.activeVehicles, 0)
-  $: avgNetworkSpeed =
-    stats.length > 0
-      ? (stats.reduce((sum, r) => sum + r.avgSpeed, 0) / stats.length).toFixed(
-          1,
-        )
-      : 0
+  // 3. Aggregates – use $derived.by for better readability with conditionals & variables
+  let totalRoutes = $derived(stats.length)
+
+  let totalActiveVehicles = $derived(
+    stats.reduce((sum, r) => sum + (r.activeVehicles ?? 0), 0), // ← added ?? 0 guard
+  )
+
+  let avgNetworkSpeed = $derived.by(() => {
+    if (stats.length === 0) return 0
+
+    const sum = stats.reduce((acc, r) => acc + (r.avgSpeed ?? 0), 0)
+    const avg = sum / stats.length
+
+    return Number(avg.toFixed(1)) // keep as number (better for charts/math)
+    // ↑ Use toFixed() only when displaying → or return string if you prefer
+  })
 </script>
 
 <!-- NETWORK SUMMARY HEADER -->
