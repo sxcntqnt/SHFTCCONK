@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte"
   import { ROLES } from "$lib/features/auth/stores/roles"
-  import Role from "$lib/features/auth/stores/roles"
+  import type { Role } from "$lib/features/auth/stores/roles"
   import { fly, fade } from "svelte/transition"
   import { enhance } from "$app/forms"
 
@@ -10,7 +10,7 @@
   // ── State ────────────────────────────────────────────────
   let step = $state(1)
   let selectedRole = $state<Role | "">("")
-
+  let selectedSacco = $state<string | null>(null)
   let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
   let searchState = $state("")
   let loading = $state(false)
@@ -32,16 +32,13 @@
   // Type guard – accepts wide input, narrows on true
   function isProRole(role: Role | "" | null | undefined): role is ProRole {
     if (!role) return false
-    return PRO_ROLES.includes(role)
+    return PRO_ROLES.includes(role as ProRole)
   }
 
   // ── Derived values ───────────────────────────────────────
   let filteredSaccos = $derived(
     saccos.filter((s) => s.toLowerCase().includes(searchState.toLowerCase())),
   )
-
-  let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
-
   let totalSteps = $derived(isPro ? 4 : 3)
   let saccoStep = $derived(isPro ? 3 : 2)
   let finalStep = $derived(isPro ? 4 : 3)
@@ -132,7 +129,7 @@
         <div class="role-grid">
           {#each Object.values(ROLES) as role}
             {@const meta = ROLE_META[role]}
-            {@const isPro = PRO_ROLES.includes(role)}
+            {@const isPro = PRO_ROLES.includes(role as ProRole)}
             <button
               type="button"
               class="role-btn {selectedRole === role ? 'selected' : ''}"
@@ -173,7 +170,7 @@
       <!-- ══════════════════════════════════════
          STEP 2 — Verification (PRO roles only)
     ══════════════════════════════════════ -->
-    {:else if step === 2 && PRO_ROLES.includes(selectedRole)}
+    {:else if step === 2 && PRO_ROLES.includes(selectedRole as ProRole)}
       <div in:fly={{ x: 24, duration: 280 }}>
         <div class="step-eyebrow">Step 2 of {totalSteps}</div>
         <h1 class="step-title">Verify <em>Credentials</em></h1>
