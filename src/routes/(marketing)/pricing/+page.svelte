@@ -1,52 +1,183 @@
 <script lang="ts">
-  import PricingModule from "./pricing_module.svelte"
+  import pricingPlans from "./pricing_module.svelte"
   import { WebsiteName } from "./../../../config"
 
   type PlanFeatureRow = {
     name: string
     freeIncluded?: boolean
+    starterIncluded?: boolean
     proIncluded?: boolean
+    businessIncluded?: boolean
+    enterpriseIncluded?: boolean
     freeString?: string
+    starterString?: string
     proString?: string
+    businessString?: string
+    enterpriseString?: string
     header?: boolean
   }
 
   const planFeatures: PlanFeatureRow[] = [
     { name: "Core Access", header: true },
-    { name: "Live Feed", freeIncluded: true, proIncluded: true },
-    { name: "Trip Planner", freeIncluded: false, proIncluded: true },
-    { name: "Route Alerts", freeString: "3", proString: "Unlimited" },
+    {
+      name: "Live Feed",
+      freeIncluded: true,
+      starterIncluded: true,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Trip Planner",
+      freeIncluded: false,
+      starterIncluded: true,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Route Alerts",
+      freeString: "3",
+      starterString: "25",
+      proString: "Unlimited",
+      businessString: "Unlimited",
+      enterpriseString: "Unlimited",
+    },
+
     { name: "Fleet & Operations", header: true },
-    { name: "Fleet Manager", freeIncluded: true, proIncluded: true },
-    { name: "Telemetry Sync", freeIncluded: false, proIncluded: true },
-    { name: "Geofences", freeString: "5", proString: "Unlimited" },
+    {
+      name: "Fleet Manager",
+      freeIncluded: true,
+      starterIncluded: true,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Telemetry Sync",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Geofences",
+      freeString: "5",
+      starterString: "50",
+      proString: "Unlimited",
+      businessString: "Unlimited",
+      enterpriseString: "Unlimited",
+    },
+
     { name: "Analytics & Reports", header: true },
-    { name: "Insights Snapshot", freeIncluded: true, proIncluded: true },
-    { name: "Custom Reports", freeIncluded: false, proIncluded: true },
-    { name: "Data Export", freeIncluded: false, proIncluded: true },
+    {
+      name: "Insights Snapshot",
+      freeIncluded: true,
+      starterIncluded: true,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Custom Reports",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "Data Export",
+      freeIncluded: false,
+      starterIncluded: true,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+
+    { name: "Team & Support", header: true },
+    {
+      name: "User Seats",
+      freeString: "1",
+      starterString: "5",
+      proString: "Unlimited",
+      businessString: "Volume Pricing",
+      enterpriseString: "Custom",
+    },
+    {
+      name: "Support Level",
+      freeString: "Community",
+      starterString: "Email (48h)",
+      proString: "Priority (24h)",
+      businessString: "Dedicated",
+      enterpriseString: "24/7 Premium",
+    },
+    {
+      name: "API Access",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: true,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+
+    { name: "Enterprise", header: true },
+    {
+      name: "Custom Integrations",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: false,
+      businessIncluded: true,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "SOC2 Compliance",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: false,
+      businessIncluded: false,
+      enterpriseIncluded: true,
+    },
+    {
+      name: "On-Premise Option",
+      freeIncluded: false,
+      starterIncluded: false,
+      proIncluded: false,
+      businessIncluded: false,
+      enterpriseIncluded: true,
+    },
   ]
 
   type FaqItem = { q: string; a: string; open?: boolean }
   let faqs = $state<FaqItem[]>([
     {
       q: "Is there a free plan?",
-      a: "Yes — you can get started with the Free tier at no cost. It covers core features for individual passengers and small operators.",
+      a: "Yes — start with the Free tier at no cost. It covers core features for individual users and small operators. Upgrade to Starter ($9/mo) for more capacity.",
     },
     {
-      q: "Can I switch plans at any time?",
-      a: "Absolutely. Upgrades take effect immediately, and downgrades apply at the end of your current billing cycle. No lock-in.",
+      q: "What's the difference between Pro and Business?",
+      a: "Pro ($29/mo) is perfect for solo professionals needing unlimited everything. Business ($49/user/mo) adds team collaboration, volume discounts, and dedicated support for organizations.",
     },
     {
-      q: "How does billing work?",
-      a: "Plans are billed monthly or annually. Annual billing gives you a significant discount. You'll be charged via Stripe — we never store card details directly.",
+      q: "How does volume pricing work for Business?",
+      a: "Per-user pricing drops with scale: $49 (1-9 users), $39 (10-49), $29 (50+). Contact sales for custom quotes and 50+ seat contracts.",
     },
     {
-      q: "Can I test the payment flow without a real card?",
-      a: "Yes. Use Stripe's test card 4242 4242 4242 4242 with any future expiry date to simulate the full purchase and upgrade flow.",
+      q: "Can I switch plans anytime?",
+      a: "Yes. Upgrades are instant, downgrades apply at billing cycle end. Enterprise plans use custom contracts with flexible terms.",
     },
     {
-      q: "What happens if I cancel?",
-      a: "Your account reverts to the Free tier at the end of the paid period. Your data is retained — nothing is deleted.",
+      q: "How does Enterprise pricing work?",
+      a: "'Custom' pricing is value-based and negotiated. Starts around $199/user but depends on your scale, features, and SLAs. Book a sales call for a quote.",
+    },
+    {
+      q: "Test payments without a real card?",
+      a: "Use Stripe test card 4242 4242 4242 4242 (any future expiry) to simulate purchases across all tiers.",
+    },
+    {
+      q: "What if I cancel?",
+      a: "Paid accounts revert to Free at period end. Data stays intact — upgrade anytime.",
     },
   ])
 
@@ -59,7 +190,7 @@
   <title>Pricing — {WebsiteName}</title>
   <meta
     name="description"
-    content="Simple, transparent pricing for {WebsiteName}"
+    content="Tiered pricing from Free to Enterprise for {WebsiteName}"
   />
 </svelte:head>
 
@@ -79,11 +210,13 @@
           points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
         />
       </svg>
-      Simple Pricing
+      Tiered Pricing
     </div>
-    <h1 class="hero-title">Scale from free<br />to <em>enterprise</em></h1>
+    <h1 class="hero-title">
+      Scale from <em>free</em><br />to <em>enterprise</em>
+    </h1>
     <p class="hero-sub">
-      No surprises. Start free, upgrade when you need more.
+      Individuals to large teams. Pay for what you need, when you need it.
     </p>
   </div>
 
@@ -95,7 +228,7 @@
   <!-- ── FAQ ── -->
   <div class="section-head">
     <h2 class="section-title">Frequently asked</h2>
-    <p class="section-sub">Everything you need to know about pricing.</p>
+    <p class="section-sub">Everything about our tiered plans and billing.</p>
   </div>
 
   <div class="faq-list">
@@ -116,7 +249,7 @@
           </svg>
         </button>
         {#if faq.open}
-          <div class="faq-body">{faq.a}</div>
+          <div class="faq-body">{@html faq.a}</div>
         {/if}
       </div>
     {/each}
@@ -124,101 +257,80 @@
 
   <!-- ── Feature comparison table ── -->
   <div class="section-head">
-    <h2 class="section-title">Plan features</h2>
-    <p class="section-sub">A full breakdown of what's included at each tier.</p>
+    <h2 class="section-title">Feature comparison</h2>
+    <p class="section-sub">
+      Everything included at each tier, from Free to Enterprise.
+    </p>
   </div>
 
   <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th style="width:55%;">Feature</th>
-          <th>Free</th>
-          <th>Pro</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each planFeatures as feature}
-          {#if feature.header}
-            <tr class="section-row">
-              <td colspan="3">{feature.name}</td>
-            </tr>
-          {:else}
-            <tr class="feature-row">
-              <td>{feature.name}</td>
-
-              <!-- Free column -->
-              <td>
-                {#if feature.freeString}
-                  <span class="feature-string">{feature.freeString}</span>
-                {:else if feature.freeIncluded}
-                  <span class="check-icon">
-                    <svg
-                      width="17"
-                      height="17"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </span>
-                {:else}
-                  <span class="cross-icon">
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </span>
-                {/if}
-              </td>
-
-              <!-- Pro column -->
-              <td>
-                {#if feature.proString}
-                  <span class="feature-string">{feature.proString}</span>
-                {:else if feature.proIncluded}
-                  <span class="check-icon">
-                    <svg
-                      width="17"
-                      height="17"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </span>
-                {:else}
-                  <span class="cross-icon">
-                    <svg
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </span>
-                {/if}
-              </td>
-            </tr>
-          {/if}
-        {/each}
-      </tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:35%;">Feature</th>
+            <th>Free</th>
+            <th>Starter</th>
+            <th>Pro</th>
+            <th>Business</th>
+            <th>Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each planFeatures as feature}
+            {#if feature.header}
+              <tr class="section-row">
+                <td colspan="6">{feature.name}</td>
+              </tr>
+            {:else}
+              <tr class="feature-row">
+                <td>{feature.name}</td>
+                <!-- Free -->
+                <td
+                  >{#if feature.freeString}<span class="feature-string"
+                      >{feature.freeString}</span
+                    >{:else if feature.freeIncluded}<span class="check-icon"
+                      >✓</span
+                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                >
+                <!-- Starter -->
+                <td
+                  >{#if feature.starterString}<span class="feature-string"
+                      >{feature.starterString}</span
+                    >{:else if feature.starterIncluded}<span class="check-icon"
+                      >✓</span
+                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                >
+                <!-- Pro -->
+                <td
+                  >{#if feature.proString}<span class="feature-string"
+                      >{feature.proString}</span
+                    >{:else if feature.proIncluded}<span class="check-icon"
+                      >✓</span
+                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                >
+                <!-- Business -->
+                <td
+                  >{#if feature.businessString}<span class="feature-string"
+                      >{feature.businessString}</span
+                    >{:else if feature.businessIncluded}<span class="check-icon"
+                      >✓</span
+                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                >
+                <!-- Enterprise -->
+                <td
+                  >{#if feature.enterpriseString}<span class="feature-string"
+                      >{feature.enterpriseString}</span
+                    >{:else if feature.enterpriseIncluded}<span
+                      class="check-icon">✓</span
+                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                >
+              </tr>
+            {/if}
+          {/each}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -501,5 +613,28 @@
   }
   td:last-child .feature-string {
     color: var(--orange);
+  }
+
+  /* Add horizontal scroll for wide table */
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 800px; /* Ensures horizontal scroll on mobile */
+  }
+
+  /* Simplified icons using text for better mobile rendering */
+  .check-icon {
+    font-weight: bold;
+    color: var(--color-success);
+  }
+  .cross-icon {
+    color: var(--color-muted);
+    font-weight: bold;
+  }
+  .feature-string {
+    font-weight: 500;
   }
 </style>
