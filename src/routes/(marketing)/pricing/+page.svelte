@@ -12,204 +12,494 @@
   }
 
   const planFeatures: PlanFeatureRow[] = [
-    {
-      name: "Section 1",
-      header: true,
-    },
-    {
-      name: "Feature 1",
-      freeIncluded: true,
-      proIncluded: true,
-    },
-    {
-      name: "Feature 2",
-      freeIncluded: false,
-      proIncluded: true,
-    },
-    {
-      name: "Feature 3",
-      freeString: "3",
-      proString: "Unlimited",
-    },
-    {
-      name: "Section 2",
-      header: true,
-    },
-    {
-      name: "Feature 4",
-      freeIncluded: true,
-      proIncluded: true,
-    },
-    {
-      name: "Feature 5",
-      freeIncluded: false,
-      proIncluded: true,
-    },
+    { name: "Core Access", header: true },
+    { name: "Live Feed", freeIncluded: true, proIncluded: true },
+    { name: "Trip Planner", freeIncluded: false, proIncluded: true },
+    { name: "Route Alerts", freeString: "3", proString: "Unlimited" },
+    { name: "Fleet & Operations", header: true },
+    { name: "Fleet Manager", freeIncluded: true, proIncluded: true },
+    { name: "Telemetry Sync", freeIncluded: false, proIncluded: true },
+    { name: "Geofences", freeString: "5", proString: "Unlimited" },
+    { name: "Analytics & Reports", header: true },
+    { name: "Insights Snapshot", freeIncluded: true, proIncluded: true },
+    { name: "Custom Reports", freeIncluded: false, proIncluded: true },
+    { name: "Data Export", freeIncluded: false, proIncluded: true },
   ]
+
+  type FaqItem = { q: string; a: string; open?: boolean }
+  let faqs = $state<FaqItem[]>([
+    {
+      q: "Is there a free plan?",
+      a: "Yes — you can get started with the Free tier at no cost. It covers core features for individual passengers and small operators.",
+    },
+    {
+      q: "Can I switch plans at any time?",
+      a: "Absolutely. Upgrades take effect immediately, and downgrades apply at the end of your current billing cycle. No lock-in.",
+    },
+    {
+      q: "How does billing work?",
+      a: "Plans are billed monthly or annually. Annual billing gives you a significant discount. You'll be charged via Stripe — we never store card details directly.",
+    },
+    {
+      q: "Can I test the payment flow without a real card?",
+      a: "Yes. Use Stripe's test card 4242 4242 4242 4242 with any future expiry date to simulate the full purchase and upgrade flow.",
+    },
+    {
+      q: "What happens if I cancel?",
+      a: "Your account reverts to the Free tier at the end of the paid period. Your data is retained — nothing is deleted.",
+    },
+  ])
+
+  function toggleFaq(i: number) {
+    faqs = faqs.map((f, idx) => (idx === i ? { ...f, open: !f.open } : f))
+  }
 </script>
 
 <svelte:head>
-  <title>Pricing</title>
-  <meta name="description" content="Pricing - {WebsiteName}" />
+  <title>Pricing — {WebsiteName}</title>
+  <meta
+    name="description"
+    content="Simple, transparent pricing for {WebsiteName}"
+  />
 </svelte:head>
 
-<div class="min-h-[70vh] pb-8 pt-[5vh] px-4">
-  <h1 class="text-3xl font-bold text-center">Pricing</h1>
-  <h2 class="text-xl text-center text-slate-500 mt-1 pb-3">
-    Totally free, scale to millions of users
-  </h2>
+<div class="pricing-page">
+  <!-- ── Hero ── -->
+  <div class="pricing-hero">
+    <div class="hero-eyebrow">
+      <svg
+        width="11"
+        height="11"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+      >
+        <polygon
+          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+        />
+      </svg>
+      Simple Pricing
+    </div>
+    <h1 class="hero-title">Scale from free<br />to <em>enterprise</em></h1>
+    <p class="hero-sub">
+      No surprises. Start free, upgrade when you need more.
+    </p>
+  </div>
 
-  <div class="w-full my-8">
+  <!-- ── Pricing cards ── -->
+  <div class="module-wrap">
     <PricingModule callToAction="Get Started" highlightedPlanId="pro" />
-    <h1 class="text-2xl font-bold text-center mt-24">Pricing FAQ</h1>
-    <div class="flex place-content-center">
-      <div class="join join-vertical max-w-xl py-6 mx-auto">
-        <div class="collapse collapse-arrow join-item border border-primary">
-          <input type="radio" name="faq-accordion" />
-          <div class="collapse-title text-lg font-medium">
-            Is this template free to use?
-          </div>
-          <div class="collapse-content">
-            <p>Yup! This template is free to use for any project.</p>
-          </div>
-        </div>
-        <div class="collapse collapse-arrow join-item border border-primary">
-          <input type="radio" name="faq-accordion" />
-          <div class="collapse-title text-lg font-medium">
-            Why does a free template have a pricing page?
-          </div>
-          <div class="collapse-content">
-            <p>
-              The pricing page is part of the boilerplate. It shows how the
-              pricing page integrates into the billing portal and the Stripe
-              Checkout flows.
-            </p>
-          </div>
-        </div>
-        <div class="collapse collapse-arrow join-item border border-primary">
-          <input type="radio" name="faq-accordion" />
-          <div class="collapse-title text-lg font-medium">
-            What license is the template under?
-          </div>
-          <div class="collapse-content">
-            <p>The template is under the MIT license.</p>
-          </div>
-        </div>
-        <div class="collapse collapse-arrow join-item border border-primary">
-          <input type="radio" name="faq-accordion" />
-          <div class="collapse-title text-lg font-medium">
-            Can I try out purchase flows without real a credit card?
-          </div>
-          <div class="collapse-content">
-            <p>
-              Our demo page <a href="https://saasstarter.work" class="link"
-                >SaasStarter.work</a
-              > has a functional demo page, using Stripe's test environment.
-            </p>
-            <p class="mt-4">
-              You can use the credit card number 4242 4242 4242 4242 with any
-              future expiry date to test the payment and upgrade flows.
-            </p>
-          </div>
-        </div>
+  </div>
+
+  <!-- ── FAQ ── -->
+  <div class="section-head">
+    <h2 class="section-title">Frequently asked</h2>
+    <p class="section-sub">Everything you need to know about pricing.</p>
+  </div>
+
+  <div class="faq-list">
+    {#each faqs as faq, i}
+      <div class="faq-item {faq.open ? 'open' : ''}">
+        <button class="faq-trigger" onclick={() => toggleFaq(i)}>
+          {faq.q}
+          <svg
+            class="faq-chevron"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        {#if faq.open}
+          <div class="faq-body">{faq.a}</div>
+        {/if}
       </div>
-    </div>
+    {/each}
+  </div>
 
-    <svg style="display:none" version="2.0">
-      <defs>
-        <symbol
-          id="checkcircle"
-          viewBox="0 0 24 24"
-          stroke-width="2"
-          fill="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path
-            d="M16.417 10.283A7.917 7.917 0 1 1 8.5 2.366a7.916 7.916 0 0 1 7.917 7.917zm-4.105-4.498a.791.791 0 0 0-1.082.29l-3.828 6.63-1.733-2.08a.791.791 0 1 0-1.216 1.014l2.459 2.952a.792.792 0 0 0 .608.285.83.83 0 0 0 .068-.003.791.791 0 0 0 .618-.393L12.6 6.866a.791.791 0 0 0-.29-1.081z"
-          />
-        </symbol>
-      </defs>
-    </svg>
+  <!-- ── Feature comparison table ── -->
+  <div class="section-head">
+    <h2 class="section-title">Plan features</h2>
+    <p class="section-sub">A full breakdown of what's included at each tier.</p>
+  </div>
 
-    <svg style="display:none" version="2.0">
-      <defs>
-        <symbol id="nocircle" viewBox="0 0 24 24" fill="currentColor">
-          <path
-            d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Zm4,11H8a1,1,0,0,1,0-2h8a1,1,0,0,1,0,2Z"
-          />
-        </symbol>
-      </defs>
-    </svg>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:55%;">Feature</th>
+          <th>Free</th>
+          <th>Pro</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each planFeatures as feature}
+          {#if feature.header}
+            <tr class="section-row">
+              <td colspan="3">{feature.name}</td>
+            </tr>
+          {:else}
+            <tr class="feature-row">
+              <td>{feature.name}</td>
 
-    <h1 class="text-2xl font-bold text-center mt-16">Plan Features</h1>
-    <h2 class="text-xl text-center text-slate-500 mt-1 pb-3">
-      Example feature table
-    </h2>
+              <!-- Free column -->
+              <td>
+                {#if feature.freeString}
+                  <span class="feature-string">{feature.freeString}</span>
+                {:else if feature.freeIncluded}
+                  <span class="check-icon">
+                    <svg
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                {:else}
+                  <span class="cross-icon">
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </span>
+                {/if}
+              </td>
 
-    <div class="overflow-visible mx-auto max-w-xl mt-4">
-      <table class="table">
-        <thead
-          class="text-lg sticky top-0 bg-base-100 bg-opacity-50 z-10 backdrop-blur-sm"
-        >
-          <tr>
-            <th></th>
-            <th class="text-center">Free</th>
-            <th class="text-center">Pro</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each planFeatures as feature}
-            {#if feature.header}
-              <tr class="bg-base-200 font-bold">
-                <td colspan="3">{feature.name} </td>
-              </tr>
-            {:else}
-              <tr class="relative">
-                <td>{feature.name} </td>
-                <td class="text-center">
-                  {#if feature.freeString}
-                    {feature.freeString}
-                  {:else if feature.freeIncluded}
+              <!-- Pro column -->
+              <td>
+                {#if feature.proString}
+                  <span class="feature-string">{feature.proString}</span>
+                {:else if feature.proIncluded}
+                  <span class="check-icon">
                     <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="w-8 h-8 ml-2 inline text-success"
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
                     >
-                      <use href="#checkcircle" />
+                      <polyline points="20 6 9 17 4 12" />
                     </svg>
-                  {:else}
+                  </span>
+                {:else}
+                  <span class="cross-icon">
                     <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="w-[26px] h-[26px] inline text-base-200"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
                     >
-                      <use href="#nocircle" />
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
-                  {/if}
-                </td>
-                <td class="text-center">
-                  {#if feature.proString}
-                    {feature.proString}
-                  {:else if feature.proIncluded}
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="w-8 h-8 ml-2 inline text-success"
-                    >
-                      <use href="#checkcircle" />
-                    </svg>
-                  {:else}
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="w-[26px] h-[26px] inline text-base-200"
-                    >
-                      <use href="#nocircle" />
-                    </svg>
-                  {/if}
-                </td>
-              </tr>
-            {/if}
-          {/each}
-        </tbody>
-      </table>
-    </div>
+                  </span>
+                {/if}
+              </td>
+            </tr>
+          {/if}
+        {/each}
+      </tbody>
+    </table>
   </div>
 </div>
+
+<style>
+  /* ── Page ── */
+  .pricing-page {
+    min-height: 70vh;
+    padding: 72px 24px 96px;
+    font-family: var(--font-body);
+    background: var(--ink);
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Atmospheric gradients */
+  .pricing-page::before {
+    content: "";
+    position: fixed;
+    top: -120px;
+    right: -120px;
+    width: 560px;
+    height: 560px;
+    background: radial-gradient(
+      circle,
+      rgba(242, 101, 34, 0.07),
+      transparent 65%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+  .pricing-page::after {
+    content: "";
+    position: fixed;
+    bottom: -100px;
+    left: -100px;
+    width: 440px;
+    height: 440px;
+    background: radial-gradient(
+      circle,
+      rgba(0, 176, 155, 0.05),
+      transparent 65%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Hero header ── */
+  .pricing-hero {
+    text-align: center;
+    margin-bottom: 56px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--orange);
+    background: rgba(242, 101, 34, 0.08);
+    border: 1px solid rgba(242, 101, 34, 0.18);
+    padding: 5px 14px;
+    border-radius: 100px;
+    margin-bottom: 22px;
+  }
+
+  .hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 900;
+    letter-spacing: -0.06em;
+    line-height: 1.05;
+    color: var(--text-1);
+    margin-bottom: 14px;
+  }
+  .hero-title em {
+    font-style: normal;
+    background: linear-gradient(90deg, #f26522, #ff8c4b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-size: 0.95rem;
+    color: var(--text-3);
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.65;
+  }
+
+  /* ── Module wrapper ── */
+  .module-wrap {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 96px;
+  }
+
+  /* ── Section heading ── */
+  .section-head {
+    text-align: center;
+    margin-bottom: 36px;
+    position: relative;
+    z-index: 1;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 3vw, 1.9rem);
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    color: var(--text-1);
+    margin-bottom: 8px;
+  }
+  .section-sub {
+    font-size: 0.875rem;
+    color: var(--text-3);
+    line-height: 1.6;
+  }
+
+  /* ── FAQ accordion ── */
+  .faq-list {
+    max-width: 580px;
+    margin: 0 auto 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .faq-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .faq-item.open {
+    border-color: rgba(242, 101, 34, 0.25);
+    background: rgba(242, 101, 34, 0.04);
+  }
+
+  .faq-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 16px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-1);
+    text-align: left;
+    gap: 12px;
+  }
+  .faq-trigger:hover {
+    color: var(--text-1);
+  }
+
+  .faq-chevron {
+    flex-shrink: 0;
+    color: var(--text-3);
+    transition:
+      transform 0.22s ease,
+      color 0.2s;
+  }
+  .faq-item.open .faq-chevron {
+    transform: rotate(180deg);
+    color: var(--orange);
+  }
+
+  .faq-body {
+    padding: 0 20px 18px;
+    font-size: 0.875rem;
+    color: var(--text-3);
+    line-height: 1.7;
+  }
+  .faq-body a {
+    color: var(--orange);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(242, 101, 34, 0.3);
+    transition: border-color 0.15s;
+  }
+  .faq-body a:hover {
+    border-color: rgba(242, 101, 34, 0.7);
+  }
+
+  /* ── Feature table ── */
+  .table-wrap {
+    max-width: 580px;
+    margin: 0 auto;
+    border: 1px solid var(--rim);
+    border-radius: 18px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead tr {
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--rim);
+  }
+  th {
+    padding: 14px 18px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    text-align: center;
+  }
+  th:first-child {
+    text-align: left;
+  }
+
+  /* Section header rows */
+  tr.section-row td {
+    padding: 10px 18px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--orange);
+    background: rgba(242, 101, 34, 0.05);
+    border-top: 1px solid rgba(242, 101, 34, 0.12);
+    border-bottom: 1px solid rgba(242, 101, 34, 0.08);
+  }
+
+  /* Feature rows */
+  tr.feature-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.15s;
+  }
+  tr.feature-row:last-child {
+    border-bottom: none;
+  }
+  tr.feature-row:hover {
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  td {
+    padding: 13px 18px;
+    font-size: 0.875rem;
+    color: var(--text-2);
+    vertical-align: middle;
+    text-align: center;
+  }
+  td:first-child {
+    text-align: left;
+    color: var(--text-1);
+  }
+
+  /* Check / cross inline icons */
+  .check-icon {
+    color: var(--teal);
+    display: inline-block;
+  }
+  .cross-icon {
+    color: rgba(255, 255, 255, 0.15);
+    display: inline-block;
+  }
+
+  /* String values (e.g. "3" or "Unlimited") */
+  .feature-string {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-2);
+  }
+  td:last-child .feature-string {
+    color: var(--orange);
+  }
+</style>

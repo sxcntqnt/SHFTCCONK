@@ -10,9 +10,18 @@
   import SeatViewer from "$lib/components/SeatViewer.svelte"
   import posthog from "posthog-js"
 
-  export let data: PageData
+  let { data }: { data: PageData } = $props()
 
-  $: ({ matatu, config } = data)
+  // Reactive destructuring using $effect
+  $effect(() => {
+    const { matatu, config } = data
+    // assign to local variables if you need them outside
+    localMatatu = matatu
+    localConfig = config
+  })
+
+  let localMatatu: typeof data.matatu
+  let localConfig: typeof data.config
 
   let selectedSeats: number[] = []
   let showModal = false

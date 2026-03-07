@@ -1,26 +1,28 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy } from "svelte"
 
-  export let data: {
-    polylineHash: string;
-  };
+  type Data = {
+    polylineHash: string
+  }
 
-  let socket: WebSocket | null = null;
-  let corridorFeed: any[] = [];
+  let { data }: { data: Data } = $props()
+
+  let socket: WebSocket | null = null
+  let corridorFeed: any[] = []
 
   onMount(() => {
-    const wsUrl = `wss://api.yourdomain.com/feed/corridor/${data.polylineHash}`;
+    const wsUrl = `wss://api.yourdomain.com/feed/corridor/${data.polylineHash}`
 
-    socket = new WebSocket(wsUrl);
+    socket = new WebSocket(wsUrl)
 
     socket.onmessage = (event) => {
-      corridorFeed = JSON.parse(event.data);
-    };
-  });
+      corridorFeed = JSON.parse(event.data)
+    }
+  })
 
   onDestroy(() => {
-    socket?.close();
-  });
+    socket?.close()
+  })
 </script>
 
 <h1 class="text-2xl font-bold mb-4">

@@ -4,7 +4,7 @@
   import MapView from "$lib/map/components/MapView.svelte"
   import gsap from "gsap"
 
-  export let data: {
+  type MatatuData = {
     matatuId: string
     hex: string
     lat: number
@@ -12,12 +12,20 @@
     k: number
   }
 
-  export let reservedMatatus: {
+  type ReservedMatatu = {
     matatuId: string
     saccoName: string
     routeNumber: string
     routePolyline: { lat: number; lng: number }[]
-  }[] = []
+  }
+
+  let {
+    data,
+    reservedMatatus = [],
+  }: {
+    data: MatatuData
+    reservedMatatus?: ReservedMatatu[]
+  } = $props()
 
   type FleetMarker = {
     id: string

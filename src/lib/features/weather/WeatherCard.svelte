@@ -1,31 +1,43 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher } from "svelte"
 
-  export let temperature: number;
-  export let windspeed: number;
-  export let weathercode: number;
-  export let time: string;
-  export let location: string;
-  export let source: 'search' | 'map-click' | 'geofence';
+  let {
+    temperature,
+    windspeed,
+    weathercode,
+    time,
+    location,
+    source,
+  }: {
+    temperature: number
+    windspeed: number
+    weathercode: number
+    time: string
+    location: string
+    source: "search" | "map-click" | "geofence"
+  } = $props()
 
-  const dispatch = createEventDispatcher();
+  const dispatch = createEventDispatcher()
 
   function remove() {
-    dispatch('remove', { location });
+    dispatch("remove", { location })
   }
 
   const formattedTime = new Date(time).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
 
-  $: tempColor =
-    isNaN(temperature) ? 'from-gray-500 to-gray-700' :
-    temperature <= 10 ? 'from-blue-400 to-blue-600' :
-    temperature <= 22 ? 'from-cyan-400 to-sky-500' :
-    temperature <= 30 ? 'from-yellow-400 to-orange-500' :
-    'from-orange-500 to-red-500';
+  $: tempColor = isNaN(temperature)
+    ? "from-gray-500 to-gray-700"
+    : temperature <= 10
+      ? "from-blue-400 to-blue-600"
+      : temperature <= 22
+        ? "from-cyan-400 to-sky-500"
+        : temperature <= 30
+          ? "from-yellow-400 to-orange-500"
+          : "from-orange-500 to-red-500"
 </script>
 
 <div class="weather-glass w-full max-w-xl p-8 flex flex-col gap-6 relative">
@@ -45,7 +57,9 @@
 
   <!-- Temperature -->
   <div class="flex items-end gap-3">
-    <div class={`text-7xl font-light bg-gradient-to-b ${tempColor} bg-clip-text text-transparent`}>
+    <div
+      class={`text-7xl font-light bg-gradient-to-b ${tempColor} bg-clip-text text-transparent`}
+    >
       {Math.round(temperature)}°
     </div>
     <div class="text-white/60 text-lg mb-3">C</div>
@@ -73,21 +87,21 @@
     height: 34px;
     border-radius: 999px;
     border: none;
-    background: rgba(255,255,255,0.15);
+    background: rgba(255, 255, 255, 0.15);
     color: white;
     cursor: pointer;
     transition: all 0.2s;
     font-size: 16px;
   }
   .remove-btn:hover {
-    background: rgba(255,80,80,0.7);
+    background: rgba(255, 80, 80, 0.7);
     transform: scale(1.1);
   }
   .badge {
     font-size: 11px;
     padding: 3px 8px;
     border-radius: 999px;
-    background: rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.2);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: white;
@@ -97,10 +111,10 @@
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     background: rgba(255, 255, 255, 0.08);
     border-radius: 28px;
-    border: 1px solid rgba(255,255,255,0.18);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     box-shadow:
-      0 20px 60px rgba(0,0,0,0.25),
-      inset 0 1px 0 rgba(255,255,255,0.2);
+      0 20px 60px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
   }
   .stat {
     display: flex;
@@ -111,7 +125,7 @@
     font-size: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
+    color: rgba(255, 255, 255, 0.55);
   }
   .stat-value {
     font-size: 20px;

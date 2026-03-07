@@ -1,6 +1,11 @@
 <script lang="ts">
-  export let title: string;
-  export let subtitle: string = '';
+  let {
+    title,
+    subtitle = "",
+  }: {
+    title: string
+    subtitle?: string
+  } = $props()
 </script>
 
 <div class="mb-6">

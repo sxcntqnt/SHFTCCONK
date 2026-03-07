@@ -1,8 +1,19 @@
 <script>
   import { T, useFrame } from "@threlte/core"
   import * as THREE from "three"
-  export let player // { id, data, model? }
-  export let isMe = false
+  type Player = {
+    id: string
+    data: any
+    model?: any
+  }
+
+  let {
+    player,
+    isMe = false,
+  }: {
+    player: Player
+    isMe?: boolean
+  } = $props()
 
   let carGroup
   let frontWheels = []

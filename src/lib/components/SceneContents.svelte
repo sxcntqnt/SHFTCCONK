@@ -12,25 +12,36 @@
    *   gsap
    */
 
-  import { onMount, onDestroy, createEventDispatcher } from 'svelte'
-  import { T, useThrelte, useTask } from '@threlte/core'
-  import { OrbitControls, interactivity } from '@threlte/extras'
-  import * as THREE from 'three'
-  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-  import { EffectComposer } from 'three-stdlib'
-  import { RenderPass } from 'three-stdlib'
-  import { BokehPass } from 'three-stdlib'
-  import { RGBELoader } from 'three-stdlib'
-  import { gsap } from 'gsap'
+  import { onMount, onDestroy, createEventDispatcher } from "svelte"
+  import { T, useThrelte, useTask } from "@threlte/core"
+  import { OrbitControls, interactivity } from "@threlte/extras"
+  import * as THREE from "three"
+  import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
+  import { EffectComposer } from "three-stdlib"
+  import { RenderPass } from "three-stdlib"
+  import { BokehPass } from "three-stdlib"
+  import { RGBELoader } from "three-stdlib"
+  import { gsap } from "gsap"
 
   // ── Props ─────────────────────────────────────────────────────────────────
-  export let selectedSeats: number[] = []
-  export let toggleSeat: (n: number) => void
-  export let modelKey: string
-  export let reservedSeats: number[] = []
-  export let viewMode: 'exterior' | 'interior' = 'exterior'
-  export let loading = true
-  export let interiorLoaded = false
+
+  let {
+    selectedSeats = [],
+    toggleSeat,
+    modelKey,
+    reservedSeats = [],
+    viewMode = "exterior",
+    loading = true,
+    interiorLoaded = false,
+  }: {
+    selectedSeats?: number[]
+    toggleSeat: (n: number) => void
+    modelKey: string
+    reservedSeats?: number[]
+    viewMode?: "exterior" | "interior"
+    loading?: boolean
+    interiorLoaded?: boolean
+  } = $props()
 
   // ── Threlte context ────────────────────────────────────────────────────────
   // useThrelte() gives us the renderer, scene, camera managed by <Canvas>.
@@ -94,12 +105,12 @@
     bokehPass = new BokehPass(s, c, {
       focus: 5.0,
       aperture: 0.0002,
-      maxblur: 0.01
+      maxblur: 0.01,
     })
     composer.addPass(bokehPass)
 
     // HDR environment
-    new RGBELoader().load('/hdr/studio.hdr', (texture) => {
+    new RGBELoader().load("/hdr/studio.hdr", (texture) => {
       texture.mapping = THREE.EquirectangularReflectionMapping
       s.environment = texture
       s.background = texture
@@ -118,7 +129,7 @@
     s.add(interiorGroup)
 
     // Audio
-    doorAudio = new Audio('/sounds/door-open.mp3')
+    doorAudio = new Audio("/sounds/door-open.mp3")
     doorAudio.volume = 0.5
 
     loadExterior()
@@ -132,11 +143,11 @@
       if (controls) controls.update()
       composer?.render()
     },
-    { autoInvalidate: false }
+    { autoInvalidate: false },
   )
 
   // ── Model loading ─────────────────────────────────────────────────────────
-/*
+  /*
   function loadExterior() {
     const loader = new GLTFLoader()
     loader.load(`/models/${modelKey}-exterior.glb`, (gltf) => {
@@ -165,57 +176,58 @@
     })
   }
  */
-function loadExterior() {
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(2, 1.2, 4),
-    new THREE.MeshStandardMaterial({ color: 0xf26522 })
-  )
-  body.position.y = 0.6
-  exteriorGroup.add(body)
-
-  // Simulate the door mesh so enterInterior() doesn't break
-  doorMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 1, 0.05),
-    new THREE.MeshStandardMaterial({ color: 0xffffff })
-  )
-  doorMesh.name = 'Door_Main'
-  doorMesh.position.set(0.8, 0.5, 2)
-  exteriorGroup.add(doorMesh)
-  createDoorPivot()
-
-  loading = false
-  requestRender()
-}
-
-function loadInterior() {
-  // Placeholder seats
-  for (let i = 1; i <= parseInt(capacity); i++) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.4, 0.4, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0xffffff })
+  function loadExterior() {
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 1.2, 4),
+      new THREE.MeshStandardMaterial({ color: 0xf26522 }),
     )
-    const col = (i - 1) % 4
-    const row = Math.floor((i - 1) / 4)
-    mesh.position.set(col * 0.6 - 0.9, 0.5, row * 0.7 - 1)
-    mesh.name = `Seat_${i}`
-    interiorGroup.add(mesh)
-    seatMeshes.set(i, mesh)
+    body.position.y = 0.6
+    exteriorGroup.add(body)
+
+    // Simulate the door mesh so enterInterior() doesn't break
+    doorMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 1, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0xffffff }),
+    )
+    doorMesh.name = "Door_Main"
+    doorMesh.position.set(0.8, 0.5, 2)
+    exteriorGroup.add(doorMesh)
+    createDoorPivot()
+
+    loading = false
+    requestRender()
   }
 
-  interiorLoaded = true
-  requestRender()
-}
+  function loadInterior() {
+    // Placeholder seats
+    for (let i = 1; i <= parseInt(capacity); i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.4, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0xffffff }),
+      )
+      const col = (i - 1) % 4
+      const row = Math.floor((i - 1) / 4)
+      mesh.position.set(col * 0.6 - 0.9, 0.5, row * 0.7 - 1)
+      mesh.name = `Seat_${i}`
+      interiorGroup.add(mesh)
+      seatMeshes.set(i, mesh)
+    }
+
+    interiorLoaded = true
+    requestRender()
+  }
   // ── Door pivot + light shaft ──────────────────────────────────────────────
 
   function createDoorPivot() {
     if (!doorMesh) return
     const hingeOffset = new THREE.Vector3(-0.6, 0, 0)
-    const hingeWorld = (doorMesh as THREE.Object3D).position.clone().add(hingeOffset)
+    const hingeWorld = (doorMesh as THREE.Object3D).position
+      .clone()
+      .add(hingeOffset)
 
     doorPivot = new THREE.Object3D()
     doorPivot.position.copy(hingeWorld)
     exteriorGroup.add(doorPivot)
-
     ;(doorMesh as THREE.Object3D).position.sub(hingeWorld)
     doorPivot.add(doorMesh as THREE.Object3D)
 
@@ -229,7 +241,7 @@ function loadInterior() {
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
-      depthWrite: false
+      depthWrite: false,
     })
     doorShaft = new THREE.Mesh(geometry, material)
     doorShaft.position.set(0, 2, 1.5)
@@ -246,24 +258,39 @@ function loadInterior() {
       gsap.to(doorPivot.rotation, {
         y: -Math.PI / 2,
         duration: 1,
-        ease: 'back.out(1.7)',
+        ease: "back.out(1.7)",
         onUpdate: requestRender,
-        onComplete: resolve
+        onComplete: resolve,
       })
-      gsap.to((doorShaft.material as THREE.MeshBasicMaterial), {
+      gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
         opacity: 0.4,
         duration: 1,
-        ease: 'power2.out',
-        onUpdate: requestRender
+        ease: "power2.out",
+        onUpdate: requestRender,
       })
     })
   }
 
   function closeDoor() {
     if (!doorPivot) return
-    gsap.to(doorPivot.rotation, { y: 0.05, duration: 0.6, ease: 'power3.in', onUpdate: requestRender })
-    gsap.to(doorPivot.rotation, { y: 0, duration: 0.2, delay: 0.6, ease: 'power1.out', onUpdate: requestRender })
-    gsap.to((doorShaft.material as THREE.MeshBasicMaterial), { opacity: 0, duration: 0.5, onUpdate: requestRender })
+    gsap.to(doorPivot.rotation, {
+      y: 0.05,
+      duration: 0.6,
+      ease: "power3.in",
+      onUpdate: requestRender,
+    })
+    gsap.to(doorPivot.rotation, {
+      y: 0,
+      duration: 0.2,
+      delay: 0.6,
+      ease: "power1.out",
+      onUpdate: requestRender,
+    })
+    gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
+      opacity: 0,
+      duration: 0.5,
+      onUpdate: requestRender,
+    })
   }
 
   // ── Camera FX ─────────────────────────────────────────────────────────────
@@ -275,21 +302,27 @@ function loadInterior() {
       duration: 0.15,
       yoyo: true,
       repeat: 3,
-      ease: 'sine.inOut',
-      onUpdate: requestRender
+      ease: "sine.inOut",
+      onUpdate: requestRender,
     })
   }
 
   function focusOnAvailableSeat() {
-    const available = [...seatMeshes.keys()].find((s) => !reservedSeats.includes(s))
+    const available = [...seatMeshes.keys()].find(
+      (s) => !reservedSeats.includes(s),
+    )
     if (!available) return
     const mesh = seatMeshes.get(available)
     if (!mesh) return
     const target = mesh.getWorldPosition(new THREE.Vector3())
-    bokehPass.materialBokeh.uniforms['focus'].value = 2.0
+    bokehPass.materialBokeh.uniforms["focus"].value = 2.0
     gsap.to(cam.position, {
-      x: target.x, y: target.y + 1, z: target.z + 2,
-      duration: 1.2, ease: 'power4.inOut', onUpdate: requestRender
+      x: target.x,
+      y: target.y + 1,
+      z: target.z + 2,
+      duration: 1.2,
+      ease: "power4.inOut",
+      onUpdate: requestRender,
     })
   }
 
@@ -302,9 +335,13 @@ function loadInterior() {
 
     await new Promise<void>((resolve) => {
       gsap.to(cam.position, {
-        x: 0, y: 2, z: 2.5,
-        duration: 1, ease: 'expo.out',
-        onUpdate: requestRender, onComplete: resolve
+        x: 0,
+        y: 2,
+        z: 2.5,
+        duration: 1,
+        ease: "expo.out",
+        onUpdate: requestRender,
+        onComplete: resolve,
       })
     })
 
@@ -315,7 +352,7 @@ function loadInterior() {
     gsap.to(interiorLight, { intensity: 1.4, duration: 1.2 })
 
     setTimeout(focusOnAvailableSeat, 600)
-    viewMode = 'interior'
+    viewMode = "interior"
   }
 
   export function goBack() {
@@ -323,13 +360,17 @@ function loadInterior() {
     exteriorGroup.visible = true
 
     gsap.to(cam.position, {
-      x: 0, y: 3, z: 8,
-      duration: 1, ease: 'power4.inOut',
-      onUpdate: requestRender, onComplete: closeDoor
+      x: 0,
+      y: 3,
+      z: 8,
+      duration: 1,
+      ease: "power4.inOut",
+      onUpdate: requestRender,
+      onComplete: closeDoor,
     })
     gsap.to(ambientInterior, { intensity: 0.05, duration: 0.6 })
     gsap.to(interiorLight, { intensity: 0.1, duration: 0.6 })
-    viewMode = 'exterior'
+    viewMode = "exterior"
   }
 
   // ── Click handling via Threlte interactivity ──────────────────────────────
@@ -342,7 +383,10 @@ function loadInterior() {
     // Walk up to find Door_Main
     let node: THREE.Object3D | null = obj
     while (node) {
-      if (node.name === 'Door_Main') { enterInterior(); return }
+      if (node.name === "Door_Main") {
+        enterInterior()
+        return
+      }
       node = node.parent
     }
   }
@@ -352,9 +396,9 @@ function loadInterior() {
     if (!obj) return
     let node: THREE.Object3D | null = obj
     while (node) {
-      if (node.name.startsWith('Seat_')) {
+      if (node.name.startsWith("Seat_")) {
         if (node.userData.disabled) return
-        const seatNumber = parseInt(node.name.split('_')[1])
+        const seatNumber = parseInt(node.name.split("_")[1])
         toggleSeat(seatNumber)
         return
       }
@@ -379,8 +423,13 @@ function loadInterior() {
         material.color.set(0x0ea5e9)
         material.emissive.set(0x0ea5e9)
         gsap.to(material.emissive, {
-          r: 0.6, g: 0.9, b: 1,
-          duration: 0.8, yoyo: true, repeat: -1, ease: 'sine.inOut'
+          r: 0.6,
+          g: 0.9,
+          b: 1,
+          duration: 0.8,
+          yoyo: true,
+          repeat: -1,
+          ease: "sine.inOut",
         })
         mesh.userData.disabled = false
       } else {
@@ -412,14 +461,18 @@ function loadInterior() {
   near={0.1}
   far={1000}
   position={[0, 3, 8]}
-  on:create={({ ref }) => { cam = ref }}
+  on:create={({ ref }) => {
+    cam = ref
+  }}
 >
   <!-- OrbitControls are a child of the camera in Threlte -->
   <OrbitControls
     enableZoom={false}
     enablePan={false}
     enableDamping
-    on:create={({ ref }) => { controls = ref }}
+    on:create={({ ref }) => {
+      controls = ref
+    }}
   />
 </T.PerspectiveCamera>
 
@@ -432,7 +485,9 @@ function loadInterior() {
 -->
 <T.Group
   on:click={handleExteriorClick}
-  on:create={({ ref }) => { exteriorGroup === ref || Object.assign(exteriorGroup, ref) }}
+  on:create={({ ref }) => {
+    exteriorGroup === ref || Object.assign(exteriorGroup, ref)
+  }}
 />
 
 <!--
@@ -440,7 +495,9 @@ function loadInterior() {
 -->
 <T.Group
   on:click={handleInteriorClick}
-  on:create={({ ref }) => { interiorGroup === ref || Object.assign(interiorGroup, ref) }}
+  on:create={({ ref }) => {
+    interiorGroup === ref || Object.assign(interiorGroup, ref)
+  }}
 />
 
 <!--

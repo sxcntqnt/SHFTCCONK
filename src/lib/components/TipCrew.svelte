@@ -1,44 +1,49 @@
 <!-- src/lib/components/TipCrew.svelte -->
 <script lang="ts">
-  export let driverName: string = 'Driver';
-  export let conductorName: string = 'Conductor';
-  export let onTip: (driverAmount: number, conductorAmount: number) => void;
+  let {
+    driverName = "Driver",
+    conductorName = "Conductor",
+    onTip,
+  }: {
+    driverName?: string
+    conductorName?: string
+    onTip: (driverAmount: number, conductorAmount: number) => void
+  } = $props()
 
-  let showModal = false;
-  let driverTip = 50;
-  let conductorTip = 50;
-  let tipDriver = true;
-  let tipConductor = true;
+  let showModal = false
+  let driverTip = 50
+  let conductorTip = 50
+  let tipDriver = true
+  let tipConductor = true
 
-  const quickTips = [20, 50, 100, 200, 500];
+  const quickTips = [20, 50, 100, 200, 500]
 
   function open() {
-    showModal = true;
+    showModal = true
   }
 
   function close() {
-    showModal = false;
+    showModal = false
   }
 
   function submit() {
-    const d = tipDriver ? Math.max(0, driverTip) : 0;
-    const c = tipConductor ? Math.max(0, conductorTip) : 0;
-    onTip(d, c);
-    close();
+    const d = tipDriver ? Math.max(0, driverTip) : 0
+    const c = tipConductor ? Math.max(0, conductorTip) : 0
+    onTip(d, c)
+    close()
   }
 
-  function setQuick(role: 'driver' | 'conductor', amt: number) {
-    if (role === 'driver') driverTip = amt;
-    else conductorTip = amt;
+  function setQuick(role: "driver" | "conductor", amt: number) {
+    if (role === "driver") driverTip = amt
+    else conductorTip = amt
   }
 </script>
 
 <button
   on:click={open}
-  class="btn btn-success w-full rounded-2xl text-lg py-7 font-semibold shadow-md hover:shadow-lg transition-all">
-  
+  class="btn btn-success w-full rounded-2xl text-lg py-7 font-semibold shadow-md hover:shadow-lg transition-all"
+>
   <span class="text-xl"> Tip Crew</span>
-
 </button>
 
 {#if showModal}
@@ -62,14 +67,20 @@
         <div>
           <label class="flex items-center justify-between mb-3">
             <span class="font-semibold text-lg">Tip Driver</span>
-            <input type="checkbox" bind:checked={tipDriver} class="toggle toggle-success" />
+            <input
+              type="checkbox"
+              bind:checked={tipDriver}
+              class="toggle toggle-success"
+            />
           </label>
           {#if tipDriver}
             <div class="flex flex-wrap gap-2 mb-4">
               {#each quickTips as amt}
                 <button
-                  on:click={() => setQuick('driver', amt)}
-                  class="btn btn-sm {driverTip === amt ? 'btn-primary' : 'btn-outline'}"
+                  on:click={() => setQuick("driver", amt)}
+                  class="btn btn-sm {driverTip === amt
+                    ? 'btn-primary'
+                    : 'btn-outline'}"
                 >
                   KES {amt}
                 </button>
@@ -90,14 +101,20 @@
         <div>
           <label class="flex items-center justify-between mb-3">
             <span class="font-semibold text-lg">Tip Conductor</span>
-            <input type="checkbox" bind:checked={tipConductor} class="toggle toggle-success" />
+            <input
+              type="checkbox"
+              bind:checked={tipConductor}
+              class="toggle toggle-success"
+            />
           </label>
           {#if tipConductor}
             <div class="flex flex-wrap gap-2 mb-4">
               {#each quickTips as amt}
                 <button
-                  on:click={() => setQuick('conductor', amt)}
-                  class="btn btn-sm {conductorTip === amt ? 'btn-primary' : 'btn-outline'}"
+                  on:click={() => setQuick("conductor", amt)}
+                  class="btn btn-sm {conductorTip === amt
+                    ? 'btn-primary'
+                    : 'btn-outline'}"
                 >
                   KES {amt}
                 </button>
@@ -119,11 +136,14 @@
         <div class="flex-1 text-center">
           <p class="text-sm text-gray-600">Total</p>
           <p class="text-2xl font-bold text-green-700">
-            KES {(tipDriver ? driverTip : 0) + (tipConductor ? conductorTip : 0)}
+            KES {(tipDriver ? driverTip : 0) +
+              (tipConductor ? conductorTip : 0)}
           </p>
         </div>
         <button on:click={close} class="btn btn-outline flex-1">Cancel</button>
-        <button on:click={submit} class="btn btn-primary flex-1">Send Tip</button>
+        <button on:click={submit} class="btn btn-primary flex-1"
+          >Send Tip</button
+        >
       </div>
     </div>
   </div>

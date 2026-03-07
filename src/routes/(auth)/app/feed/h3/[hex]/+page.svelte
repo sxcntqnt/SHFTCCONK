@@ -1,35 +1,37 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy } from "svelte"
 
-  export let data: {
-    hex: string;
-    k: number;
-  };
+  type Data = {
+    hex: string
+    k: number
+  }
 
-  let socket: WebSocket | null = null;
-  let feedData: any[] = [];
+  let { data }: { data: Data } = $props()
+
+  let socket: WebSocket | null = null
+  let feedData: any[] = []
 
   onMount(() => {
-    const { hex, k } = data;
+    const { hex, k } = data
 
     // Production should use env-based API URL
-    const wsUrl = `wss://api.yourdomain.com/feed/h3/${hex}?k=${k}`;
+    const wsUrl = `wss://api.yourdomain.com/feed/h3/${hex}?k=${k}`
 
-    socket = new WebSocket(wsUrl);
+    socket = new WebSocket(wsUrl)
 
     socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      feedData = payload;
-    };
+      const payload = JSON.parse(event.data)
+      feedData = payload
+    }
 
     socket.onerror = (err) => {
-      console.error('Feed socket error', err);
-    };
-  });
+      console.error("Feed socket error", err)
+    }
+  })
 
   onDestroy(() => {
-    socket?.close();
-  });
+    socket?.close()
+  })
 </script>
 
 <h1 class="text-2xl font-bold mb-4">

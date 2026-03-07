@@ -47,13 +47,6 @@ import {
 } from "$lib/features/auth/stores/auth"
 import { get } from "svelte/store"
 
-
-
-// /operator/+layout.ts
-import { requireOperatorAccess } from "$lib/security/authGuard"
-export const load = async (event) => { await requireOperatorAccess(event); return {} }
-
-// /org/[orgId]/+layout.ts
 import { requireOrgAccess } from "$lib/security/authGuard"
 export const load = async (event) => { await requireOrgAccess(event, event.params.orgId); return {} }
 

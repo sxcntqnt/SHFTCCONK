@@ -1,8 +1,10 @@
 <script lang="ts">
-  export let className: string = '';
+  let { className = "" }: { className?: string } = $props()
 </script>
 
-<div class={`bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-lg p-6 ${className}`}>
+<div
+  class={`bg-white/30 backdrop-blur-xl border border-white/20 rounded-3xl shadow-lg p-6 ${className}`}
+>
   <slot />
 </div>
 
@@ -14,6 +16,6 @@
 
   div:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   }
 </style>

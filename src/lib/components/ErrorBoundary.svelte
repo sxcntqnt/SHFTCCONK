@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  export let fallback: string = 'Something went wrong.';
-  const dispatch = createEventDispatcher();
+  import { createEventDispatcher } from "svelte"
+  let { fallback = "Something went wrong." }: { fallback?: string } = $props()
+  const dispatch = createEventDispatcher()
 
-  let hasError = false;
+  let hasError = false
 
   // This function will be called manually by children
   function reportError(err: any) {
-    console.error(err);
-    hasError = true;
-    dispatch('error', err);
+    console.error(err)
+    hasError = true
+    dispatch("error", err)
   }
 </script>
 

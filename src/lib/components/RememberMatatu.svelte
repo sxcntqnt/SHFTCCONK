@@ -1,16 +1,16 @@
 <!-- src/lib/components/RememberMatatu.svelte -->
 <script lang="ts">
-  import { Bookmark } from '@lucide/svelte';
-  import { addRememberedMatatu } from '$lib/features/dashboard/stores/DashboardStore.ts';
+  import { Bookmark } from "@lucide/svelte"
+  import { addRememberedMatatu } from "$lib/features/dashboard/stores/DashboardStore.ts"
 
-  export let remembered: any[] = [];
+  let { remembered = [] }: { remembered?: any[] } = $props()
 
-  let newMatatu = '';
+  let newMatatu = ""
 
   function handleAddMatatu() {
     if (newMatatu.trim()) {
-      addRememberedMatatu({ name: newMatatu.trim() });
-      newMatatu = '';
+      addRememberedMatatu({ name: newMatatu.trim() })
+      newMatatu = ""
     }
   }
 </script>
@@ -31,7 +31,10 @@
     placeholder="Remember a matatu..."
     class="input input-bordered w-full mb-2"
   />
-  <button on:click={handleAddMatatu} class="btn btn-secondary w-full rounded-full">
+  <button
+    on:click={handleAddMatatu}
+    class="btn btn-secondary w-full rounded-full"
+  >
     Remember
   </button>
 </div>

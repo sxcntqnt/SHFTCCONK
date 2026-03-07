@@ -1,56 +1,61 @@
 <script lang="ts">
-  import WeatherCard from '$lib/features/weather/WeatherCard.svelte';
-  import { weatherCards, upsertWeather, removeWeather } from '$lib/features/weather/stores/WeatherStore';
-  import { fetchWeather } from '$lib/features/weather/services/weatherApi';
+  import WeatherCard from "$lib/features/weather/WeatherCard.svelte"
+  import {
+    weatherCards,
+    upsertWeather,
+    removeWeather,
+  } from "$lib/features/weather/stores/WeatherStore"
+  import { fetchWeather } from "$lib/features/weather/services/weatherApi"
 
-  export let data;
+  let { data }: { data: any } = $props()
 
   // Hydrate from SSR / load function if provided
   if (data?.weather) {
-    upsertWeather(data.weather);
+    upsertWeather(data.weather)
   }
 
-  let query = '';
-  let loading = false;
-  let errorMessage = '';
+  let query = ""
+  let loading = false
+  let errorMessage = ""
 
   async function search() {
-    const trimmed = query.trim();
-    if (!trimmed) return;
+    const trimmed = query.trim()
+    if (!trimmed) return
 
-    loading = true;
-    errorMessage = '';
+    loading = true
+    errorMessage = ""
 
     try {
       const geoRes = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmed)}&count=1&language=en&format=json`
-      );
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmed)}&count=1&language=en&format=json`,
+      )
 
-      if (!geoRes.ok) throw new Error(`Geocoding failed: ${geoRes.status}`);
+      if (!geoRes.ok) throw new Error(`Geocoding failed: ${geoRes.status}`)
 
-      const geoData = await geoRes.json();
+      const geoData = await geoRes.json()
 
       if (!geoData.results?.length) {
-        errorMessage = `No location found for "${trimmed}"`;
-        return;
+        errorMessage = `No location found for "${trimmed}"`
+        return
       }
 
-      const place = geoData.results[0];
+      const place = geoData.results[0]
 
       const weather = await fetchWeather(
         place.latitude,
         place.longitude,
         place.name, // or: `${place.name}${place.admin1 ? ', ' + place.admin1 : ''}, ${place.country_code}`
-        'search'
-      );
+        "search",
+      )
 
-      upsertWeather(weather);
-      query = '';
+      upsertWeather(weather)
+      query = ""
     } catch (err) {
-      console.error('Weather search failed:', err);
-      errorMessage = err instanceof Error ? err.message : 'Something went wrong — try again';
+      console.error("Weather search failed:", err)
+      errorMessage =
+        err instanceof Error ? err.message : "Something went wrong — try again"
     } finally {
-      loading = false;
+      loading = false
     }
   }
 </script>
@@ -61,11 +66,11 @@
     <input
       placeholder="Search any place…"
       bind:value={query}
-      on:keydown={(e) => e.key === 'Enter' && search()}
+      on:keydown={(e) => e.key === "Enter" && search()}
       disabled={loading}
     />
     <button on:click={search} disabled={loading}>
-      {loading ? '…' : 'Add'}
+      {loading ? "…" : "Add"}
     </button>
   </div>
 
@@ -102,7 +107,11 @@
 <style>
   .weather-bg {
     background:
-      radial-gradient(1200px 600px at 50% -10%, rgba(255, 255, 255, 0.25), transparent),
+      radial-gradient(
+        1200px 600px at 50% -10%,
+        rgba(255, 255, 255, 0.25),
+        transparent
+      ),
       linear-gradient(180deg, #3a7bd5 0%, #2a5298 40%, #1b2735 100%);
   }
   .title {
@@ -110,7 +119,7 @@
     font-weight: 700;
     color: white;
     letter-spacing: -0.02em;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   }
   .error {
     color: #ffcccc;

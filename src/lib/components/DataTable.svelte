@@ -1,7 +1,13 @@
 <script lang="ts">
-  export let columns: string[] = [];
-  export let rows: any[] = [];
-  export let rowKey: (row: any) => string = (row, i) => i.toString();
+  let {
+    columns = [],
+    rows = [],
+    rowKey = (row: any, i: number) => i.toString(),
+  }: {
+    columns?: string[]
+    rows?: any[]
+    rowKey?: (row: any, i: number) => string
+  } = $props()
 </script>
 
 <div class="overflow-x-auto bg-white rounded-3xl shadow-lg">

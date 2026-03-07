@@ -7,16 +7,23 @@
    * Usage:
    *   <SeatViewer selectedSeats={[2,5]} toggleSeat={fn} capacity="14" modelKey="sprinter" />
    */
-  import { onMount, onDestroy } from 'svelte'
-  import { Canvas } from '@threlte/core'
-  import SceneContents from './SceneContents.svelte'
+  import { onMount, onDestroy } from "svelte"
+  import { Canvas } from "@threlte/core"
+  import SceneContents from "./SceneContents.svelte"
 
-  export let selectedSeats: number[] = []
-  export let toggleSeat: (n: number) => void
-  export let capacity: string = '14'
-  export let modelKey: string
+  let {
+    selectedSeats = [],
+    toggleSeat,
+    capacity = "14",
+    modelKey,
+  }: {
+    selectedSeats?: number[]
+    toggleSeat: (n: number) => void
+    capacity?: string
+    modelKey: string
+  } = $props()
 
-  let viewMode: 'exterior' | 'interior' = 'exterior'
+  let viewMode: "exterior" | "interior" = "exterior"
   let loading = true
   let interiorLoaded = false
   let reservedSeats: number[] = []
@@ -29,7 +36,7 @@
       const data = await res.json()
       reservedSeats = data.reserved ?? []
     } catch (err) {
-      console.error('Seat polling failed', err)
+      console.error("Seat polling failed", err)
     }
   }
 
@@ -57,12 +64,16 @@
   </Canvas>
 
   {#if loading}
-    <div class="absolute inset-0 flex items-center justify-center bg-white/80 z-10 pointer-events-none">
-      <div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent" />
+    <div
+      class="absolute inset-0 flex items-center justify-center bg-white/80 z-10 pointer-events-none"
+    >
+      <div
+        class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"
+      />
     </div>
   {/if}
 
-  {#if viewMode === 'interior'}
+  {#if viewMode === "interior"}
     <button
       on:click={() => sceneContents.goBack()}
       class="absolute top-4 left-4 bg-white px-4 py-2 rounded shadow z-20"
