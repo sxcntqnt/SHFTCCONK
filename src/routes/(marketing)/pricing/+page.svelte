@@ -1,9 +1,10 @@
 <script lang="ts">
-  import pricingPlans from "./pricing_module.svelte"
-  import { WebsiteName } from "./../../../config"
+  import PricingPl from "./pricing_module.svelte"
+  import { WebsiteName } from "$lib/../config"
 
   type PlanFeatureRow = {
     name: string
+    header?: boolean
     freeIncluded?: boolean
     starterIncluded?: boolean
     proIncluded?: boolean
@@ -14,7 +15,6 @@
     proString?: string
     businessString?: string
     enterpriseString?: string
-    header?: boolean
   }
 
   const planFeatures: PlanFeatureRow[] = [
@@ -157,27 +157,27 @@
     },
     {
       q: "What's the difference between Pro and Business?",
-      a: "Pro ($29/mo) is perfect for solo professionals needing unlimited everything. Business ($49/user/mo) adds team collaboration, volume discounts, and dedicated support for organizations.",
+      a: "Pro ($29/mo) is perfect for solo professionals needing unlimited everything. Business ($49/user/mo) adds team collaboration, volume discounts, and dedicated support.",
     },
     {
       q: "How does volume pricing work for Business?",
-      a: "Per-user pricing drops with scale: $49 (1-9 users), $39 (10-49), $29 (50+). Contact sales for custom quotes and 50+ seat contracts.",
+      a: "Per-user pricing drops with scale: $49 (1–9 users), $39 (10–49), $29 (50+). Contact sales for custom quotes above 50 seats.",
     },
     {
       q: "Can I switch plans anytime?",
-      a: "Yes. Upgrades are instant, downgrades apply at billing cycle end. Enterprise plans use custom contracts with flexible terms.",
+      a: "Yes. Upgrades are instant; downgrades apply at billing cycle end. Enterprise plans use custom contracts with flexible terms.",
     },
     {
       q: "How does Enterprise pricing work?",
-      a: "'Custom' pricing is value-based and negotiated. Starts around $199/user but depends on your scale, features, and SLAs. Book a sales call for a quote.",
+      a: "Custom pricing is value-based and negotiated. Starts around $199/user depending on scale, features, and SLAs. Book a call with sales for a quote.",
     },
     {
       q: "Test payments without a real card?",
-      a: "Use Stripe test card 4242 4242 4242 4242 (any future expiry) to simulate purchases across all tiers.",
+      a: "Use Stripe test card 4242 4242 4242 4242 (any future expiry, any CVC) to simulate purchases across all paid tiers.",
     },
     {
-      q: "What if I cancel?",
-      a: "Paid accounts revert to Free at period end. Data stays intact — upgrade anytime.",
+      q: "What happens if I cancel?",
+      a: "Paid accounts revert to Free at period end. Your data stays intact — upgrade again anytime.",
     },
   ])
 
@@ -195,8 +195,8 @@
 </svelte:head>
 
 <div class="pricing-page">
-  <!-- ── Hero ── -->
-  <div class="pricing-hero">
+  <!-- Hero -->
+  <div class="hero">
     <div class="hero-eyebrow">
       <svg
         width="11"
@@ -218,14 +218,49 @@
     <p class="hero-sub">
       Individuals to large teams. Pay for what you need, when you need it.
     </p>
+    <div class="trust-strip">
+      <div class="trust-item">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"><polyline points="20 6 9 17 4 12" /></svg
+        >
+        No credit card for Free
+      </div>
+      <div class="trust-item">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"><polyline points="20 6 9 17 4 12" /></svg
+        >
+        Cancel anytime
+      </div>
+      <div class="trust-item">
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"><polyline points="20 6 9 17 4 12" /></svg
+        >
+        Instant upgrades
+      </div>
+    </div>
   </div>
 
-  <!-- ── Pricing cards ── -->
+  <!-- Pricing cards -->
   <div class="module-wrap">
     <PricingModule callToAction="Get Started" highlightedPlanId="pro" />
   </div>
 
-  <!-- ── FAQ ── -->
+  <!-- FAQ -->
   <div class="section-head">
     <h2 class="section-title">Frequently asked</h2>
     <p class="section-sub">Everything about our tiered plans and billing.</p>
@@ -249,13 +284,13 @@
           </svg>
         </button>
         {#if faq.open}
-          <div class="faq-body">{@html faq.a}</div>
+          <div class="faq-body">{faq.a}</div>
         {/if}
       </div>
     {/each}
   </div>
 
-  <!-- ── Feature comparison table ── -->
+  <!-- Feature comparison -->
   <div class="section-head">
     <h2 class="section-title">Feature comparison</h2>
     <p class="section-sub">
@@ -268,7 +303,7 @@
       <table>
         <thead>
           <tr>
-            <th style="width:35%;">Feature</th>
+            <th>Feature</th>
             <th>Free</th>
             <th>Starter</th>
             <th>Pro</th>
@@ -277,53 +312,183 @@
           </tr>
         </thead>
         <tbody>
-          {#each planFeatures as feature}
-            {#if feature.header}
-              <tr class="section-row">
-                <td colspan="6">{feature.name}</td>
-              </tr>
+          {#each planFeatures as f}
+            {#if f.header}
+              <tr class="section-row"><td colspan="6">{f.name}</td></tr>
             {:else}
               <tr class="feature-row">
-                <td>{feature.name}</td>
+                <td>{f.name}</td>
+
                 <!-- Free -->
                 <td
-                  >{#if feature.freeString}<span class="feature-string"
-                      >{feature.freeString}</span
-                    >{:else if feature.freeIncluded}<span class="check-icon"
-                      >✓</span
-                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                  >{#if f.freeString}<span class="feat-str">{f.freeString}</span
+                    >
+                  {:else if f.freeIncluded}
+                    <svg
+                      class="check-svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      ><polyline points="20 6 9 17 4 12" /></svg
+                    >
+                  {:else}
+                    <svg
+                      class="cross-svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      ><line x1="18" y1="6" x2="6" y2="18" /><line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      /></svg
+                    >
+                  {/if}</td
                 >
+
                 <!-- Starter -->
                 <td
-                  >{#if feature.starterString}<span class="feature-string"
-                      >{feature.starterString}</span
-                    >{:else if feature.starterIncluded}<span class="check-icon"
-                      >✓</span
-                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                  >{#if f.starterString}<span class="feat-str"
+                      >{f.starterString}</span
+                    >
+                  {:else if f.starterIncluded}
+                    <svg
+                      class="check-svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      ><polyline points="20 6 9 17 4 12" /></svg
+                    >
+                  {:else}
+                    <svg
+                      class="cross-svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      ><line x1="18" y1="6" x2="6" y2="18" /><line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      /></svg
+                    >
+                  {/if}</td
                 >
+
                 <!-- Pro -->
                 <td
-                  >{#if feature.proString}<span class="feature-string"
-                      >{feature.proString}</span
-                    >{:else if feature.proIncluded}<span class="check-icon"
-                      >✓</span
-                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                  >{#if f.proString}<span class="feat-str">{f.proString}</span>
+                  {:else if f.proIncluded}
+                    <svg
+                      class="check-svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      ><polyline points="20 6 9 17 4 12" /></svg
+                    >
+                  {:else}
+                    <svg
+                      class="cross-svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      ><line x1="18" y1="6" x2="6" y2="18" /><line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      /></svg
+                    >
+                  {/if}</td
                 >
+
                 <!-- Business -->
                 <td
-                  >{#if feature.businessString}<span class="feature-string"
-                      >{feature.businessString}</span
-                    >{:else if feature.businessIncluded}<span class="check-icon"
-                      >✓</span
-                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                  >{#if f.businessString}<span class="feat-str"
+                      >{f.businessString}</span
+                    >
+                  {:else if f.businessIncluded}
+                    <svg
+                      class="check-svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      ><polyline points="20 6 9 17 4 12" /></svg
+                    >
+                  {:else}
+                    <svg
+                      class="cross-svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      ><line x1="18" y1="6" x2="6" y2="18" /><line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      /></svg
+                    >
+                  {/if}</td
                 >
+
                 <!-- Enterprise -->
                 <td
-                  >{#if feature.enterpriseString}<span class="feature-string"
-                      >{feature.enterpriseString}</span
-                    >{:else if feature.enterpriseIncluded}<span
-                      class="check-icon">✓</span
-                    >{:else}<span class="cross-icon">✗</span>{/if}</td
+                  >{#if f.enterpriseString}<span class="feat-str"
+                      >{f.enterpriseString}</span
+                    >
+                  {:else if f.enterpriseIncluded}
+                    <svg
+                      class="check-svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      ><polyline points="20 6 9 17 4 12" /></svg
+                    >
+                  {:else}
+                    <svg
+                      class="cross-svg"
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      ><line x1="18" y1="6" x2="6" y2="18" /><line
+                        x1="6"
+                        y1="6"
+                        x2="18"
+                        y2="18"
+                      /></svg
+                    >
+                  {/if}</td
                 >
               </tr>
             {/if}
@@ -335,17 +500,16 @@
 </div>
 
 <style>
-  /* ── Page ── */
+  /* ── Page ────────────────────────────────────────────────────────────────── */
   .pricing-page {
-    min-height: 70vh;
-    padding: 72px 24px 96px;
+    min-height: 100vh;
+    padding: 80px 24px 100px;
     font-family: var(--font-body);
     background: var(--ink);
     position: relative;
     overflow: hidden;
   }
 
-  /* Atmospheric gradients */
   .pricing-page::before {
     content: "";
     position: fixed;
@@ -377,33 +541,31 @@
     z-index: 0;
   }
 
-  /* ── Hero header ── */
-  .pricing-hero {
+  /* ── Hero ────────────────────────────────────────────────────────────────── */
+  .hero {
     text-align: center;
-    margin-bottom: 56px;
+    margin-bottom: 60px;
     position: relative;
     z-index: 1;
   }
-
   .hero-eyebrow {
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--orange);
-    background: rgba(242, 101, 34, 0.08);
+    background: rgba(242, 101, 34, 0.07);
     border: 1px solid rgba(242, 101, 34, 0.18);
     padding: 5px 14px;
     border-radius: 100px;
     margin-bottom: 22px;
   }
-
   .hero-title {
     font-family: var(--font-display);
-    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-size: clamp(2rem, 5vw, 3.4rem);
     font-weight: 900;
     letter-spacing: -0.06em;
     line-height: 1.05;
@@ -417,23 +579,43 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-
   .hero-sub {
     font-size: 0.95rem;
     color: var(--text-3);
-    max-width: 480px;
+    max-width: 460px;
     margin: 0 auto;
     line-height: 1.65;
   }
 
-  /* ── Module wrapper ── */
+  /* Trust strip */
+  .trust-strip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+  }
+  .trust-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  .trust-item svg {
+    color: var(--teal);
+  }
+
+  /* ── Module wrapper ──────────────────────────────────────────────────────── */
   .module-wrap {
     position: relative;
     z-index: 1;
-    margin-bottom: 96px;
+    margin-bottom: 100px;
   }
 
-  /* ── Section heading ── */
+  /* ── Section heading ─────────────────────────────────────────────────────── */
   .section-head {
     text-align: center;
     margin-bottom: 36px;
@@ -454,29 +636,27 @@
     line-height: 1.6;
   }
 
-  /* ── FAQ accordion ── */
+  /* ── FAQ ─────────────────────────────────────────────────────────────────── */
   .faq-list {
-    max-width: 580px;
-    margin: 0 auto 96px;
+    max-width: 600px;
+    margin: 0 auto 100px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     position: relative;
     z-index: 1;
   }
-
   .faq-item {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.025);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 14px;
     overflow: hidden;
     transition: border-color 0.2s;
   }
   .faq-item.open {
-    border-color: rgba(242, 101, 34, 0.25);
-    background: rgba(242, 101, 34, 0.04);
+    border-color: rgba(242, 101, 34, 0.28);
+    background: rgba(242, 101, 34, 0.03);
   }
-
   .faq-trigger {
     display: flex;
     align-items: center;
@@ -487,16 +667,12 @@
     border: none;
     cursor: pointer;
     font-family: var(--font-body);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: 600;
     color: var(--text-1);
     text-align: left;
     gap: 12px;
   }
-  .faq-trigger:hover {
-    color: var(--text-1);
-  }
-
   .faq-chevron {
     flex-shrink: 0;
     color: var(--text-3);
@@ -508,26 +684,16 @@
     transform: rotate(180deg);
     color: var(--orange);
   }
-
   .faq-body {
     padding: 0 20px 18px;
-    font-size: 0.875rem;
+    font-size: 0.86rem;
     color: var(--text-3);
     line-height: 1.7;
   }
-  .faq-body a {
-    color: var(--orange);
-    text-decoration: none;
-    border-bottom: 1px solid rgba(242, 101, 34, 0.3);
-    transition: border-color 0.15s;
-  }
-  .faq-body a:hover {
-    border-color: rgba(242, 101, 34, 0.7);
-  }
 
-  /* ── Feature table ── */
+  /* ── Feature table ───────────────────────────────────────────────────────── */
   .table-wrap {
-    max-width: 580px;
+    max-width: 900px;
     margin: 0 auto;
     border: 1px solid var(--rim);
     border-radius: 18px;
@@ -535,19 +701,22 @@
     position: relative;
     z-index: 1;
   }
-
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 680px;
   }
-
   thead tr {
     background: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid var(--rim);
   }
   th {
-    padding: 14px 18px;
-    font-size: 0.65rem;
+    padding: 13px 16px;
+    font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -556,36 +725,35 @@
   }
   th:first-child {
     text-align: left;
+    width: 32%;
   }
 
   /* Section header rows */
   tr.section-row td {
-    padding: 10px 18px;
-    font-size: 0.62rem;
+    padding: 9px 16px;
+    font-size: 0.6rem;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--orange);
-    background: rgba(242, 101, 34, 0.05);
-    border-top: 1px solid rgba(242, 101, 34, 0.12);
-    border-bottom: 1px solid rgba(242, 101, 34, 0.08);
+    background: rgba(242, 101, 34, 0.04);
+    border-top: 1px solid rgba(242, 101, 34, 0.1);
+    border-bottom: 1px solid rgba(242, 101, 34, 0.07);
   }
-
-  /* Feature rows */
   tr.feature-row {
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    transition: background 0.15s;
+    transition: background 0.14s;
   }
   tr.feature-row:last-child {
     border-bottom: none;
   }
   tr.feature-row:hover {
-    background: rgba(255, 255, 255, 0.025);
+    background: rgba(255, 255, 255, 0.02);
   }
 
   td {
-    padding: 13px 18px;
-    font-size: 0.875rem;
+    padding: 12px 16px;
+    font-size: 0.84rem;
     color: var(--text-2);
     vertical-align: middle;
     text-align: center;
@@ -595,46 +763,26 @@
     color: var(--text-1);
   }
 
-  /* Check / cross inline icons */
-  .check-icon {
+  /* SVG check / cross */
+  .check-svg {
     color: var(--teal);
     display: inline-block;
+    vertical-align: middle;
   }
-  .cross-icon {
+  .cross-svg {
     color: rgba(255, 255, 255, 0.15);
     display: inline-block;
+    vertical-align: middle;
   }
 
-  /* String values (e.g. "3" or "Unlimited") */
-  .feature-string {
+  /* String values */
+  .feat-str {
     font-size: 0.78rem;
     font-weight: 700;
     color: var(--text-2);
   }
-  td:last-child .feature-string {
+  /* Enterprise column string values get orange */
+  td:last-child .feat-str {
     color: var(--orange);
-  }
-
-  /* Add horizontal scroll for wide table */
-  .table-scroll {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  table {
-    min-width: 800px; /* Ensures horizontal scroll on mobile */
-  }
-
-  /* Simplified icons using text for better mobile rendering */
-  .check-icon {
-    font-weight: bold;
-    color: var(--color-success);
-  }
-  .cross-icon {
-    color: var(--color-muted);
-    font-weight: bold;
-  }
-  .feature-string {
-    font-weight: 500;
   }
 </style>
