@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte"
   import { ROLES } from "$lib/features/auth/stores/roles"
-  import type { Role } from "$lib/features/auth/stores/roles"
-
+  import Role from "$lib/features/auth/stores/roles"
   import { fly, fade } from "svelte/transition"
   import { enhance } from "$app/forms"
 
@@ -10,12 +9,11 @@
 
   // ── State ────────────────────────────────────────────────
   let step = $state(1)
-  let selectedRole = $state("")
-  let selectedSacco: string | null = $state(null)
+  let selectedRole = $state<Role | "">("")
+
+  let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
   let searchState = $state("")
   let loading = $state(false)
-
-  const PRO_ROLES: Role[] = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"]
 
   const saccos = [
     "sxcntqnt",
@@ -25,45 +23,31 @@
     "Mololine",
     "Shuttle Masters",
     "Other",
-  ]
+  ] as const
 
-  // ── Derived client-only values ───────────────────────────
-  let filteredSaccos: string[] = []
-
-  onMount(() => {
-    // Only calculate this on the client
-    filteredSaccos = saccos.filter((s) =>
-      s.toLowerCase().includes(searchState.toLowerCase()),
-    )
-  })
-  // PRO_ROLES is probably a const array — no change needed
+  // ── PRO roles (narrow type) ─────────────────────────────
   const PRO_ROLES = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"] as const
+  type ProRole = (typeof PRO_ROLES)[number]
 
-  // Type guard stays exactly the same (it's not reactive)
-  function isProRole(
-    role: Role,
-  ): role is "DRIVER" | "CONDUCTOR" | "STAGE_OPERATOR" {
+  // Type guard – accepts wide input, narrows on true
+  function isProRole(role: Role | "" | null | undefined): role is ProRole {
+    if (!role) return false
     return PRO_ROLES.includes(role)
   }
 
-  // ── Now the derived values ───────────────────────────────────────────────
-
+  // ── Derived values ───────────────────────────────────────
   let filteredSaccos = $derived(
     saccos.filter((s) => s.toLowerCase().includes(searchState.toLowerCase())),
   )
 
-  let isPro = $derived(selectedRole != null && isProRole(selectedRole as Role))
-  // ↑ Added `selectedRole != null` guard to avoid type error/runtime issues
-  //    if selectedRole can be null/undefined at first
+  let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
 
   let totalSteps = $derived(isPro ? 4 : 3)
-
   let saccoStep = $derived(isPro ? 3 : 2)
-
   let finalStep = $derived(isPro ? 4 : 3)
 
   // ── Role metadata ───────────────────────────────────────    // Role metadata for richer cards
-  const ROLE_META: Record<string, { icon: string; desc: string }> = {
+  const ROLE_META: Partial<Record<Role, { icon: string; desc: string }>> = {
     PASSENGER: {
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
       desc: "Plan trips, track matatus, book seats",

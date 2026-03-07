@@ -38,8 +38,9 @@ import {
   isSessionCurrent,
   findActorForOrg,
   switchActor,
-  ROLES,
 } from "$lib/features/auth/stores/auth"
+import { ROLES } from "$lib/features/auth/stores/roles"
+
 
 /* ============================================================
    SHARED TYPES
