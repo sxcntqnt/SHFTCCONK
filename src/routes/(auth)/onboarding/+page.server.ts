@@ -1,6 +1,7 @@
 // src/routes/(auth)/onboarding/+page.server.ts
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
+import { ROLE } from '$lib/features/auth/stores/roles';
 
 export const actions: Actions = {
   completeOnboarding: async ({ request, locals }) => {
@@ -21,6 +22,6 @@ export const actions: Actions = {
 
     if (error) return fail(500, { message: error.message });
 
-    throw redirect(303, '/dashboard');
+    throw redirect(303, '/select-plan');
   }
 };
