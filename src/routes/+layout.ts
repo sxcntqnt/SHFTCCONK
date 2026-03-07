@@ -47,11 +47,6 @@ import {
 } from "$lib/features/auth/stores/auth"
 import { get } from "svelte/store"
 
-import { requireOrgAccess } from "$lib/security/authGuard"
-export const load = async (event) => { await requireOrgAccess(event, event.params.orgId); return {} }
-
-
-
 export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   depends("supabase:auth")
 
