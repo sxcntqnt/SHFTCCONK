@@ -36,25 +36,9 @@
 
 import { writable, derived, get } from "svelte/store"
 
-/* ============================================================
-   ROLES — matches `roles` table in DB exactly.
+import  { ROLES }  from "$lib/features/auth/stores/roles"
+import type { Role } from '$lib/features/auth/stores/roles'
 
-   These are IDENTITY CLASSIFICATIONS, not access-control primitives.
-   Access is governed by permissions + jurisdictions, not roles.
-============================================================ */
-export const ROLES = {
-  PASSENGER:      "PASSENGER",
-  DRIVER:         "DRIVER",
-  CONDUCTOR:      "CONDUCTOR",
-  OWNER:          "OWNER",
-  ORGANIZATION:   "ORGANIZATION",
-  STAGE_OPERATOR: "STAGE_OPERATOR",
-  REGULATOR:      "REGULATOR",
-  PLANNER:        "PLANNER",
-  ADMIN:          "ADMIN",
-} as const
-
-export type Role = (typeof ROLES)[keyof typeof ROLES]
 
 /* ============================================================
    JURISDICTION TYPES — matches `jurisdiction_level` domain in DB

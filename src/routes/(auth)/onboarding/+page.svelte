@@ -1,18 +1,21 @@
 <script lang="ts">
-  import { ROLES } from "$lib/constants"
+  import { onMount } from "svelte"
+  import { ROLES } from "$lib/features/auth/stores/roles"
+  import type { Role } from "$lib/features/auth/stores/roles"
+
   import { fly, fade } from "svelte/transition"
   import { enhance } from "$app/forms"
 
   let { form } = $props<{ form?: { message?: string } }>()
 
-  // ── State ──────────────────────────────────────────────────────────
+  // ── State ────────────────────────────────────────────────
   let step = $state(1)
   let selectedRole = $state("")
   let selectedSacco: string | null = $state(null)
   let searchState = $state("")
   let loading = $state(false)
 
-  const PRO_ROLES = [ROLES.DRIVER, ROLES.CONDUCTOR, ROLES.STAGE_OPERATOR]
+  const PRO_ROLES: Role[] = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"]
 
   const saccos = [
     "sxcntqnt",
@@ -24,16 +27,34 @@
     "Other",
   ]
 
-  let filteredSaccos = $derived(
-    saccos.filter((s) => s.toLowerCase().includes(searchState.toLowerCase())),
+  // ── Derived client-only values ───────────────────────────
+  let filteredSaccos: string[] = []
+
+  onMount(() => {
+    // Only calculate this on the client
+    filteredSaccos = saccos.filter((s) =>
+      s.toLowerCase().includes(searchState.toLowerCase()),
+    )
+  })
+
+  $: filteredSaccos = saccos.filter((s) =>
+    s.toLowerCase().includes(searchState.toLowerCase()),
   )
 
-  // Step count depends on whether role needs verification
-  let totalSteps = $derived(PRO_ROLES.includes(selectedRole) ? 4 : 3)
-  let saccoStep = $derived(PRO_ROLES.includes(selectedRole) ? 3 : 2)
-  let finalStep = $derived(PRO_ROLES.includes(selectedRole) ? 4 : 3)
+  // ── PRO role type guard ─────────────────────────────────
+  function isProRole(
+    role: Role,
+  ): role is "DRIVER" | "CONDUCTOR" | "STAGE_OPERATOR" {
+    return PRO_ROLES.includes(role)
+  }
 
-  // Role metadata for richer cards
+  $: isPro = isProRole(selectedRole as Role)
+
+  $: totalSteps = isPro ? 4 : 3
+  $: saccoStep = isPro ? 3 : 2
+  $: finalStep = isPro ? 4 : 3
+
+  // ── Role metadata ───────────────────────────────────────    // Role metadata for richer cards
   const ROLE_META: Record<string, { icon: string; desc: string }> = {
     PASSENGER: {
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
