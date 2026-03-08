@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation"
-  import { authStore, ROLES } from "$lib/features/auth/stores/auth"
+  import { authStore } from "$lib/features/auth/stores/auth"
+  import { ROLES } from "$lib/features/auth/stores/roles"
   import posthog from "posthog-js"
 
   // ── Types ─────────────────────────────────────────────────────────
