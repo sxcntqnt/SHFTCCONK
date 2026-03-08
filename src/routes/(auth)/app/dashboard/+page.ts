@@ -12,8 +12,8 @@ import { get } from "svelte/store"
 import {
   sessionStore,
   getJurisdictionOrgIds,
-  ROLES,
-} from "$lib/stores/auth.store"
+} from "$lib/features/auth/stores/auth"
+import { ROLES } from "$lib/features/auth/stores/roles"
 import type { PageLoad } from "./$types"
 
 export const load: PageLoad = async ({ parent, url }) => {
