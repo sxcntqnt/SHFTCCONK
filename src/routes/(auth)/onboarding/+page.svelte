@@ -11,6 +11,7 @@
   let step = $state(1)
   let selectedRole = $state<Role | "">("")
   let selectedSacco = $state<string | null>(null)
+  let fullName = $state("")
   let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
   let searchState = $state("")
   let loading = $state(false)
@@ -25,11 +26,10 @@
     "Other",
   ] as const
 
-  // ── PRO roles (narrow type) ─────────────────────────────
+  // ── PRO roles (require verification) ────────────────────
   const PRO_ROLES = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"] as const
   type ProRole = (typeof PRO_ROLES)[number]
 
-  // Type guard – accepts wide input, narrows on true
   function isProRole(role: Role | "" | null | undefined): role is ProRole {
     if (!role) return false
     return PRO_ROLES.includes(role as ProRole)
@@ -43,7 +43,7 @@
   let saccoStep = $derived(isPro ? 3 : 2)
   let finalStep = $derived(isPro ? 4 : 3)
 
-  // ── Role metadata ───────────────────────────────────────    // Role metadata for richer cards
+  // ── Role metadata ───────────────────────────────────────
   const ROLE_META: Partial<Record<Role, { icon: string; desc: string }>> = {
     PASSENGER: {
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
@@ -84,73 +84,130 @@
   }
 </script>
 
-<div class="onboard-page">
-  <div class="onboard-card">
-    <!-- ── Step indicator ── -->
-    <div class="step-track">
-      {#each { length: totalSteps } as _, i}
-        <div
-          class="step-node {step > i + 1
-            ? 'done'
-            : step === i + 1
-              ? 'active'
-              : ''}"
-        >
-          {#if step > i + 1}
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          {:else}
-            {i + 1}
-          {/if}
-        </div>
-        {#if i < totalSteps - 1}
-          <div class="step-line {step > i + 1 ? 'done' : ''}"></div>
+<!-- 
+  No .onboard-page wrapper needed — the layout.svelte provides
+  the full-viewport dark background + centered flexbox.
+  This component just renders the card.
+-->
+<div class="onboard-card">
+  <!-- ── Step indicator ── -->
+  <div class="step-track">
+    {#each { length: totalSteps } as _, i}
+      <div
+        class="step-node {step > i + 1
+          ? 'done'
+          : step === i + 1
+            ? 'active'
+            : ''}"
+      >
+        {#if step > i + 1}
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        {:else}
+          {i + 1}
         {/if}
-      {/each}
+      </div>
+      {#if i < totalSteps - 1}
+        <div class="step-line {step > i + 1 ? 'done' : ''}"></div>
+      {/if}
+    {/each}
+  </div>
+
+  <!-- ═══ STEP 1 — Role selection ═══ -->
+  {#if step === 1}
+    <div in:fly={{ y: 16, duration: 280 }}>
+      <div class="step-eyebrow">Step 1 of {totalSteps || 3}</div>
+      <h1 class="step-title">Your <em>Role</em></h1>
+      <p class="step-sub">How will you be using Matatu Pulse?</p>
+
+      <div class="role-grid">
+        {#each Object.values(ROLES) as role}
+          {@const meta = ROLE_META[role]}
+          {@const isVerified = PRO_ROLES.includes(role as ProRole)}
+          <button
+            type="button"
+            class="role-btn {selectedRole === role ? 'selected' : ''}"
+            onclick={() => (selectedRole = role)}
+          >
+            <div class="role-icon">
+              {@html meta?.icon ?? ""}
+            </div>
+            <div>
+              {#if isVerified}<span class="pro-badge">Verified</span>{/if}
+              <div class="role-name">{role.replace("_", " ")}</div>
+              <div class="role-desc">{meta?.desc ?? ""}</div>
+            </div>
+          </button>
+        {/each}
+      </div>
+
+      <button
+        type="button"
+        class="btn-primary"
+        disabled={!selectedRole}
+        onclick={() => step++}
+      >
+        Continue
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </button>
     </div>
 
-    <!-- ══════════════════════════════════════
-         STEP 1 — Role selection
-    ══════════════════════════════════════ -->
-    {#if step === 1}
-      <div in:fly={{ y: 16, duration: 280 }}>
-        <div class="step-eyebrow">Step 1 of {totalSteps || 3}</div>
-        <h1 class="step-title">Your <em>Role</em></h1>
-        <p class="step-sub">How will you be using Matatu Pulse?</p>
+    <!-- ═══ STEP 2 — Verification (PRO roles only) ═══ -->
+  {:else if step === 2 && PRO_ROLES.includes(selectedRole as ProRole)}
+    <div in:fly={{ x: 24, duration: 280 }}>
+      <div class="step-eyebrow">Step 2 of {totalSteps}</div>
+      <h1 class="step-title">Verify <em>Credentials</em></h1>
+      <p class="step-sub">
+        {selectedRole.replace("_", " ")} accounts require verification before activation.
+      </p>
 
-        <div class="role-grid">
-          {#each Object.values(ROLES) as role}
-            {@const meta = ROLE_META[role]}
-            {@const isPro = PRO_ROLES.includes(role as ProRole)}
-            <button
-              type="button"
-              class="role-btn {selectedRole === role ? 'selected' : ''}"
-              onclick={() => (selectedRole = role)}
-            >
-              <div class="role-icon">
-                {@html meta?.icon ?? ""}
-              </div>
-              <div>
-                {#if isPro}<span class="pro-badge">Verified</span>{/if}
-                <div class="role-name">{role.replace("_", " ")}</div>
-                <div class="role-desc">{meta?.desc ?? ""}</div>
-              </div>
-            </button>
-          {/each}
+      <div class="verify-block">
+        <div class="verify-icon">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
         </div>
+        <div>
+          <div class="verify-title">Identity Verification</div>
+          <div class="verify-sub">
+            We'll cross-reference your details with the NTSA operator registry.
+            This keeps the platform safe for all users.
+          </div>
+        </div>
+      </div>
 
+      <div class="btn-row">
+        <button type="button" class="btn-secondary" onclick={() => step--}
+          >Back</button
+        >
         <button
           type="button"
           class="btn-primary"
-          disabled={!selectedRole}
+          style="flex:1;"
           onclick={() => step++}
         >
           Continue
@@ -166,51 +223,179 @@
           </svg>
         </button>
       </div>
+    </div>
 
-      <!-- ══════════════════════════════════════
-         STEP 2 — Verification (PRO roles only)
-    ══════════════════════════════════════ -->
-    {:else if step === 2 && PRO_ROLES.includes(selectedRole as ProRole)}
-      <div in:fly={{ x: 24, duration: 280 }}>
-        <div class="step-eyebrow">Step 2 of {totalSteps}</div>
-        <h1 class="step-title">Verify <em>Credentials</em></h1>
-        <p class="step-sub">
-          {selectedRole.replace("_", " ")} accounts require verification before activation.
-        </p>
+    <!-- ═══ SACCO STEP ═══ -->
+  {:else if step === saccoStep}
+    <div in:fly={{ x: 24, duration: 280 }}>
+      <div class="step-eyebrow">Step {saccoStep} of {totalSteps}</div>
+      <h1 class="step-title">Your <em>SACCO</em></h1>
+      <p class="step-sub">
+        Linking to a SACCO unlocks route data and operator tools. Optional.
+      </p>
 
-        <div class="verify-block">
-          <div class="verify-icon">
+      {#if selectedSacco}
+        <div class="sacco-chip">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {selectedSacco}
+          <button
+            class="chip-clear"
+            onclick={() => {
+              selectedSacco = null
+              searchState = ""
+            }}
+            aria-label="Remove SACCO"
+          >
             <svg
-              width="18"
-              height="18"
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="2.5"
             >
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <line x1="18" y1="6" x2="6" y2="18" /><line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              />
             </svg>
-          </div>
-          <div>
-            <div class="verify-title">Identity Verification</div>
-            <div class="verify-sub">
-              We'll cross-reference your details with the NTSA operator
-              registry. This keeps the platform safe for all users.
-            </div>
-          </div>
+          </button>
         </div>
+      {:else}
+        <input
+          class="search-field"
+          bind:value={searchState}
+          placeholder="Search for your SACCO…"
+        />
+        {#if searchState}
+          <div class="sacco-dropdown">
+            {#each filteredSaccos as sacco}
+              <button
+                type="button"
+                class="sacco-option"
+                onclick={() => {
+                  selectedSacco = sacco
+                  searchState = sacco
+                }}
+              >
+                {sacco}
+              </button>
+            {/each}
+            {#if filteredSaccos.length === 0}
+              <div
+                style="padding:14px;font-size:0.78rem;color:var(--text-3);text-align:center;"
+              >
+                No match — try "Other"
+              </div>
+            {/if}
+          </div>
+        {/if}
+      {/if}
 
-        <div class="btn-row">
-          <button type="button" class="btn-secondary" onclick={() => step--}
-            >Back</button
+      <button type="button" class="btn-primary" onclick={() => step++}>
+        Continue
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </button>
+      <button type="button" class="btn-ghost" onclick={() => step++}>
+        I'll do this later
+      </button>
+    </div>
+
+    <!-- ═══ FINAL STEP — Submit ═══ -->
+  {:else}
+    <div in:fade={{ duration: 240 }}>
+      <div class="step-eyebrow">Step {finalStep} of {totalSteps}</div>
+
+      <div class="final-icon">
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+      </div>
+
+      <h1 class="step-title" style="text-align:center;">
+        You're <em>set!</em>
+      </h1>
+      <p class="step-sub" style="text-align:center;margin-bottom:24px;">
+        {#if selectedRole === "PASSENGER"}
+          Your profile is ready. Let's get you into the app.
+        {:else}
+          Your request will be reviewed. You can use the app as a passenger
+          while you wait.
+        {/if}
+      </p>
+
+      {#if form?.message}
+        <div class="error-banner">
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
           >
-          <button
-            type="button"
-            class="btn-primary"
-            style="flex:1;"
-            onclick={() => step++}
-          >
-            Continue
+            <circle cx="12" cy="12" r="10" /><line
+              x1="12"
+              y1="8"
+              x2="12"
+              y2="12"
+            />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          {form.message}
+        </div>
+      {/if}
+
+      <form
+        method="POST"
+        action="?/completeOnboarding"
+        use:enhance={() => {
+          loading = true
+          return async ({ update }) => {
+            await update()
+            loading = false
+          }
+        }}
+      >
+        <input type="hidden" name="role" value={selectedRole} />
+        <input type="hidden" name="sacco" value={selectedSacco ?? ""} />
+        <!-- full_name included so page.server.ts can update the profile -->
+        <input type="hidden" name="full_name" value={fullName} />
+
+        <button type="submit" class="btn-primary" disabled={loading}>
+          {#if loading}
+            <span class="btn-spinner"></span>
+            Setting up your account…
+          {:else}
+            {selectedRole === "PASSENGER" ? "Enter App" : "Submit & Enter App"}
             <svg
               width="14"
               height="14"
@@ -221,242 +406,19 @@
             >
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- ══════════════════════════════════════
-         SACCO STEP
-    ══════════════════════════════════════ -->
-    {:else if step === saccoStep}
-      <div in:fly={{ x: 24, duration: 280 }}>
-        <div class="step-eyebrow">Step {saccoStep} of {totalSteps}</div>
-        <h1 class="step-title">Your <em>SACCO</em></h1>
-        <p class="step-sub">
-          Linking to a SACCO unlocks route data and operator tools. Optional.
-        </p>
-
-        {#if selectedSacco}
-          <div class="sacco-chip">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            {selectedSacco}
-            <button
-              class="chip-clear"
-              onclick={() => {
-                selectedSacco = null
-                searchState = ""
-              }}
-              aria-label="Remove SACCO"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-        {:else}
-          <input
-            class="search-field"
-            bind:value={searchState}
-            placeholder="Search for your SACCO…"
-          />
-          {#if searchState}
-            <div class="sacco-dropdown">
-              {#each filteredSaccos as sacco}
-                <button
-                  type="button"
-                  class="sacco-option"
-                  onclick={() => {
-                    selectedSacco = sacco
-                    searchState = sacco
-                  }}
-                >
-                  {sacco}
-                </button>
-              {/each}
-              {#if filteredSaccos.length === 0}
-                <div
-                  style="padding:14px;font-size:0.78rem;color:var(--text-3);text-align:center;"
-                >
-                  No match — try "Other"
-                </div>
-              {/if}
-            </div>
           {/if}
-        {/if}
-
-        <button type="button" class="btn-primary" onclick={() => step++}>
-          Continue
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-          >
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
         </button>
-        <button type="button" class="btn-ghost" onclick={() => step++}>
-          I'll do this later
-        </button>
-      </div>
+      </form>
 
-      <!-- ══════════════════════════════════════
-         FINAL STEP — Submit
-    ══════════════════════════════════════ -->
-    {:else}
-      <div in:fade={{ duration: 240 }}>
-        <div class="step-eyebrow">Step {finalStep} of {totalSteps}</div>
-
-        <div class="final-icon">
-          <svg
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-        </div>
-
-        <h1 class="step-title" style="text-align:center;">
-          You're <em>set!</em>
-        </h1>
-        <p class="step-sub" style="text-align:center;margin-bottom:24px;">
-          Your profile is ready. Let's get you into the dashboard.
-        </p>
-
-        {#if form?.message}
-          <div class="error-banner">
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-            >
-              <circle cx="12" cy="12" r="10" /><line
-                x1="12"
-                y1="8"
-                x2="12"
-                y2="12"
-              />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            {form.message}
-          </div>
-        {/if}
-
-        <form
-          method="POST"
-          action="?/completeOnboarding"
-          use:enhance={() => {
-            loading = true
-            return async ({ update }) => {
-              await update()
-              loading = false
-            }
-          }}
-        >
-          <input type="hidden" name="role" value={selectedRole} />
-          <input type="hidden" name="sacco" value={selectedSacco ?? ""} />
-
-          <button type="submit" class="btn-primary" disabled={loading}>
-            {#if loading}
-              <span class="btn-spinner"></span>
-              Setting up your account…
-            {:else}
-              Enter Dashboard
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-              >
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            {/if}
-          </button>
-        </form>
-
-        <button type="button" class="btn-ghost" onclick={() => step--}>
-          Go back
-        </button>
-      </div>
-    {/if}
-  </div>
+      <button type="button" class="btn-ghost" onclick={() => step--}>
+        Go back
+      </button>
+    </div>
+  {/if}
 </div>
 
 <style>
-  /* ── Page shell ── */
-  .onboard-page {
-    min-height: 100vh;
-    background: var(--ink);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 20px;
-    font-family: var(--font-body);
-    position: relative;
-    overflow: hidden;
-  }
-
-  /* Atmospheric gradients */
-  .onboard-page::before {
-    content: "";
-    position: fixed;
-    bottom: -120px;
-    left: -120px;
-    width: 500px;
-    height: 500px;
-    background: radial-gradient(
-      circle,
-      rgba(242, 101, 34, 0.07),
-      transparent 65%
-    );
-    pointer-events: none;
-  }
-  .onboard-page::after {
-    content: "";
-    position: fixed;
-    top: -80px;
-    right: -80px;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(
-      circle,
-      rgba(0, 176, 155, 0.06),
-      transparent 65%
-    );
-    pointer-events: none;
-  }
-
-  /* ── Card ── */
+  /* ── Card (layout.svelte handles viewport background) ── */
   .onboard-card {
     width: 100%;
     max-width: 600px;
@@ -468,8 +430,6 @@
     position: relative;
     overflow: hidden;
   }
-
-  /* Top accent */
   .onboard-card::before {
     content: "";
     position: absolute;
@@ -645,7 +605,6 @@
     line-height: 1.4;
   }
 
-  /* ── PRO badge ── */
   .pro-badge {
     display: inline-flex;
     align-items: center;
@@ -660,7 +619,6 @@
     padding: 2px 6px;
     border-radius: 100px;
     margin-bottom: 4px;
-    display: block;
     width: fit-content;
   }
 
@@ -758,7 +716,6 @@
     color: var(--text-1);
   }
 
-  /* Selected sacco chip */
   .sacco-chip {
     display: inline-flex;
     align-items: center;
@@ -827,7 +784,6 @@
     gap: 10px;
     margin-top: 24px;
   }
-
   .btn-secondary {
     flex: 1;
     padding: 13px;
@@ -865,7 +821,6 @@
     color: var(--text-2);
   }
 
-  /* Spinner inside button */
   .btn-spinner {
     width: 16px;
     height: 16px;
@@ -881,7 +836,7 @@
     }
   }
 
-  /* ── Final / success step ── */
+  /* ── Final step ── */
   .final-icon {
     width: 60px;
     height: 60px;
@@ -908,7 +863,6 @@
     margin-bottom: 20px;
   }
 
-  /* ── Responsive ── */
   @media (max-width: 540px) {
     .onboard-card {
       padding: 28px 22px;
