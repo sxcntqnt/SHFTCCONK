@@ -110,7 +110,7 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
   if (bootstrapError || !bootstrapData) {
     console.error("[auth/callback] Bootstrap failed:", bootstrapError)
     // Fallback: client-side layout will retry bootstrap
-    redirect(303, "/account")
+    redirect(303, "/app/dashboard")
   }
 
   // ─── 5. Route to final destination ───────────────────────────
@@ -213,7 +213,7 @@ function resolveDestination(
   ctx: RoutingContext,
 ): string {
   if (!session.profile) {
-    return "/account"
+    return "/onboarding"
   }
 
   const { profile, actors, organization_memberships: orgs } = session
@@ -303,7 +303,7 @@ function resolveDestination(
       return "/org/select"
     }
     // Org actor but no org memberships (shouldn't happen, but safe fallback)
-    return "/app/dashboard"
+    return "/org/dashboard"
   }
 
   if (actorTypes.has("DRIVER") || actorTypes.has("CONDUCTOR")) {
