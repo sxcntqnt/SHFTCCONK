@@ -170,13 +170,24 @@
                 <div class="fav-card-avatar">
                   {driver.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
-                <button
+                <span
                   class="fav-card-heart"
-                  onclick|stopPropagation={() => removeDriver(driver.id)}
-                  aria-label="Remove"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Remove favorite driver"
+                  onclick={(e) => {
+                    e.stopPropagation() // still prevents card click
+                    removeDriver(driver.id)
+                  }}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      removeDriver(driver.id)
+                    }
+                  }}
                 >
                   <Heart size={14} fill="currentColor" strokeWidth={0} />
-                </button>
+                </span>
               </div>
               <h4 class="fav-card-name">{driver.name}</h4>
               <p class="fav-card-detail">
@@ -242,13 +253,24 @@
                 <div class="fav-card-avatar fav-avatar-teal">
                   {matatu.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
-                <button
+                <span
                   class="fav-card-heart"
-                  onclick|stopPropagation={() => removeMatatu(matatu.id)}
-                  aria-label="Remove"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Remove favorite matatu"
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    removeMatatu(matatu.id)
+                  }}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      removeMatatu(matatu.id)
+                    }
+                  }}
                 >
                   <Heart size={14} fill="currentColor" strokeWidth={0} />
-                </button>
+                </span>
               </div>
               <h4 class="fav-card-name">{matatu.name}</h4>
               <p class="fav-card-detail">
@@ -300,13 +322,24 @@
                 <div class="fav-card-avatar fav-avatar-amber">
                   {conductor.name?.charAt(0)?.toUpperCase() || "?"}
                 </div>
-                <button
+                <span
                   class="fav-card-heart"
-                  onclick|stopPropagation={() => removeConductor(conductor.id)}
-                  aria-label="Remove"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Remove favorite conductor"
+                  onclick={(e) => {
+                    e.stopPropagation()
+                    removeConductor(conductor.id)
+                  }}
+                  onkeydown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      removeConductor(conductor.id)
+                    }
+                  }}
                 >
                   <Heart size={14} fill="currentColor" strokeWidth={0} />
-                </button>
+                </span>
               </div>
               <h4 class="fav-card-name">{conductor.name}</h4>
               <p class="fav-card-detail">
