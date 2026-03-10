@@ -149,7 +149,7 @@
       occupancy: matatu.occupancy,
       price_per_seat: matatu.pricePerSeat,
     })
-    goto(`/reserve/${matatu.id}`, { replaceState: false })
+    goto(`/app/reserve/${matatu.id}`, { replaceState: false })
   }
 
   // ── Helpers ────────────────────────────────────────────────────────
