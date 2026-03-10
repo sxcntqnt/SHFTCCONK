@@ -3,7 +3,7 @@
    * /reserve/[id]/+page.svelte
    *
    * The seat reservation experience.
-   * Flow: Feed card → goto(/reserve/[id]) → load() → this page → goto(/track/[id])
+   * Flow: Feed card → goto(/app/reserve/[id]) → load() → this page → goto(/track/[id])
    */
 
   import { goto } from "$app/navigation"
@@ -92,7 +92,7 @@
   async function payWithMpesa() {
     processing = true
     try {
-      const res = await fetch("/reserve/pay", {
+      const res = await fetch("/app/reserve/pay", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -27,6 +27,7 @@
     "@types/glob": "^8.1.0",
     "@types/html-to-text": "^9.0.4",
     "@types/jsdom": "^21.1.7",
+    "@types/three": "^0.183.1",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "daisyui": "^5.5.18",
