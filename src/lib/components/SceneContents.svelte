@@ -5,26 +5,30 @@
    * Must be rendered inside a Threlte <Canvas>. Contains all scene logic,
    * camera setup, model loading, post-processing, and interaction handling.
    *
-   * Dependencies:
-   *   @threlte/core       – T, useThrelte, useTask
-   *   @threlte/extras     – OrbitControls, interactivity, useGltf
-   *   three-stdlib        – EffectComposer, RenderPass, BokehPass, RGBELoader
-   *   gsap
+   * Uses vehicleModelLoaders from the fleet index to load the correct
+   * 3D bus model based on modelKey (capacity or named key).
    */
 
-  import { onMount, onDestroy, createEventDispatcher } from "svelte"
+  import { onMount, onDestroy } from "svelte"
   import { T, useThrelte, useTask } from "@threlte/core"
   import { OrbitControls, interactivity } from "@threlte/extras"
+  // @ts-ignore — install @types/three if not present: pnpm add -D @types/three
   import * as THREE from "three"
-  import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
+  import {
+    vehicleModelLoaders,
+    type VehicleModelKey,
+  } from "$lib/features/fleet"
+  // @ts-ignore
   import { EffectComposer } from "three-stdlib"
+  // @ts-ignore
   import { RenderPass } from "three-stdlib"
+  // @ts-ignore
   import { BokehPass } from "three-stdlib"
+  // @ts-ignore
   import { RGBELoader } from "three-stdlib"
   import { gsap } from "gsap"
 
   // ── Props ─────────────────────────────────────────────────────────────────
-
   let {
     selectedSeats = [],
     toggleSeat,
@@ -33,6 +37,7 @@
     viewMode = "exterior",
     loading = true,
     interiorLoaded = false,
+    capacity = "14",
   }: {
     selectedSeats?: number[]
     toggleSeat: (n: number) => void
@@ -41,18 +46,16 @@
     viewMode?: "exterior" | "interior"
     loading?: boolean
     interiorLoaded?: boolean
+    capacity?: string
   } = $props()
 
   // ── Threlte context ────────────────────────────────────────────────────────
-  // useThrelte() gives us the renderer, scene, camera managed by <Canvas>.
   const { renderer, scene, camera, invalidate } = useThrelte()
-
-  // Convenience alias so we can call invalidate() wherever needsRender was used.
   const requestRender = () => invalidate()
 
-  // ── Post-processing ────────────────────────────────────────────────────────
-  // Threlte renders via its own loop. We intercept it by adding our composer
-  // in a useTask that runs every frame.
+  // ── Post-processing & model ────────────────────────────────────────────────
+  let ModelComponent: any = $state(null)
+
   let composer: EffectComposer
   let bokehPass: BokehPass
 
@@ -72,30 +75,52 @@
 
   let doorAudio: HTMLAudioElement
 
-  // ── Camera position (reactive) ─────────────────────────────────────────────
-  // We create one camera reference that we animate with gsap.
   let cam: THREE.PerspectiveCamera
+  let controls: any
 
-  // ── Controls ref ──────────────────────────────────────────────────────────
-  let controls: any // OrbitControls instance from @threlte/extras
+  // Enable interactivity plugin
+  void interactivity()
 
-  // ── Enable interactivity plugin ───────────────────────────────────────────
-  // This patches Threlte's event system to emit pointer events on meshes.
-  interactivity()
+  // ── Load model from fleet index ────────────────────────────────────────────
+  function isValidModelKey(k: string): k is VehicleModelKey {
+    return k in vehicleModelLoaders
+  }
 
-  // ── Post-processing setup (runs once renderer is available) ───────────────
-  onMount(() => {
+  async function loadModelFromIndex() {
+    // Resolve the loader key: try modelKey first, then capacity, then fallback
+    const key: VehicleModelKey = isValidModelKey(modelKey)
+      ? modelKey
+      : isValidModelKey(capacity)
+        ? capacity
+        : "matatu-generic"
+
+    const loader = vehicleModelLoaders[key]
+    if (!loader) {
+      console.warn(`No model loader for key "${key}", using placeholder`)
+      return false
+    }
+
+    try {
+      const module = await loader()
+      ModelComponent = module.default
+      return true
+    } catch (err) {
+      console.error(`Failed to load model "${key}":`, err)
+      return false
+    }
+  }
+
+  // ── Mount ──────────────────────────────────────────────────────────────────
+  onMount(async () => {
     const r = renderer as THREE.WebGLRenderer
     const s = scene as THREE.Scene
     const c = camera as THREE.PerspectiveCamera
 
-    // Keep a local ref for gsap targets
     cam = c
     cam.position.set(0, 3, 8)
 
-    // Renderer tweaks
-    r.physicallyCorrectLights = true
-    r.outputEncoding = THREE.sRGBEncoding
+    // Renderer config
+    r.outputColorSpace = THREE.SRGBColorSpace
     r.toneMapping = THREE.ACESFilmicToneMapping
     r.toneMappingExposure = 1
 
@@ -117,8 +142,7 @@
       requestRender()
     })
 
-    // Interior lights (added to interiorGroup declaratively below, but we need
-    // refs for gsap animation so we create them imperatively)
+    // Interior lights
     ambientInterior = new THREE.AmbientLight(0xffffff, 0.05)
     interiorLight = new THREE.PointLight(0xffffff, 0.1, 20)
     interiorLight.position.set(0, 2, 0)
@@ -132,12 +156,17 @@
     doorAudio = new Audio("/sounds/door-open.mp3")
     doorAudio.volume = 0.5
 
-    loadExterior()
+    // Attempt to load from fleet index, fallback to placeholder
+    const loaded = await loadModelFromIndex()
+    if (!loaded) {
+      loadPlaceholderExterior()
+    }
+
+    loading = false
+    requestRender()
   })
 
-  // ── Threlte task – render via composer each frame ─────────────────────────
-  // We stop Threlte's default rendering and drive it ourselves so the composer
-  // (with BokehPass) is used instead of the raw renderer.
+  // ── Render loop via composer ───────────────────────────────────────────────
   useTask(
     (delta) => {
       if (controls) controls.update()
@@ -146,37 +175,8 @@
     { autoInvalidate: false },
   )
 
-  // ── Model loading ─────────────────────────────────────────────────────────
-  /*
-  function loadExterior() {
-    const loader = new GLTFLoader()
-    loader.load(`/models/${modelKey}-exterior.glb`, (gltf) => {
-      gltf.scene.traverse((child: any) => {
-        if (child.name === 'Door_Main') doorMesh = child
-      })
-      exteriorGroup.add(gltf.scene)
-      if (doorMesh) createDoorPivot()
-      loading = false
-      requestRender()
-    })
-  }
-
-  function loadInterior() {
-    const loader = new GLTFLoader()
-    loader.load(`/models/${modelKey}-interior.glb`, (gltf) => {
-      interiorGroup.add(gltf.scene)
-      gltf.scene.traverse((child: any) => {
-        if (child.isMesh && child.name.startsWith('Seat_')) {
-          const seatNumber = parseInt(child.name.split('_')[1])
-          seatMeshes.set(seatNumber, child)
-        }
-      })
-      interiorLoaded = true
-      requestRender()
-    })
-  }
- */
-  function loadExterior() {
+  // ── Placeholder geometry (fallback when no GLTF available) ─────────────────
+  function loadPlaceholderExterior() {
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(2, 1.2, 4),
       new THREE.MeshStandardMaterial({ color: 0xf26522 }),
@@ -184,7 +184,6 @@
     body.position.y = 0.6
     exteriorGroup.add(body)
 
-    // Simulate the door mesh so enterInterior() doesn't break
     doorMesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.6, 1, 0.05),
       new THREE.MeshStandardMaterial({ color: 0xffffff }),
@@ -193,14 +192,11 @@
     doorMesh.position.set(0.8, 0.5, 2)
     exteriorGroup.add(doorMesh)
     createDoorPivot()
-
-    loading = false
-    requestRender()
   }
 
-  function loadInterior() {
-    // Placeholder seats
-    for (let i = 1; i <= parseInt(capacity); i++) {
+  function loadPlaceholderInterior() {
+    const seatCount = parseInt(capacity) || 14
+    for (let i = 1; i <= seatCount; i++) {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.4, 0.4, 0.4),
         new THREE.MeshStandardMaterial({ color: 0xffffff }),
@@ -212,12 +208,11 @@
       interiorGroup.add(mesh)
       seatMeshes.set(i, mesh)
     }
-
     interiorLoaded = true
     requestRender()
   }
-  // ── Door pivot + light shaft ──────────────────────────────────────────────
 
+  // ── Door pivot + light shaft ──────────────────────────────────────────────
   function createDoorPivot() {
     if (!doorMesh) return
     const hingeOffset = new THREE.Vector3(-0.6, 0, 0)
@@ -253,7 +248,7 @@
     return new Promise((resolve) => {
       if (!doorPivot) return resolve()
       doorAudio.currentTime = 0
-      doorAudio.play()
+      doorAudio.play().catch(() => {})
 
       gsap.to(doorPivot.rotation, {
         y: -Math.PI / 2,
@@ -262,12 +257,14 @@
         onUpdate: requestRender,
         onComplete: resolve,
       })
-      gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
-        opacity: 0.4,
-        duration: 1,
-        ease: "power2.out",
-        onUpdate: requestRender,
-      })
+      if (doorShaft?.material) {
+        gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
+          opacity: 0.4,
+          duration: 1,
+          ease: "power2.out",
+          onUpdate: requestRender,
+        })
+      }
     })
   }
 
@@ -286,15 +283,16 @@
       ease: "power1.out",
       onUpdate: requestRender,
     })
-    gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
-      opacity: 0,
-      duration: 0.5,
-      onUpdate: requestRender,
-    })
+    if (doorShaft?.material) {
+      gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
+        opacity: 0,
+        duration: 0.5,
+        onUpdate: requestRender,
+      })
+    }
   }
 
   // ── Camera FX ─────────────────────────────────────────────────────────────
-
   function addHeadBob() {
     const originalY = cam.position.y
     gsap.to(cam.position, {
@@ -315,7 +313,9 @@
     const mesh = seatMeshes.get(available)
     if (!mesh) return
     const target = mesh.getWorldPosition(new THREE.Vector3())
-    bokehPass.materialBokeh.uniforms["focus"].value = 2.0
+    if (bokehPass?.materialBokeh?.uniforms?.["focus"]) {
+      bokehPass.materialBokeh.uniforms["focus"].value = 2.0
+    }
     gsap.to(cam.position, {
       x: target.x,
       y: target.y + 1,
@@ -326,10 +326,9 @@
     })
   }
 
-  // ── Transitions ───────────────────────────────────────────────────────────
-
+  // ── View transitions ──────────────────────────────────────────────────────
   async function enterInterior() {
-    if (!interiorLoaded) loadInterior()
+    if (!interiorLoaded) loadPlaceholderInterior()
     await openDoor()
     addHeadBob()
 
@@ -373,14 +372,10 @@
     viewMode = "exterior"
   }
 
-  // ── Click handling via Threlte interactivity ──────────────────────────────
-  // Instead of a manual raycaster, we attach on:click to T.Group wrappers.
-  // The exterior group click handles the door; interior group handles seats.
-
+  // ── Click handling ────────────────────────────────────────────────────────
   function handleExteriorClick(event: CustomEvent<{ object: THREE.Object3D }>) {
     const obj = event.detail?.object
     if (!obj) return
-    // Walk up to find Door_Main
     let node: THREE.Object3D | null = obj
     while (node) {
       if (node.name === "Door_Main") {
@@ -406,73 +401,64 @@
     }
   }
 
-  // ── Seat reactivity ───────────────────────────────────────────────────────
-
-  // Map<seatNumber, GSAP Tween>
+  // ── Seat color reactivity ─────────────────────────────────────────────────
   let glowTweens = new Map<number, gsap.core.Tween>()
 
-  // When creating seatMeshes (once):
-  seatMeshes.forEach((mesh, i) => {
-    const mat = mesh.material as THREE.MeshStandardMaterial
-    const tween = gsap.to(mat.emissive, {
-      r: 0.6,
-      g: 0.9,
-      b: 1,
-      duration: 0.8,
-      yoyo: true,
-      repeat: -1,
-      ease: "sine.inOut",
-      paused: true, // ← start paused
-    })
-    glowTweens.set(i, tween)
-  })
-
-  // Then in the $effect:
   $effect(() => {
-    reservedSeats.length
-    selectedSeats.length
+    // Access reactive deps
+    const _r = reservedSeats.length
+    const _s = selectedSeats.length
 
     seatMeshes.forEach((mesh, seatNumber) => {
       const mat = mesh.material as THREE.MeshStandardMaterial
       if (!mat) return
 
       mat.transparent = false
-
-      const tween = glowTweens.get(seatNumber)
+      let existingTween = glowTweens.get(seatNumber)
 
       if (reservedSeats.includes(seatNumber)) {
         mat.color.set(0xff0000)
         mat.emissive.set(0x000000)
-        tween?.pause().kill() // or just pause if you want to resume later
+        existingTween?.kill()
         mesh.userData.disabled = true
       } else if (selectedSeats.includes(seatNumber)) {
         mat.color.set(0x0ea5e9)
-        tween?.restart() // or .play()
+        if (!existingTween || !existingTween.isActive()) {
+          existingTween?.kill()
+          const tween = gsap.to(mat.emissive, {
+            r: 0.6,
+            g: 0.9,
+            b: 1,
+            duration: 0.8,
+            yoyo: true,
+            repeat: -1,
+            ease: "sine.inOut",
+            onUpdate: requestRender,
+          })
+          glowTweens.set(seatNumber, tween)
+        }
         mesh.userData.disabled = false
       } else {
-        tween?.pause().kill() // or just pause
         mat.color.set(0xffffff)
         mat.emissive.set(0x000000)
+        existingTween?.kill()
+        glowTweens.delete(seatNumber)
         mesh.userData.disabled = false
       }
     })
 
     requestRender()
   })
+
   onDestroy(() => {
     gsap.killTweensOf(cam?.position)
+    glowTweens.forEach((t) => t.kill())
   })
 </script>
 
-<!--
-  Threlte's declarative scene graph.
-  The heavy lifting (model loading, post-processing) is done imperatively above,
-  but lights and camera are declared here so Threlte manages them.
--->
-
 <!-- Camera -->
 <T.PerspectiveCamera
-  makeDefault
+  makeDefault={true}
   fov={60}
   near={0.1}
   far={1000}
@@ -481,45 +467,29 @@
     cam = ref
   }}
 >
-  <!-- OrbitControls are a child of the camera in Threlte -->
   <OrbitControls
     enableZoom={false}
     enablePan={false}
-    enableDamping
+    enableDamping={true}
     on:create={({ ref }) => {
       controls = ref
     }}
   />
 </T.PerspectiveCamera>
 
-<!-- Global hemisphere light -->
+<!-- Global lighting -->
 <T.HemisphereLight skyColor={0xffffff} groundColor={0x444444} intensity={1} />
 
-<!--
-  Exterior group – click events bubble up through Threlte's interactivity system.
-  We forward any click to handleExteriorClick which walks the object hierarchy.
--->
-<T.Group
-  on:click={handleExteriorClick}
-  on:create={({ ref }) => {
-    exteriorGroup === ref || Object.assign(exteriorGroup, ref)
-  }}
-/>
+<!-- Exterior group -->
+<T.Group on:click={handleExteriorClick}>
+  {#if ModelComponent && viewMode === "exterior"}
+    <ModelComponent />
+  {/if}
+</T.Group>
 
-<!--
-  Interior group – same pattern.
--->
-<T.Group
-  on:click={handleInteriorClick}
-  on:create={({ ref }) => {
-    interiorGroup === ref || Object.assign(interiorGroup, ref)
-  }}
-/>
-
-<!--
-  Note: The actual GLTFs are loaded imperatively in loadExterior / loadInterior
-  and added to exteriorGroup / interiorGroup. An alternative is to use
-  <GLTF url="..." /> from @threlte/extras and bind its scene, but the imperative
-  approach is retained here to preserve the door-pivot and seat-mesh logic
-  exactly as in the original.
--->
+<!-- Interior group -->
+<T.Group on:click={handleInteriorClick}>
+  {#if ModelComponent && viewMode === "interior"}
+    <ModelComponent />
+  {/if}
+</T.Group>
