@@ -4,7 +4,7 @@
   import {
     addRememberedMatatu,
     rememberedMatatus,
-  } from "$lib/features/dashboard/stores/DashboardStore.ts"
+  } from "$lib/features/dashboard/stores/DashboardStore"
 
   let { remembered = [] }: { remembered?: any[] } = $props()
 
@@ -87,7 +87,7 @@
 
 <style>
   .rm-root {
-    background: white;
+    background: rgba(202, 120, 88, 0.683);
     border: 1px solid oklch(0.93 0.005 260);
     border-radius: 20px;
     padding: 1.25rem;
