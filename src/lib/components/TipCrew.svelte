@@ -12,7 +12,7 @@
     onTip,
   }: Props = $props()
 
-  let showModal = $state(true)
+  let showModal = $state(false)
   let totalAmount = $state(0)
   let splitPercent = $state(60)
   let customMode = $state(false)
@@ -72,6 +72,35 @@
     }
   })
 </script>
+
+<button
+  class="crew-action-btn"
+  onclick={() => (showModal = true)}
+  aria-label="Tip your crew"
+>
+  <div class="btn-content">
+    <span class="btn-icon">
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        <circle cx="16" cy="8" r="2" />
+      </svg>
+    </span>
+    <div class="btn-text">
+      <div class="btn-title">Tip Crew</div>
+      <div class="btn-subtitle">Appreciate your driver & conductor</div>
+    </div>
+  </div>
+</button>
 
 {#if showModal}
   <div
@@ -555,5 +584,61 @@
       opacity: 1;
       transform: translateY(0);
     }
+  }
+  /* Trigger button – make it look like a card/sibling to RateCrew */
+  .crew-action-btn {
+    width: 100%;
+    background: rgb(21, 151, 69);
+    border: 2px solid oklch(0.91 0.005 260); /* light gray, matches your modal borders */
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    box-shadow: 0 2px 8px oklch(0.2 0.02 260 / 0.08);
+    text-align: left;
+    font-family: inherit;
+  }
+
+  .crew-action-btn:hover {
+    border-color: oklch(0.6 0.18 155); /* green accent for tip action */
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px oklch(0.6 0.18 155 / 0.15);
+  }
+
+  .crew-action-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px oklch(0.6 0.18 155 / 0.3);
+  }
+
+  .btn-content {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  .btn-icon {
+    flex-shrink: 0;
+    color: oklch(30.226% 0.0099 164.444); /* green to signal positive/tip action */
+    background: oklch(62.575% 0.12701 150.501 / 0.6);
+    padding: 0.75rem;
+    border-radius: 12px;
+    line-height: 0;
+  }
+
+  .btn-text {
+    flex: 1;
+  }
+
+  .btn-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: oklch(0.18 0.02 260);
+    margin-bottom: 0.25rem;
+  }
+
+  .btn-subtitle {
+    font-size: 0.875rem;
+    color: oklch(35.246% 0.08301 260.917);
+    line-height: 1.4;
   }
 </style>
