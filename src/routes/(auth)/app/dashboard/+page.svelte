@@ -19,28 +19,229 @@
     isLoadingFavorites,
     loadFavoriteData,
   } from "$lib/features/dashboard/stores/DashboardStore"
+  import {
+    sessionStore,
+    activeActor,
+    can,
+  } from "$lib/features/auth/stores/auth"
   import { onMount } from "svelte"
 
-  // Data from +page.ts smart router
   let { data } = $props()
 
   onMount(() => {
     loadFavoriteData()
   })
 
-  // Set adminSection context so sidebar highlights "dashboard"
+  // Set adminSection context
   const adminSectionStore: Writable<string> = getContext("adminSection")
   $effect(() => {
     if (browser && adminSectionStore) adminSectionStore.set("dashboard")
   })
 
-  // Dismiss the onboarding banner
+  // ─── Session-derived state for banners ───
+  let session = $derived($sessionStore)
+  let profile = $derived(session?.profile ?? null)
+  let actors = $derived(
+    session?.actors?.filter((a: any) => a.status === "active") ?? [],
+  )
+  let currentActor = $derived($activeActor)
+
+  // Verification status: user has at least one active actor that isn't just passenger
+  let isVerified = $derived(
+    actors.some((a: any) => a.status === "active" && a.type !== "passenger"),
+  )
+
+  // Pending verification: user has a pending actor_request
+  let hasPendingRequest = $derived(
+    data.pendingRequests && data.pendingRequests.length > 0,
+  )
+
+  // Subscription status: check if user has an active Stripe subscription
+  // This comes from layout data or page data
+  let isPaying = $derived(data.hasActiveSubscription ?? false)
+
+  // Permission helpers — can() is a plain function, not a store
+  function checkCan(action: string): boolean {
+    try {
+      return can(action)
+    } catch {
+      return false
+    }
+  }
+
+  let canViewInsights = $derived(checkCan("analytics.view"))
+  let canManageCrew = $derived(
+    checkCan("crew.manage") ||
+      actors.some((a: any) =>
+        ["driver", "conductor", "fleet_owner", "stage_operator"].includes(
+          a.type,
+        ),
+      ),
+  )
+
+  // Banner dismiss states
   let showOnboardingBanner = $state(!!data.onboardingComplete)
+  let showVerificationBanner = $state(true)
 </script>
 
 <svelte:head>
   <title>Home — Matatu Pulse</title>
 </svelte:head>
+
+<!-- ═══ Verification & Subscription Status Banner ═══ -->
+{#if showVerificationBanner}
+  <div class="status-banner-row">
+    <!-- Verification badge -->
+    <div
+      class="status-badge {isVerified
+        ? 'badge-verified'
+        : hasPendingRequest
+          ? 'badge-pending'
+          : 'badge-unverified'}"
+    >
+      <div class="badge-icon">
+        {#if isVerified}
+          <!-- Green checkmark -->
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline
+              points="22 4 12 14.01 9 11.01"
+            />
+          </svg>
+        {:else if hasPendingRequest}
+          <!-- Clock -->
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            ><circle cx="12" cy="12" r="10" /><polyline
+              points="12 6 12 12 16 14"
+            /></svg
+          >
+        {:else}
+          <!-- Shield -->
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            ><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg
+          >
+        {/if}
+      </div>
+      <div class="badge-text">
+        {#if isVerified}
+          <span class="badge-title">Verified Actor</span>
+          <span class="badge-sub"
+            >Your identity is confirmed — {currentActor?.type?.replace(
+              /_/g,
+              " ",
+            ) ?? "active"}</span
+          >
+        {:else if hasPendingRequest}
+          <span class="badge-title">Verification Pending</span>
+          <span class="badge-sub"
+            >Your request is being reviewed by an org admin</span
+          >
+        {:else}
+          <span class="badge-title">Not Verified</span>
+          <span class="badge-sub"
+            >Verify your identity to unlock full features</span
+          >
+        {/if}
+      </div>
+      {#if !isVerified && !hasPendingRequest}
+        <a href="/app/settings" class="badge-action">Verify</a>
+      {/if}
+    </div>
+
+    <!-- Subscription badge -->
+    <div class="status-badge {isPaying ? 'badge-premium' : 'badge-free'}">
+      <div class="badge-icon">
+        {#if isPaying}
+          <!-- Blue checkmark -->
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline
+              points="22 4 12 14.01 9 11.01"
+            />
+          </svg>
+        {:else}
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            ><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line
+              x1="1"
+              y1="10"
+              x2="23"
+              y2="10"
+            /></svg
+          >
+        {/if}
+      </div>
+      <div class="badge-text">
+        {#if isPaying}
+          <span class="badge-title">Premium</span>
+          <span class="badge-sub">All features unlocked</span>
+        {:else}
+          <span class="badge-title">Free Plan</span>
+          <span class="badge-sub">Upgrade for premium features</span>
+        {/if}
+      </div>
+      {#if !isPaying}
+        <a href="/account/billing" class="badge-action badge-action-blue"
+          >Upgrade</a
+        >
+      {/if}
+    </div>
+
+    <button
+      class="banner-dismiss-sm"
+      onclick={() => (showVerificationBanner = false)}
+      aria-label="Dismiss"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        ><line x1="18" y1="6" x2="6" y2="18" /><line
+          x1="6"
+          y1="6"
+          x2="18"
+          y2="18"
+        /></svg
+      >
+    </button>
+  </div>
+{/if}
 
 <!-- ═══ Post-onboarding banner ═══ -->
 {#if showOnboardingBanner}
@@ -53,10 +254,10 @@
         fill="none"
         stroke="currentColor"
         stroke-width="2"
+        ><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline
+          points="22 4 12 14.01 9 11.01"
+        /></svg
       >
-        <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
-        <polyline points="22 4 12 14.01 9 11.01" />
-      </svg>
     </div>
     <div class="banner-content">
       <div class="banner-title">Welcome to Matatu Pulse!</div>
@@ -83,19 +284,18 @@
         fill="none"
         stroke="currentColor"
         stroke-width="2.5"
-      >
-        <line x1="18" y1="6" x2="6" y2="18" /><line
+        ><line x1="18" y1="6" x2="6" y2="18" /><line
           x1="6"
           y1="6"
           x2="18"
           y2="18"
-        />
-      </svg>
+        /></svg
+      >
     </button>
   </div>
 {/if}
 
-<!-- ═══ Reason banner (from redirects) ═══ -->
+<!-- ═══ Reason banner ═══ -->
 {#if data.reason}
   <div class="reason-banner">
     {#if data.reason === "not_admin"}
@@ -110,7 +310,7 @@
   </div>
 {/if}
 
-<!-- ═══ Multi-dashboard selector (when user has multiple roles) ═══ -->
+<!-- ═══ Multi-dashboard selector ═══ -->
 {#if data.destinations && data.destinations.length > 0}
   <div class="dash-page">
     <div class="dash-header">
@@ -141,10 +341,8 @@
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2"
+            stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg
           >
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
         </a>
       {/each}
     </div>
@@ -154,10 +352,9 @@
   </div>
 {/if}
 
-<!-- ═══ Passenger dashboard (always shown) ═══ -->
+<!-- ═══ Passenger dashboard ═══ -->
 <div class="dash-page">
   {#if !data.destinations || data.destinations.length === 0}
-    <!-- Only show header if no destination selector above -->
     <div class="dash-header">
       <div>
         <div class="header-eyebrow">
@@ -175,20 +372,22 @@
     </div>
   {/if}
 
-  <!-- ── Trip card + planner ── -->
+  <!-- Trip + planner -->
   <div class="top-grid">
     <NextTripCard />
     <QuickPlanner />
   </div>
 
-  <!-- ── Weekly insights ── -->
-  <div class="insights-row">
-    <InsightsSnapshot />
-  </div>
+  <!-- Insights (permission gated) -->
+  {#if canViewInsights}
+    <div class="insights-row">
+      <InsightsSnapshot />
+    </div>
+  {/if}
 
   <div class="section-divider"></div>
 
-  <!-- ── Favourites ── -->
+  <!-- Favourites -->
   <div class="section-head">
     <div>
       <div class="section-title">Favourites</div>
@@ -211,29 +410,53 @@
 
   <div class="section-divider"></div>
 
-  <!-- ── Support the crew ── -->
-  <div class="section-head">
-    <div>
-      <div class="section-title">Support the Crew</div>
-      <div class="section-sub">
-        Tip or rate the driver and conductor from your last trip
+  <!-- Crew section (gated: only show if user has relevant actor or permission) -->
+  {#if canManageCrew}
+    <div class="section-head">
+      <div>
+        <div class="section-title">Support the Crew</div>
+        <div class="section-sub">
+          Tip or rate the driver and conductor from your last trip
+        </div>
       </div>
     </div>
-  </div>
-  <div class="crew-grid">
-    <TipCrew
-      driverName="Selected Driver"
-      conductorName="Selected Conductor"
-      onTip={(d, c) => console.log(`Tip: Driver ${d} KES • Conductor ${c} KES`)}
-    />
-    <RateCrew
-      onRate={(stars, text) => console.log(`Rated ${stars} stars: ${text}`)}
-    />
-  </div>
+    <div class="crew-grid">
+      <TipCrew
+        driverName="Selected Driver"
+        conductorName="Selected Conductor"
+        onTip={(d, c) =>
+          console.log(`Tip: Driver ${d} KES • Conductor ${c} KES`)}
+      />
+      <RateCrew
+        onRate={(stars, text) => console.log(`Rated ${stars} stars: ${text}`)}
+      />
+    </div>
+    <div class="section-divider"></div>
+  {:else}
+    <!-- Show for all users but with a simpler view -->
+    <div class="section-head">
+      <div>
+        <div class="section-title">Support the Crew</div>
+        <div class="section-sub">
+          Tip or rate the driver and conductor from your last trip
+        </div>
+      </div>
+    </div>
+    <div class="crew-grid">
+      <TipCrew
+        driverName="Selected Driver"
+        conductorName="Selected Conductor"
+        onTip={(d, c) =>
+          console.log(`Tip: Driver ${d} KES • Conductor ${c} KES`)}
+      />
+      <RateCrew
+        onRate={(stars, text) => console.log(`Rated ${stars} stars: ${text}`)}
+      />
+    </div>
+    <div class="section-divider"></div>
+  {/if}
 
-  <div class="section-divider"></div>
-
-  <!-- ── Remember Matatu ── -->
+  <!-- Remembered Matatus -->
   <div class="section-head">
     <div>
       <div class="section-title">Remembered Matatus</div>
@@ -246,7 +469,6 @@
 
   <div class="section-divider"></div>
 
-  <!-- ── Learn More ── -->
   <LearnMore />
 </div>
 
@@ -259,13 +481,180 @@
     min-height: 100%;
   }
 
+  /* ════════════════════════════════════════════
+     STATUS BANNER ROW — Verification + Subscription
+     ════════════════════════════════════════════ */
+  .status-banner-row {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    flex: 1;
+    min-width: 0;
+    border: 1px solid;
+    transition: border-color 0.2s ease;
+  }
+
+  /* Verified (green) */
+  .badge-verified {
+    background: rgba(52, 211, 153, 0.06);
+    border-color: rgba(52, 211, 153, 0.18);
+  }
+  .badge-verified .badge-icon {
+    color: #34d399;
+  }
+  .badge-verified .badge-title {
+    color: #6ee7a0;
+  }
+
+  /* Pending (amber) */
+  .badge-pending {
+    background: rgba(251, 191, 36, 0.06);
+    border-color: rgba(251, 191, 36, 0.18);
+  }
+  .badge-pending .badge-icon {
+    color: #fbbf24;
+  }
+  .badge-pending .badge-title {
+    color: #fcd34d;
+  }
+
+  /* Unverified (muted) */
+  .badge-unverified {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+  .badge-unverified .badge-icon {
+    color: var(--text-3);
+  }
+  .badge-unverified .badge-title {
+    color: var(--text-2);
+  }
+
+  /* Premium (blue) */
+  .badge-premium {
+    background: rgba(96, 165, 250, 0.06);
+    border-color: rgba(96, 165, 250, 0.18);
+  }
+  .badge-premium .badge-icon {
+    color: #60a5fa;
+  }
+  .badge-premium .badge-title {
+    color: #93bbfd;
+  }
+
+  /* Free plan */
+  .badge-free {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+  .badge-free .badge-icon {
+    color: var(--text-3);
+  }
+  .badge-free .badge-title {
+    color: var(--text-2);
+  }
+
+  .badge-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    flex-shrink: 0;
+  }
+  .badge-verified .badge-icon {
+    background: rgba(52, 211, 153, 0.1);
+  }
+  .badge-pending .badge-icon {
+    background: rgba(251, 191, 36, 0.1);
+  }
+  .badge-premium .badge-icon {
+    background: rgba(96, 165, 250, 0.1);
+  }
+
+  .badge-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+  }
+  .badge-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .badge-sub {
+    font-size: 0.7rem;
+    color: var(--text-3);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .badge-action {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--text-1);
+    background: rgba(242, 101, 34, 0.12);
+    border: 1px solid rgba(242, 101, 34, 0.2);
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+  }
+  .badge-action:hover {
+    background: rgba(242, 101, 34, 0.2);
+    border-color: rgba(242, 101, 34, 0.35);
+  }
+  .badge-action-blue {
+    background: rgba(96, 165, 250, 0.12);
+    border-color: rgba(96, 165, 250, 0.2);
+  }
+  .badge-action-blue:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.35);
+  }
+
+  .banner-dismiss-sm {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-3);
+    opacity: 0.4;
+    padding: 4px;
+    transition: opacity 0.15s;
+  }
+  .banner-dismiss-sm:hover {
+    opacity: 1;
+  }
+
   /* ── Onboarding banner ── */
   .onboarding-banner {
     display: flex;
     align-items: flex-start;
     gap: 14px;
     padding: 16px 20px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
     background: rgba(0, 176, 155, 0.08);
     border: 1px solid rgba(0, 176, 155, 0.2);
     border-radius: 14px;
@@ -449,7 +838,7 @@
     flex-shrink: 0;
   }
 
-  /* ── Top grid ── */
+  /* ── Grids ── */
   .top-grid {
     display: grid;
     grid-template-columns: 1.4fr 1fr;
@@ -459,8 +848,13 @@
   .insights-row {
     margin-bottom: 32px;
   }
+  .crew-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
 
-  /* ── Section heading ── */
+  /* ── Sections ── */
   .section-head {
     display: flex;
     align-items: center;
@@ -478,6 +872,11 @@
     font-size: 0.75rem;
     color: var(--text-3);
     margin-top: 2px;
+  }
+  .section-divider {
+    height: 1px;
+    background: var(--rim);
+    margin: 32px 0;
   }
 
   /* ── Loading ── */
@@ -505,20 +904,6 @@
     }
   }
 
-  /* ── Crew grid ── */
-  .crew-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-  }
-
-  /* ── Divider ── */
-  .section-divider {
-    height: 1px;
-    background: var(--rim);
-    margin: 32px 0;
-  }
-
   /* ── Responsive ── */
   @media (max-width: 860px) {
     .top-grid {
@@ -533,6 +918,9 @@
     }
     .dest-grid {
       grid-template-columns: 1fr;
+    }
+    .status-banner-row {
+      flex-direction: column;
     }
   }
 </style>

@@ -1,11 +1,8 @@
-// src/routes/dashboard/+page.ts
+// src/routes/(auth)/app/dashboard/+page.ts
 //
 // Smart dashboard router.
-// For users who land here (bookmarks, direct nav, fallback redirects),
-// this routes them to their appropriate section based on actors.
-//
-// If the user has multiple possible dashboards, this page renders
-// a dashboard selector. Otherwise it redirects immediately.
+// Routes users to their appropriate section based on actors.
+// Also passes verification + subscription status for banner display.
 
 import { redirect } from "@sveltejs/kit"
 import { get } from "svelte/store"
@@ -18,15 +15,18 @@ import type { PageLoad } from "./$types"
 
 export const load: PageLoad = async ({ parent, url }) => {
   const { session } = await parent()
-
   if (!session) {
     redirect(303, "/login/sign_in")
   }
 
   const s = get(sessionStore)
   if (!s.initialized) {
-    // Store not ready — let the page render, it'll re-run after bootstrap
-    return { destinations: [], reason: null }
+    return {
+      destinations: [],
+      reason: null,
+      pendingRequests: [],
+      hasActiveSubscription: false,
+    }
   }
 
   const actorTypes = new Set(
@@ -35,32 +35,46 @@ export const load: PageLoad = async ({ parent, url }) => {
   const orgIds = getJurisdictionOrgIds()
   const reason = url.searchParams.get("reason")
 
-  // ─── Single clear destination → redirect ──────────────────
+  // ─── Verification status ──────────────────
+  // Check for pending actor_requests
+  const pendingRequests = (s as any).pendingRequests ?? []
 
-  // Only passenger, no org → stay here (passenger dashboard)
+  // ─── Subscription status ──────────────────
+  // This should come from the session bootstrap or layout data.
+  // Check if the session has subscription info from custom_access_token_hook
+  const hasActiveSubscription = (s as any).hasActiveSubscription ?? (s as any).subscription?.status === 'active' ?? false
+
+  // ─── Onboarding ──────────────────
+  const onboardingComplete = url.searchParams.get("onboarding") === "complete"
+  const requestedRole = url.searchParams.get("role") ?? null
+
+  // ─── Single clear destination → redirect ──────────────────
   if (actorTypes.size === 0 || (actorTypes.size === 1 && actorTypes.has(ROLES.PASSENGER))) {
-    return { destinations: [], reason, isPassenger: true }
+    return {
+      destinations: [],
+      reason,
+      isPassenger: true,
+      pendingRequests,
+      hasActiveSubscription,
+      onboardingComplete,
+      requestedRole,
+    }
   }
 
-  // Only admin → admin panel
   if (actorTypes.size === 1 && actorTypes.has(ROLES.ADMIN)) {
     redirect(303, "/admin/dashboard")
   }
 
-  // Only crew (driver/conductor) → crew dashboard
   const hasOnlyCrew =
     [...actorTypes].every((t) =>
       [ROLES.DRIVER, ROLES.CONDUCTOR, ROLES.PASSENGER].includes(t as any),
     ) && (actorTypes.has(ROLES.DRIVER) || actorTypes.has(ROLES.CONDUCTOR))
-
   if (hasOnlyCrew) {
     redirect(303, "/crew/dashboard")
   }
 
-  // Only org roles + single org → org dashboard
   const orgRoles = [ROLES.ORGANIZATION, ROLES.STAGE_OPERATOR, ROLES.OWNER]
   const hasOrgRole = orgRoles.some((r) => actorTypes.has(r))
-
   if (hasOrgRole && orgIds.length === 1) {
     redirect(303, `/org/${orgIds[0]}/dashboard`)
   }
@@ -87,7 +101,6 @@ export const load: PageLoad = async ({ parent, url }) => {
   }
 
   if (hasOrgRole && orgIds.length > 1) {
-    // Multiple orgs → each gets an entry
     for (const membership of s.orgMemberships) {
       destinations.push({
         label: membership.org_name,
@@ -115,5 +128,12 @@ export const load: PageLoad = async ({ parent, url }) => {
     })
   }
 
-  return { destinations, reason }
+  return {
+    destinations,
+    reason,
+    pendingRequests,
+    hasActiveSubscription,
+    onboardingComplete,
+    requestedRole,
+  }
 }
