@@ -29,7 +29,7 @@
     hour12: false,
   })
 
-let tempColor = $derived(
+  let tempColor = $derived(
     isNaN(temperature)
       ? "from-gray-500 to-gray-700"
       : temperature <= 10
@@ -38,7 +38,8 @@ let tempColor = $derived(
           ? "from-cyan-400 to-sky-500"
           : temperature <= 30
             ? "from-yellow-400 to-orange-500"
-            : "from-orange-500 to-red-500"
+            : "from-orange-500 to-red-500",
+  )
 </script>
 
 <div class="weather-glass w-full max-w-xl p-8 flex flex-col gap-6 relative">
