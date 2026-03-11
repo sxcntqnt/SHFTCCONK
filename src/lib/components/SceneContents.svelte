@@ -12,19 +12,11 @@
   import { onMount, onDestroy } from "svelte"
   import { T, useThrelte, useTask } from "@threlte/core"
   import { OrbitControls, interactivity } from "@threlte/extras"
-  // @ts-ignore — install @types/three if not present: pnpm add -D @types/three
   import * as THREE from "three"
-  import {
-    vehicleModelLoaders,
-    type VehicleModelKey,
-  } from "$lib/features/fleet"
-  // @ts-ignore
+  import { vehicleModelLoaders, resolveModelKey } from "$lib/features/fleet"
   import { EffectComposer } from "three-stdlib"
-  // @ts-ignore
   import { RenderPass } from "three-stdlib"
-  // @ts-ignore
   import { BokehPass } from "three-stdlib"
-  // @ts-ignore
   import { RGBELoader } from "three-stdlib"
   import { gsap } from "gsap"
 
@@ -79,24 +71,18 @@
   let controls: any
 
   // Enable interactivity plugin
-  void interactivity()
+  interactivity()
 
   // ── Load model from fleet index ────────────────────────────────────────────
-  function isValidModelKey(k: string): k is VehicleModelKey {
-    return k in vehicleModelLoaders
-  }
-
   async function loadModelFromIndex() {
-    // Resolve the loader key: try modelKey first, then capacity, then fallback
-    const key: VehicleModelKey = isValidModelKey(modelKey)
-      ? modelKey
-      : isValidModelKey(capacity)
-        ? capacity
-        : "matatu-generic"
-
+    // Use the centralized resolver: modelKey → capacity → nearest match → generic
+    const key = resolveModelKey(modelKey || capacity)
     const loader = vehicleModelLoaders[key]
+
     if (!loader) {
-      console.warn(`No model loader for key "${key}", using placeholder`)
+      console.warn(
+        `No model loader for resolved key "${key}", using placeholder`,
+      )
       return false
     }
 
@@ -458,7 +444,7 @@
 
 <!-- Camera -->
 <T.PerspectiveCamera
-  makeDefault={true}
+  makeDefault
   fov={60}
   near={0.1}
   far={1000}
@@ -470,7 +456,7 @@
   <OrbitControls
     enableZoom={false}
     enablePan={false}
-    enableDamping={true}
+    enableDamping
     on:create={({ ref }) => {
       controls = ref
     }}
