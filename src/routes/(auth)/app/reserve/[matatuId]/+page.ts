@@ -1,23 +1,35 @@
 import { error } from '@sveltejs/kit'
 import type { PageLoad } from './$types'
 import { matatuConfigs, validateCapacity } from '$lib/matatu'
+import { resolveModelKey } from '$lib/features/fleet'
 
 /**
  * Load matatu data for the reservation page.
- * Tries live API first, falls back to static config registry.
  *
- * Route: /reserve/[id] — params.id is the matatu identifier.
+ * Route: /app/reserve/[id]
+ *
+ * Resolution chain:
+ *   1. Try live API → get real matatu data with capacity
+ *   2. Fallback to static matatuConfigs registry
+ *   3. Resolve the 3D model key via resolveModelKey(capacity)
+ *
+ * The modelKey is always derived from capacity, ensuring the fleet
+ * index loads the correct bus model regardless of how we got here.
  */
 export const load: PageLoad = async ({ params, fetch }) => {
   const id = (params as Record<string, string>).id
   if (!id) throw error(400, 'Missing matatu ID')
 
-  // Try live API
+  // ── Try live API first ──
   try {
     const res = await fetch(`/api/matatu/${id}`)
     if (res.ok) {
       const matatu = await res.json()
-      const capacity = validateCapacity(String(matatu.totalSeats ?? matatu.capacity))
+      const capacity = validateCapacity(
+        String(matatu.totalSeats ?? matatu.capacity)
+      )
+      const modelKey = resolveModelKey(capacity)
+
       return {
         matatu: {
           id:           matatu.id           as string,
@@ -29,35 +41,62 @@ export const load: PageLoad = async ({ params, fetch }) => {
           occupancy:    matatu.occupancy    as number,
         },
         config: matatuConfigs[capacity],
+        modelKey,
       }
     }
   } catch {
     // fall through to static lookup
   }
 
-  // Fallback: static registry
-  // MatatuConfig may not have id/route/sacco — cast through Record for flexibility
-  const capacityEntry = Object.entries(matatuConfigs).find(
-    ([, cfg]) => (cfg as Record<string, any>).id === id
+  // ── Fallback: static config registry ──
+  // Try matching by config.id first (e.g. matatuConfigs["14"].id === "matatu-001")
+  const configByIdEntry = Object.entries(matatuConfigs).find(
+    ([, cfg]) => (cfg as any).id === id
   )
 
-  if (!capacityEntry) {
-    throw error(404, `Matatu "${id}" not found`)
+  if (configByIdEntry) {
+    const [capacity, config] = configByIdEntry
+    const modelKey = resolveModelKey(capacity)
+
+    return {
+      matatu: {
+        id,
+        route:        (config as any).route ?? 'Route',
+        sacco:        (config as any).sacco ?? 'SACCO',
+        capacity,
+        pricePerSeat: (config as any).pricePerSeat ?? 30,
+        status:       'On Route',
+        occupancy:    0,
+      },
+      config,
+      modelKey,
+    }
   }
 
-  const [capacity, config] = capacityEntry
-  const cfgAny = config as Record<string, any>
+  // Try interpreting the id itself as a capacity (e.g. /reserve/14)
+  try {
+    const capacity = validateCapacity(id)
+    const config = matatuConfigs[capacity]
+    if (config) {
+      const modelKey = resolveModelKey(capacity)
 
-  return {
-    matatu: {
-      id,
-      route:        (cfgAny.route        ?? '') as string,
-      sacco:        (cfgAny.sacco        ?? '') as string,
-      capacity,
-      pricePerSeat: (cfgAny.pricePerSeat ?? 20) as number,
-      status:       'On Route',
-      occupancy:    0,
-    },
-    config,
+      return {
+        matatu: {
+          id,
+          route:        (config as any).route ?? 'Route',
+          sacco:        (config as any).sacco ?? 'SACCO',
+          capacity,
+          pricePerSeat: (config as any).pricePerSeat ?? 30,
+          status:       'On Route',
+          occupancy:    0,
+        },
+        config,
+        modelKey,
+      }
+    }
+  } catch {
+    // not a valid capacity string
   }
+
+  throw error(404, `Matatu "${id}" not found`)
 }

@@ -9,9 +9,6 @@
   import { Canvas } from "@threlte/core"
   import SceneContents from "./SceneContents.svelte"
 
-  // SceneContents exposes goBack() — type loosely until Svelte 5 types stabilize
-  let sceneContents: { goBack: () => void } & Record<string, any>
-
   let {
     selectedSeats = [],
     toggleSeat,
@@ -30,6 +27,7 @@
   let loading = $state(true)
   let interiorLoaded = $state(false)
   let reservedSeats: number[] = $state([])
+  let sceneContents: SceneContents
 
   let pollingInterval: any
 
