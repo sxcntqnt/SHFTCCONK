@@ -6,7 +6,7 @@ import { resolveModelKey } from '$lib/features/fleet'
 /**
  * Load matatu data for the reservation page.
  *
- * Route: /app/reserve/[id]
+ * Route: /app/reserve/[matatuId]
  *
  * Resolution chain:
  *   1. Try live API → get real matatu data with capacity
@@ -17,12 +17,14 @@ import { resolveModelKey } from '$lib/features/fleet'
  * index loads the correct bus model regardless of how we got here.
  */
 export const load: PageLoad = async ({ params, fetch }) => {
-  const id = (params as Record<string, string>).id
-  if (!id) throw error(400, 'Missing matatu ID')
+  const matatuId  = params 
+  if (!matatuId ) throw error(400, 'Missing matatu ID')
+
+  const id = String(matatuId)
 
   // ── Try live API first ──
   try {
-    const res = await fetch(`/api/matatu/${id}`)
+    const res = await fetch(`/api/matatu/${matatuId}`)
     if (res.ok) {
       const matatu = await res.json()
       const capacity = validateCapacity(
