@@ -8,19 +8,15 @@ Title: Isuzu Erga Mio bus
 -->
 
 <script>
-  import { T } from '@threlte/core'
-  import { useGltf } from '@threlte/extras'
+  import { T } from "@threlte/core"
+  import { useGltf } from "@threlte/extras"
 
   let { fallback, error, children, ref = $bindable(), ...props } = $props()
 
-  const gltf = useGltf('/isuzu_erga_mio_bus-transformed.glb')
+  const gltf = useGltf("/models/isuzu_erga_mio_bus-transformed.glb")
 </script>
 
-<T.Group
-  bind:ref
-  dispose={false}
-  {...props}
->
+<T.Group bind:ref dispose={false} {...props}>
   {#await gltf}
     {@render fallback?.()}
   {:then gltf}

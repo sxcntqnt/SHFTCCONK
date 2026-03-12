@@ -8,19 +8,15 @@ Title: Retro Anime Vintage Volkswagen Van
 -->
 
 <script>
-  import { T } from '@threlte/core'
-  import { useGltf } from '@threlte/extras'
+  import { T } from "@threlte/core"
+  import { useGltf } from "@threlte/extras"
 
   let { fallback, error, children, ref = $bindable(), ...props } = $props()
 
-  const gltf = useGltf('/retro_anime_vintage_volkswagen_van-transformed.glb')
+  const gltf = useGltf("./retro_anime_vintage_volkswagen_van-transformed.glb")
 </script>
 
-<T.Group
-  bind:ref
-  dispose={false}
-  {...props}
->
+<T.Group bind:ref dispose={false} {...props}>
   {#await gltf}
     {@render fallback?.()}
   {:then gltf}

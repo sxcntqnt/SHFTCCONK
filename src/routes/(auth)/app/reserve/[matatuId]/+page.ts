@@ -17,8 +17,11 @@ import { resolveModelKey } from '$lib/features/fleet'
  * index loads the correct bus model regardless of how we got here.
  */
 export const load: PageLoad = async ({ params, fetch }) => {
-  const matatuId  = params 
-  if (!matatuId ) throw error(400, 'Missing matatu ID')
+  const { matatuId } = params
+
+  console.log("matatuId:", matatuId, typeof matatuId)
+
+  if (!matatuId) throw error(400, 'Missing matatu ID')
 
   const id = String(matatuId)
 
@@ -34,7 +37,7 @@ export const load: PageLoad = async ({ params, fetch }) => {
 
       return {
         matatu: {
-          id:           matatu.id           as string,
+          id:           matatu.matatuId     as string,
           route:        matatu.route        as string,
           sacco:        matatu.sacco        as string,
           capacity,
