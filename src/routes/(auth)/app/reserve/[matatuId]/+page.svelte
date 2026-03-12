@@ -81,7 +81,13 @@
     gsap.fromTo(
       ".summary-bar",
       { x: 0 },
-      { x: [-10, 10, -8, 8, -4, 4, 0], duration: 0.45, ease: "power1.inOut" },
+      {
+        keyframes: {
+          x: [-10, 10, -8, 8, -4, 4, 0],
+          ease: "power1.inOut", // Eases between each keyframe
+        },
+        duration: 0.45,
+      },
     )
   }
 

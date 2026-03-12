@@ -100,7 +100,7 @@
   onMount(async () => {
     const r = renderer as THREE.WebGLRenderer
     const s = scene as THREE.Scene
-    const c = camera as THREE.PerspectiveCamera
+    const c = $camera as THREE.PerspectiveCamera
 
     cam = c
     cam.position.set(0, 3, 8)
@@ -444,13 +444,13 @@
 
 <!-- Camera -->
 <T.PerspectiveCamera
-  makeDefault
+  makeDefault={undefined}
   fov={60}
   near={0.1}
   far={1000}
   position={[0, 3, 8]}
   on:create={({ ref }) => {
-    cam = ref
+    cam = ref as THREE.PerspectiveCamera
   }}
 >
   <OrbitControls
