@@ -33,7 +33,7 @@
 
   async function fetchReservedSeats() {
     try {
-      const res = await fetch(`/admin/api/reserve/status?capacity=${capacity}`)
+      const res = await fetch(`/admin/api/reserve/status?capacity=${matatuId}`)
       const data = await res.json()
       reservedSeats = data.reserved ?? []
     } catch (err) {

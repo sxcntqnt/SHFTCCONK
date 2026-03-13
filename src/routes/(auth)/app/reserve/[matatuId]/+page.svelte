@@ -10,6 +10,7 @@
   import { onMount } from "svelte"
   import gsap from "gsap"
   import type { PageData } from "./$types"
+  import "$lib/features/fleet/services/three/gltfLoader"
   import SeatViewer from "$lib/components/SeatViewer.svelte"
   import posthog from "posthog-js"
 
@@ -111,7 +112,7 @@
         message = "Payment started. You will receive an M-Pesa prompt shortly."
         selectedSeats = []
         showModal = false
-        goto(`/track/${matatu.id}`)
+        goto(`/app/track/${matatu.id}`)
       } else {
         message = j.error || "Payment failed. Please try again."
       }
@@ -121,7 +122,38 @@
       processing = false
     }
   }
+In SeatViewer.svelte:
 
+{#if tooltip.visible}
+<div
+  class="seat-tooltip"
+  style="left:{tooltip.x}px; top:{tooltip.y}px"
+>
+  Seat {tooltip.seat}
+</div>
+{/if}
+
+
+Seat {tooltip.seat}
+<br>
+<span class="seat-type">Window</span>
+
+Seat types example:
+
+function getSeatType(seat) {
+  if (seat % 4 === 1) return "Window"
+  if (seat % 4 === 0) return "Window"
+  return "Aisle"
+
+Small animation (feels much nicer)
+
+Use GSAP (which you're already using):
+
+gsap.fromTo(
+  ".seat-tooltip",
+  { scale: 0.9, opacity: 0 },
+  { scale: 1, opacity: 1, duration: 0.2 }
+)
   // ── Entrance animation ────────────────────────────────────────────────────
   onMount(() => {
     const tl = gsap.timeline({ defaults: { ease: "power3.out" } })

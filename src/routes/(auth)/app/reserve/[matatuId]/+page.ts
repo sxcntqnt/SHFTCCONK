@@ -27,7 +27,7 @@ export const load: PageLoad = async ({ params, fetch }) => {
 
   // ── Try live API first ──
   try {
-    const res = await fetch(`/api/matatu/${matatuId}`)
+    const res = await fetch(`/api/reserve/status/${matatuId}`)
     if (res.ok) {
       const matatu = await res.json()
       const capacity = validateCapacity(
