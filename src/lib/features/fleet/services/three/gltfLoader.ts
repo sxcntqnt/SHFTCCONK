@@ -1,9 +1,11 @@
-import { setGltfOptions } from "@threlte/extras"
+import { browser } from "$app/environment"
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader"
 
-const draco = new DRACOLoader()
-draco.setDecoderPath("/public/draco/")
+let draco: DRACOLoader | undefined
 
-setGltfOptions({
-  dracoLoader: draco
-})
+if (browser) {
+  draco = new DRACOLoader()
+  draco.setDecoderPath("/draco/")
+}
+
+export { draco }

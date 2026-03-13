@@ -30,10 +30,11 @@
   let sceneContents: SceneContents
 
   let pollingInterval: any
+  let matatuId: string
 
   async function fetchReservedSeats() {
     try {
-      const res = await fetch(`/admin/api/reserve/status?capacity=${matatuId}`)
+      const res = await fetch(`/admin/api/reserve/status?matatu_id=${matatuId}`)
       const data = await res.json()
       reservedSeats = data.reserved ?? []
     } catch (err) {
@@ -42,8 +43,12 @@
   }
 
   onMount(() => {
+    if (!matatuId) return
     fetchReservedSeats()
+    const interval = setInterval(fetchReservedSeats, 3000)
+
     pollingInterval = setInterval(fetchReservedSeats, 10_000)
+    return () => clearInterval(interval)
   })
 
   onDestroy(() => clearInterval(pollingInterval))
