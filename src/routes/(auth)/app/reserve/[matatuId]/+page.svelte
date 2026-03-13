@@ -122,8 +122,7 @@
       processing = false
     }
   }
-In SeatViewer.svelte:
-
+  /*
 {#if tooltip.visible}
 <div
   class="seat-tooltip"
@@ -132,28 +131,14 @@ In SeatViewer.svelte:
   Seat {tooltip.seat}
 </div>
 {/if}
+*/
 
+  function getSeatType(seat) {
+    if (seat % 4 === 1) return "Window"
+    if (seat % 4 === 0) return "Window"
+    return "Aisle"
+  }
 
-Seat {tooltip.seat}
-<br>
-<span class="seat-type">Window</span>
-
-Seat types example:
-
-function getSeatType(seat) {
-  if (seat % 4 === 1) return "Window"
-  if (seat % 4 === 0) return "Window"
-  return "Aisle"
-
-Small animation (feels much nicer)
-
-Use GSAP (which you're already using):
-
-gsap.fromTo(
-  ".seat-tooltip",
-  { scale: 0.9, opacity: 0 },
-  { scale: 1, opacity: 1, duration: 0.2 }
-)
   // ── Entrance animation ────────────────────────────────────────────────────
   onMount(() => {
     const tl = gsap.timeline({ defaults: { ease: "power3.out" } })
@@ -191,6 +176,12 @@ gsap.fromTo(
         { opacity: 0, y: 12 },
         { opacity: 1, y: 0, duration: 0.45 },
         "-=0.3",
+      )
+      .fromTo(
+        ".seat-tooltip",
+        { scale: 0.9, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.2 },
+        "-=0.4",
       )
   })
 </script>
@@ -1021,6 +1012,17 @@ gsap.fromTo(
     }
     .page-title {
       font-size: 1.5rem;
+    }
+    .seat-tooltip {
+      position: absolute;
+      transform: translate(-50%, -140%);
+      background: rgba(20, 20, 20, 0.9);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
     }
   }
 </style>
