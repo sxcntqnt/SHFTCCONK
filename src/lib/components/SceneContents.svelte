@@ -14,31 +14,32 @@
   import { OrbitControls, interactivity } from "@threlte/extras"
   import * as THREE from "three"
   import { vehicleModelLoaders, resolveModelKey } from "$lib/features/fleet"
+  import { gltfLoader } from "$lib/features/fleet/services/three/gltfLoader"
   import { EffectComposer } from "three-stdlib"
   import { RenderPass } from "three-stdlib"
   import { BokehPass } from "three-stdlib"
   import { RGBELoader } from "three-stdlib"
   import { gsap } from "gsap"
 
-  // ── Props ─────────────────────────────────────────────────────────────────
+  // ── Props ───────────────────────────────────────────────────────────────
   let {
     selectedSeats = [],
     toggleSeat,
     modelKey,
     reservedSeats = [],
-    viewMode = "exterior",
-    loading = true,
-    interiorLoaded = false,
     capacity = "14",
+    viewMode = $bindable<"exterior" | "interior">("exterior"),
+    loading = $bindable<boolean>(true),
+    interiorLoaded = $bindable<boolean>(false),
   }: {
     selectedSeats?: number[]
     toggleSeat: (n: number) => void
     modelKey: string
     reservedSeats?: number[]
-    viewMode?: "exterior" | "interior"
-    loading?: boolean
-    interiorLoaded?: boolean
     capacity?: string
+    viewMode: "exterior" | "interior"
+    loading: boolean
+    interiorLoaded: boolean
   } = $props()
 
   // ── Threlte context ────────────────────────────────────────────────────────
@@ -73,29 +74,29 @@
   // Enable interactivity plugin
   interactivity()
 
-  // ── Load model from fleet index ────────────────────────────────────────────
   async function loadModelFromIndex() {
-    // Use the centralized resolver: modelKey → capacity → nearest match → generic
     const key = resolveModelKey(modelKey || capacity)
     const loader = vehicleModelLoaders[key]
 
     if (!loader) {
-      console.warn(
-        `No model loader for resolved key "${key}", using placeholder`,
-      )
+      console.warn(`No model loader for key "${key}"`)
       return false
     }
 
     try {
       const module = await loader()
+
+      // CHANGES:
+      // 1. Do not mutate module.default
+      // 2. Pass gltfLoader as a prop when rendering the component
       ModelComponent = module.default
+
       return true
     } catch (err) {
       console.error(`Failed to load model "${key}":`, err)
       return false
     }
   }
-
   // ── Mount ──────────────────────────────────────────────────────────────────
   onMount(async () => {
     const r = renderer as THREE.WebGLRenderer
@@ -469,13 +470,13 @@
 <!-- Exterior group -->
 <T.Group on:click={handleExteriorClick}>
   {#if ModelComponent && viewMode === "exterior"}
-    <ModelComponent />
+    <ModelComponent loader={gltfLoader} />
   {/if}
 </T.Group>
 
 <!-- Interior group -->
 <T.Group on:click={handleInteriorClick}>
   {#if ModelComponent && viewMode === "interior"}
-    <ModelComponent />
+    <ModelComponent loader={gltfLoader} />
   {/if}
 </T.Group>

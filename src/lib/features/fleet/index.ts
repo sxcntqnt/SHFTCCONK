@@ -11,11 +11,15 @@
  *   2. Add a new entry here keyed by its seat count
  *   3. That's it — the resolver handles everything downstream
  */
+
+import { createVehicleLoader } from "./services/three/loader"
+
 export const vehicleModelLoaders = {
-  "14": () => import("./components/isuzu_erga_mio_bus.svelte"),
+  "14": () => import("./components/isuzu_erga_mio_bus.svelte"), // keep existing Svelte wrappers
   "26": () => import("./components/japanese_bus_osaka_city_bus_osaka.svelte"),
   "33": () => import("./components/retro_anime_vintage_volkswagen_van.svelte"),
   "matatu-generic": () => import("./components/GenericMatatu.svelte"),
+
 } satisfies Record<string, () => Promise<{ default: any }>>
 
 /** Union of all valid keys in the vehicle model registry */

@@ -10,12 +10,14 @@
   import SceneContents from "./SceneContents.svelte"
 
   let {
+    matatuId = "",
     selectedSeats = [],
     toggleSeat,
     capacity = "14",
     modelKey,
     reservedSeats: externalReserved = [],
   }: {
+    matatuId: string
     selectedSeats?: number[]
     toggleSeat: (n: number) => void
     capacity?: string
@@ -30,11 +32,12 @@
   let sceneContents: SceneContents
 
   let pollingInterval: any
-  let matatuId: string
 
   async function fetchReservedSeats() {
     try {
-      const res = await fetch(`/admin/api/reserve/status?matatu_id=${matatuId}`)
+      const res = await fetch(
+        `/app/admin/api/reserve/status?matatu_id=${matatuId}`,
+      )
       const data = await res.json()
       reservedSeats = data.reserved ?? []
     } catch (err) {
@@ -45,10 +48,8 @@
   onMount(() => {
     if (!matatuId) return
     fetchReservedSeats()
-    const interval = setInterval(fetchReservedSeats, 3000)
-
     pollingInterval = setInterval(fetchReservedSeats, 10_000)
-    return () => clearInterval(interval)
+    return () => clearInterval(pollingInterval)
   })
 
   onDestroy(() => clearInterval(pollingInterval))

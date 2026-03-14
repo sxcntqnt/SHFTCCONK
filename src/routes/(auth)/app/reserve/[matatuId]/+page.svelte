@@ -27,6 +27,7 @@
   let message = $state("")
 
   let total = $derived(selectedSeats.length * matatu.pricePerSeat)
+  let reservedSeats: number[] = []
 
   // ── Seat actions ──────────────────────────────────────────────────────────
   function toggleSeat(n: number) {
@@ -35,7 +36,7 @@
       : [...selectedSeats, n]
   }
 
-  function openModal() {
+  async function openModal() {
     if (selectedSeats.length === 0) {
       message = "Please select at least one seat."
       shakeBar()
@@ -45,17 +46,24 @@
     showModal = true
 
     await tick()
-    gsap.fromTo(
-        ".modal-card",
-        { opacity: 0, y: 24, scale: 0.97 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "power3.out" },
-      )
+    const tooltipEl = document.querySelector(".seat-tooltip")
+    if (tooltipEl) {
       gsap.fromTo(
-        ".modal-backdrop",
-        { opacity: 0 },
-        { opacity: 1, duration: 0.25 },
+        tooltipEl,
+        { scale: 0.9, opacity: 0 },
+        { scale: 1, opacity: 1 },
       )
-    
+    }
+    gsap.fromTo(
+      ".modal-card",
+      { opacity: 0, y: 24, scale: 0.97 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "power3.out" },
+    )
+    gsap.fromTo(
+      ".modal-backdrop",
+      { opacity: 0 },
+      { opacity: 1, duration: 0.25 },
+    )
 
     posthog.capture("seat_reservation_initiated", {
       matatu_id: matatu.id,
@@ -122,20 +130,31 @@
       processing = false
     }
   }
-  /*
-{#if tooltip.visible}
-<div
-  class="seat-tooltip"
-  style="left:{tooltip.x}px; top:{tooltip.y}px"
->
-  Seat {tooltip.seat}
-</div>
-{/if}
-*/
 
-  function getSeatType(seat) {
-    if (seat % 4 === 1) return "Window"
-    if (seat % 4 === 0) return "Window"
+  type Tooltip = {
+    visible: boolean
+    seat: number
+    x: number
+    y: number
+  }
+
+  let tooltip = $state<Tooltip>({
+    visible: false,
+    seat: 0,
+    x: 0,
+    y: 0,
+  })
+
+  function showTooltip(seat: number, x: number, y: number) {
+    tooltip = { visible: true, seat, x, y }
+  }
+
+  function hideTooltip() {
+    tooltip.visible = false
+  }
+
+  function getSeatType(seat: number) {
+    if (seat % 4 === 1 || seat % 4 === 0) return "Window"
     return "Aisle"
   }
 
@@ -286,6 +305,8 @@
           {toggleSeat}
           capacity={matatu.capacity}
           {modelKey}
+          {reservedSeats}
+          matatuId={data.matatu.id}
         />
       </div>
     </div>
