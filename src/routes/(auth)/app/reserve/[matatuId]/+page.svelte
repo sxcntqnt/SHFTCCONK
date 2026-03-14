@@ -7,7 +7,7 @@
    */
 
   import { goto } from "$app/navigation"
-  import { onMount } from "svelte"
+  import { onMount, tick } from "svelte"
   import gsap from "gsap"
   import type { PageData } from "./$types"
   import "$lib/features/fleet/services/three/gltfLoader"
@@ -44,8 +44,8 @@
     message = ""
     showModal = true
 
-    requestAnimationFrame(() => {
-      gsap.fromTo(
+    await tick()
+    gsap.fromTo(
         ".modal-card",
         { opacity: 0, y: 24, scale: 0.97 },
         { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "power3.out" },
@@ -55,7 +55,7 @@
         { opacity: 0 },
         { opacity: 1, duration: 0.25 },
       )
-    })
+    
 
     posthog.capture("seat_reservation_initiated", {
       matatu_id: matatu.id,

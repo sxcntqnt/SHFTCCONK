@@ -121,7 +121,7 @@
     composer.addPass(bokehPass)
 
     // HDR environment
-    new RGBELoader().load("/hdr/studio.hdr", (texture) => {
+    new RGBELoader().load("/hdr/garage.hdr", (texture) => {
       texture.mapping = THREE.EquirectangularReflectionMapping
       s.environment = texture
       s.background = texture
