@@ -59,3 +59,15 @@
     </table>
   {/each}
 </div>
+
+<style>
+  .calendar table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .calendar td {
+    text-align: center;
+    padding: 4px;
+  }
+</style>
