@@ -1,19 +1,34 @@
-import { browser } from "$app/environment";
-import { GLTFLoader } from "three-stdlib";
-import { DRACOLoader } from "three-stdlib";
+/**
+ * gltfLoader.ts
+ *
+ * BEFORE: called `useDraco()` from @threlte/extras at module level.
+ *         useDraco is a Threlte hook — it MUST be called inside a component
+ *         that lives within a <Canvas> tree. At module level it has no context
+ *         and returns undefined, so the DRACOLoader was never actually set,
+ *         giving: "THREE.GLTFLoader: No DRACOLoader instance provided."
+ *
+ * FIX:    Use DRACOLoader from three-stdlib directly. It is a plain class and
+ *         does not need any Svelte/Threlte context. This is exactly what
+ *         useDraco does internally — we just do it ourselves.
+ */
 
-let gltfLoader: GLTFLoader;
-let dracoLoader: DRACOLoader;
+import { browser } from "$app/environment"
+import { GLTFLoader, DRACOLoader } from "three-stdlib"
+
+let gltfLoader: GLTFLoader
 
 if (browser) {
-  // Initialize DRACOLoader first
-  dracoLoader = new DRACOLoader();
-  dracoLoader.setDecoderPath("/draco/"); // path to draco decoder
+  // 1. Create a DRACOLoader and point it at the decoder bundle in /static/draco/
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath("/draco/")
+  dracoLoader.preload() // warm-start the WASM decoder in a worker
 
-  // Initialize GLTFLoader and attach DRACOLoader
-  gltfLoader = new GLTFLoader();
-  gltfLoader.setDRACOLoader(dracoLoader);
+  // 2. Create the GLTFLoader and wire in DRACO support
+  gltfLoader = new GLTFLoader()
+  gltfLoader.setDRACOLoader(dracoLoader)
 }
 
-// Export both if you need them elsewhere
-export { gltfLoader, dracoLoader };
+export { gltfLoader }
+
+// Also export the classes for callers that need to create their own instances
+export { GLTFLoader, DRACOLoader }

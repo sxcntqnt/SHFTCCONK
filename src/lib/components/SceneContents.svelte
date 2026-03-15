@@ -1,27 +1,19 @@
 <script lang="ts">
-  /**
-   * SceneContents.svelte
-   *
-   * Must be rendered inside a Threlte <Canvas>. Contains all scene logic,
-   * camera setup, model loading, post-processing, and interaction handling.
-   *
-   * Uses vehicleModelLoaders from the fleet index to load the correct
-   * 3D bus model based on modelKey (capacity or named key).
-   */
-
   import { onMount, onDestroy } from "svelte"
   import { T, useThrelte, useTask } from "@threlte/core"
   import { OrbitControls, interactivity } from "@threlte/extras"
   import * as THREE from "three"
   import { vehicleModelLoaders, resolveModelKey } from "$lib/features/fleet"
-  import { gltfLoader } from "$lib/features/fleet/services/three/gltfLoader"
-  import { EffectComposer } from "three-stdlib"
-  import { RenderPass } from "three-stdlib"
-  import { BokehPass } from "three-stdlib"
-  import { RGBELoader } from "three-stdlib"
+  import { BusInterior } from "$lib/features/fleet/components/BusInterior/NgNyAnAN"
+  import {
+    RGBELoader,
+    EffectComposer,
+    RenderPass,
+    BokehPass,
+  } from "three-stdlib"
   import { gsap } from "gsap"
 
-  // ── Props ───────────────────────────────────────────────────────────────
+  // ── Props ──────────────────────────────────────────────────────────────────
   let {
     selectedSeats = [],
     toggleSeat,
@@ -42,193 +34,321 @@
     interiorLoaded: boolean
   } = $props()
 
-  // ── Threlte context ────────────────────────────────────────────────────────
   const { renderer, scene, camera, invalidate } = useThrelte()
-  const requestRender = () => invalidate()
+  const req = () => invalidate()
 
-  // ── Post-processing & model ────────────────────────────────────────────────
-  let ModelComponent: any = $state(null)
+  interactivity()
 
-  let composer: EffectComposer
-  let bokehPass: BokehPass
+  // ── State ──────────────────────────────────────────────────────────────────
+  let ModelComponent = $state<any>(null)
+  let showExterior = $state(true)
+  let showInterior = $state(false)
 
-  // ── Scene graph refs ───────────────────────────────────────────────────────
-  const exteriorGroup = new THREE.Group()
-  const interiorGroup = new THREE.Group()
-  interiorGroup.visible = false
+  const seatMeshes = new Map<number, THREE.Mesh>()
+  let loadedScene: THREE.Group | null = null
+  let busInterior: BusInterior | null = null
 
-  const seatMeshes: Map<number, THREE.Mesh> = new Map()
-
-  let doorMesh: THREE.Object3D | null = null
   let doorPivot: THREE.Object3D | null = null
   let doorShaft: THREE.Mesh
+  let doorMeshRef: THREE.Object3D | null = null
 
   let interiorLight: THREE.PointLight
   let ambientInterior: THREE.AmbientLight
-
   let doorAudio: HTMLAudioElement
 
   let cam: THREE.PerspectiveCamera
   let controls: any
 
-  // Enable interactivity plugin
-  interactivity()
+  let composer: EffectComposer
+  let bokehPass: BokehPass
 
+  let exteriorGroupRef: THREE.Group
+  let interiorGroupRef: THREE.Group
+
+  // Saved exterior pose for goBack()
+  const exteriorPos = new THREE.Vector3()
+  const exteriorTarget = new THREE.Vector3()
+
+  // ── Snap model bottom to y = 0 (ground plane) ────────────────────────────
+  /**
+   * Translates the group vertically so its lowest vertex sits at y = 0.
+   * Called once after load — fixes floating buses whose geometry origin
+   * is above or below the ground plane.
+   */
+  function groundSnap(group: THREE.Group) {
+    const box = new THREE.Box3().setFromObject(group)
+    if (box.isEmpty()) return
+    // Shift the whole group down/up so min.y lands on y = 0
+    group.position.y -= box.min.y
+  }
+
+  // ── Fit camera to any model ────────────────────────────────────────────────
+  /**
+   * Positions the camera so the full bus is visible from a human perspective:
+   * - Far enough back that the whole model fits in frame (3.5× radius)
+   * - Eye height: 1.6 units above ground (y = 0 after groundSnap)
+   * - OrbitControls target at the visual centre of the bus
+   *
+   * Using a fixed eye-height rather than scaling with model radius prevents
+   * the camera sitting at wheel level on large-scale models (Osaka bus scale:100).
+   */
+  function fitCamera(group: THREE.Group, instant = false) {
+    const box = new THREE.Box3().setFromObject(group)
+    if (box.isEmpty()) return
+
+    const centre = new THREE.Vector3()
+    const size = new THREE.Vector3()
+    box.getCenter(centre)
+    box.getSize(size)
+
+    const busLength = Math.max(size.x, size.z)
+    const busHeight = size.y
+    const fovRad = cam.fov * (Math.PI / 180)
+    const dist = (busLength / 2 / Math.tan(fovRad / 2)) * 1.8
+    const eyeHeight = busHeight * 0.28
+
+    const camPos = new THREE.Vector3(centre.x, eyeHeight, centre.z + dist)
+    const lookAt = new THREE.Vector3(centre.x, centre.y * 0.6, centre.z)
+
+    exteriorPos.copy(camPos)
+    exteriorTarget.copy(lookAt)
+
+    if (instant) {
+      // Teleport — no animation, no chance of flying through the model
+      cam.position.copy(camPos)
+      if (controls) {
+        controls.target.copy(lookAt)
+        controls.update()
+      }
+      req()
+    } else {
+      gsap.to(cam.position, {
+        x: camPos.x,
+        y: camPos.y,
+        z: camPos.z,
+        duration: 1.0,
+        ease: "power3.out",
+        onUpdate: () => {
+          if (controls) {
+            controls.target.copy(lookAt)
+            controls.update()
+          }
+          req()
+        },
+      })
+      if (controls) {
+        controls.target.copy(lookAt)
+        controls.update()
+      }
+    }
+  }
+
+  // ── Model loading ──────────────────────────────────────────────────────────
   async function loadModelFromIndex() {
     const key = resolveModelKey(modelKey || capacity)
     const loader = vehicleModelLoaders[key]
-
     if (!loader) {
-      console.warn(`No model loader for key "${key}"`)
+      console.warn(`[SceneContents] No loader for "${key}"`)
       return false
     }
-
     try {
-      const module = await loader()
-
-      // CHANGES:
-      // 1. Do not mutate module.default
-      // 2. Pass gltfLoader as a prop when rendering the component
-      ModelComponent = module.default
-
+      const mod = await loader()
+      ModelComponent = mod.default
       return true
     } catch (err) {
-      console.error(`Failed to load model "${key}":`, err)
+      console.error("[SceneContents] Load failed:", err)
       return false
     }
   }
+
+  function handleModelLoad(sceneArg: THREE.Group) {
+    loadedScene = sceneArg
+
+    sceneArg.traverse((obj) => {
+      const m = obj as THREE.Mesh
+      if (m.isMesh) {
+        m.castShadow = m.receiveShadow = true
+      }
+    })
+
+    doorMeshRef = null
+    sceneArg.traverse((obj) => {
+      if (obj.name === "Door_Main") doorMeshRef = obj
+    })
+    if (doorMeshRef && exteriorGroupRef) setupDoorPivot()
+
+    requestAnimationFrame(() => {
+      if (exteriorGroupRef) {
+        groundSnap(exteriorGroupRef)
+        fitCamera(exteriorGroupRef, true) // instant — no fly-through on load
+      }
+    })
+
+    req()
+  }
+
   // ── Mount ──────────────────────────────────────────────────────────────────
   onMount(async () => {
     const r = renderer as THREE.WebGLRenderer
     const s = scene as THREE.Scene
     const c = $camera as THREE.PerspectiveCamera
-
     cam = c
-    cam.position.set(0, 3, 8)
+    cam.position.set(0, 5, 20)
 
-    // Renderer config
     r.outputColorSpace = THREE.SRGBColorSpace
     r.toneMapping = THREE.ACESFilmicToneMapping
-    r.toneMappingExposure = 1
+    // Lower exposure so the bright HDR cathedral doesn't overexpose the model
+    r.toneMappingExposure = 0.6
+    r.shadowMap.enabled = true
+    r.shadowMap.type = THREE.PCFSoftShadowMap
+
+    // Placeholder background while HDR loads
+    s.background = new THREE.Color(0x07091a)
 
     // Post-processing
     composer = new EffectComposer(r)
     composer.addPass(new RenderPass(s, c))
     bokehPass = new BokehPass(s, c, {
-      focus: 5.0,
-      aperture: 0.0002,
-      maxblur: 0.01,
+      focus: 6.0,
+      aperture: 0.00003,
+      maxblur: 0.003,
     })
     composer.addPass(bokehPass)
 
-    // HDR environment
-    new RGBELoader().load("/hdr/garage.hdr", (texture) => {
-      texture.mapping = THREE.EquirectangularReflectionMapping
-      s.environment = texture
-      s.background = texture
-      requestRender()
-    })
+    // HDR — both background AND environment so the cathedral shows
+    new RGBELoader().load(
+      "/hdr/garage.hdr",
+      (tex) => {
+        tex.mapping = THREE.EquirectangularReflectionMapping
+        s.environment = tex // IBL / metallic reflections
+        s.background = tex // cathedral panorama as backdrop
+        req()
+      },
+      undefined,
+      (err) => {
+        // HDR failed to load — keep the dark background, log the path issue
+        console.warn(
+          "[SceneContents] HDR load failed — check /static/hdr/garage.hdr:",
+          err,
+        )
+      },
+    )
 
-    // Interior lights
-    ambientInterior = new THREE.AmbientLight(0xffffff, 0.05)
-    interiorLight = new THREE.PointLight(0xffffff, 0.1, 20)
+    // Interior lights (dim until enterInterior)
+    ambientInterior = new THREE.AmbientLight(0xffeedd, 0.05)
+    interiorLight = new THREE.PointLight(0xffeedd, 0.1, 20)
     interiorLight.position.set(0, 2, 0)
-    interiorGroup.add(ambientInterior, interiorLight)
 
-    // Add groups to scene
-    s.add(exteriorGroup)
-    s.add(interiorGroup)
-
-    // Audio
     doorAudio = new Audio("/sounds/door-open.mp3")
     doorAudio.volume = 0.5
 
-    // Attempt to load from fleet index, fallback to placeholder
     const loaded = await loadModelFromIndex()
-    if (!loaded) {
-      loadPlaceholderExterior()
-    }
+    if (!loaded) loadPlaceholderExterior()
 
     loading = false
-    requestRender()
+    req()
   })
 
-  // ── Render loop via composer ───────────────────────────────────────────────
+  // ── Render loop ────────────────────────────────────────────────────────────
   useTask(
-    (delta) => {
+    () => {
       if (controls) controls.update()
-      composer?.render()
+      if (composer) composer.render()
     },
     { autoInvalidate: false },
   )
 
-  // ── Placeholder geometry (fallback when no GLTF available) ─────────────────
+  // ── Placeholders ──────────────────────────────────────────────────────────
   function loadPlaceholderExterior() {
+    if (!exteriorGroupRef) return
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(2, 1.2, 4),
-      new THREE.MeshStandardMaterial({ color: 0xf26522 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xf26522,
+        roughness: 0.4,
+        metalness: 0.3,
+      }),
     )
     body.position.y = 0.6
-    exteriorGroup.add(body)
+    body.castShadow = true
+    exteriorGroupRef.add(body)
 
-    doorMesh = new THREE.Mesh(
+    const door = new THREE.Mesh(
       new THREE.BoxGeometry(0.6, 1, 0.05),
       new THREE.MeshStandardMaterial({ color: 0xffffff }),
     )
-    doorMesh.name = "Door_Main"
-    doorMesh.position.set(0.8, 0.5, 2)
-    exteriorGroup.add(doorMesh)
-    createDoorPivot()
+    door.name = "Door_Main"
+    door.position.set(0.8, 0.5, 2)
+    exteriorGroupRef.add(door)
+    doorMeshRef = door
+    setupDoorPivot()
+    groundSnap(exteriorGroupRef)
+    fitCamera(exteriorGroupRef, true)
   }
 
-  function loadPlaceholderInterior() {
-    const seatCount = parseInt(capacity) || 14
-    for (let i = 1; i <= seatCount; i++) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.4, 0.4, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }),
-      )
-      const col = (i - 1) % 4
-      const row = Math.floor((i - 1) / 4)
-      mesh.position.set(col * 0.6 - 0.9, 0.5, row * 0.7 - 1)
-      mesh.name = `Seat_${i}`
-      interiorGroup.add(mesh)
-      seatMeshes.set(i, mesh)
+  function buildInteriorSeats() {
+    if (!interiorGroupRef) return
+
+    if (loadedScene) {
+      busInterior = new BusInterior(loadedScene, interiorGroupRef)
+      busInterior.buildInterior()
+      seatMeshes.clear()
+      const inst = busInterior.seats.seatInstance
+      const idxMap = busInterior.seats.seatIndexMap
+      if (inst && idxMap) {
+        idxMap.forEach((mi: number, sn: number) => {
+          const m = inst.at?.(mi) as THREE.Mesh | undefined
+          if (m) seatMeshes.set(sn, m)
+        })
+      }
+    } else {
+      const count = parseInt(capacity) || 14
+      for (let i = 1; i <= count; i++) {
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.4, 0.4),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
+        )
+        const col = (i - 1) % 4
+        const row = Math.floor((i - 1) / 4)
+        mesh.position.set(col * 0.6 - 0.9, 0.5, row * 0.7 - 1)
+        mesh.name = `Seat_${i}`
+        mesh.castShadow = true
+        interiorGroupRef.add(mesh)
+        seatMeshes.set(i, mesh)
+      }
     }
+
+    interiorGroupRef.add(ambientInterior, interiorLight)
     interiorLoaded = true
-    requestRender()
+    req()
   }
 
-  // ── Door pivot + light shaft ──────────────────────────────────────────────
-  function createDoorPivot() {
-    if (!doorMesh) return
-    const hingeOffset = new THREE.Vector3(-0.6, 0, 0)
-    const hingeWorld = (doorMesh as THREE.Object3D).position
+  // ── Door ──────────────────────────────────────────────────────────────────
+  function setupDoorPivot() {
+    if (!doorMeshRef || !exteriorGroupRef) return
+    const hinge = doorMeshRef.position
       .clone()
-      .add(hingeOffset)
-
+      .add(new THREE.Vector3(-0.6, 0, 0))
     doorPivot = new THREE.Object3D()
-    doorPivot.position.copy(hingeWorld)
-    exteriorGroup.add(doorPivot)
-    ;(doorMesh as THREE.Object3D).position.sub(hingeWorld)
-    doorPivot.add(doorMesh as THREE.Object3D)
+    doorPivot.position.copy(hinge)
+    exteriorGroupRef.add(doorPivot)
+    doorMeshRef.position.sub(hinge)
+    doorPivot.add(doorMeshRef)
 
-    createLightShaft()
-  }
-
-  function createLightShaft() {
-    const geometry = new THREE.ConeGeometry(1.2, 4, 32, 1, true)
-    const material = new THREE.MeshBasicMaterial({
+    const shaftMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     })
-    doorShaft = new THREE.Mesh(geometry, material)
+    doorShaft = new THREE.Mesh(
+      new THREE.ConeGeometry(1.2, 4, 32, 1, true),
+      shaftMat,
+    )
     doorShaft.position.set(0, 2, 1.5)
     doorShaft.rotation.x = Math.PI
-    exteriorGroup.add(doorShaft)
+    exteriorGroupRef.add(doorShaft)
   }
 
   function openDoor(): Promise<void> {
@@ -236,12 +356,11 @@
       if (!doorPivot) return resolve()
       doorAudio.currentTime = 0
       doorAudio.play().catch(() => {})
-
       gsap.to(doorPivot.rotation, {
         y: -Math.PI / 2,
         duration: 1,
         ease: "back.out(1.7)",
-        onUpdate: requestRender,
+        onUpdate: req,
         onComplete: resolve,
       })
       if (doorShaft?.material) {
@@ -249,7 +368,7 @@
           opacity: 0.4,
           duration: 1,
           ease: "power2.out",
-          onUpdate: requestRender,
+          onUpdate: req,
         })
       }
     })
@@ -261,109 +380,142 @@
       y: 0.05,
       duration: 0.6,
       ease: "power3.in",
-      onUpdate: requestRender,
+      onUpdate: req,
     })
     gsap.to(doorPivot.rotation, {
       y: 0,
       duration: 0.2,
       delay: 0.6,
       ease: "power1.out",
-      onUpdate: requestRender,
+      onUpdate: req,
     })
     if (doorShaft?.material) {
       gsap.to(doorShaft.material as THREE.MeshBasicMaterial, {
         opacity: 0,
         duration: 0.5,
-        onUpdate: requestRender,
+        onUpdate: req,
       })
     }
   }
 
-  // ── Camera FX ─────────────────────────────────────────────────────────────
-  function addHeadBob() {
-    const originalY = cam.position.y
+  // ── Interior camera ────────────────────────────────────────────────────────
+  function focusSeat() {
+    const n = [...seatMeshes.keys()].find((s) => !reservedSeats.includes(s))
+    if (!n) return
+    const t = seatMeshes.get(n)?.getWorldPosition(new THREE.Vector3())
+    if (!t) return
     gsap.to(cam.position, {
-      y: originalY + 0.1,
+      x: t.x,
+      y: t.y + 0.8,
+      z: t.z + 1.5,
+      duration: 1.2,
+      ease: "power4.inOut",
+      onUpdate: req,
+    })
+    if (controls) {
+      gsap.to(controls.target, {
+        x: t.x,
+        y: t.y,
+        z: t.z,
+        duration: 1.2,
+        ease: "power4.inOut",
+        onUpdate: () => {
+          controls.update()
+          req()
+        },
+      })
+    }
+  }
+
+  // ── View transitions ───────────────────────────────────────────────────────
+  async function enterInterior() {
+    if (!interiorLoaded) buildInteriorSeats()
+    await openDoor()
+
+    const box = new THREE.Box3().setFromObject(
+      exteriorGroupRef ?? new THREE.Group(),
+    )
+    const centre = new THREE.Vector3()
+    const size = new THREE.Vector3()
+    box.getCenter(centre)
+    box.getSize(size)
+    const interior = new THREE.Vector3(
+      centre.x,
+      centre.y + size.y * 0.1,
+      centre.z,
+    )
+
+    // Head bob
+    gsap.to(cam.position, {
+      y: cam.position.y + 0.1,
       duration: 0.15,
       yoyo: true,
       repeat: 3,
       ease: "sine.inOut",
-      onUpdate: requestRender,
+      onUpdate: req,
     })
-  }
-
-  function focusOnAvailableSeat() {
-    const available = [...seatMeshes.keys()].find(
-      (s) => !reservedSeats.includes(s),
-    )
-    if (!available) return
-    const mesh = seatMeshes.get(available)
-    if (!mesh) return
-    const target = mesh.getWorldPosition(new THREE.Vector3())
-    if (bokehPass?.materialBokeh?.uniforms?.["focus"]) {
-      bokehPass.materialBokeh.uniforms["focus"].value = 2.0
-    }
-    gsap.to(cam.position, {
-      x: target.x,
-      y: target.y + 1,
-      z: target.z + 2,
-      duration: 1.2,
-      ease: "power4.inOut",
-      onUpdate: requestRender,
-    })
-  }
-
-  // ── View transitions ──────────────────────────────────────────────────────
-  async function enterInterior() {
-    if (!interiorLoaded) loadPlaceholderInterior()
-    await openDoor()
-    addHeadBob()
 
     await new Promise<void>((resolve) => {
       gsap.to(cam.position, {
-        x: 0,
-        y: 2,
-        z: 2.5,
-        duration: 1,
+        x: interior.x,
+        y: interior.y,
+        z: interior.z,
+        duration: 1.0,
         ease: "expo.out",
-        onUpdate: requestRender,
+        onUpdate: req,
         onComplete: resolve,
       })
     })
 
-    exteriorGroup.visible = false
-    interiorGroup.visible = true
+    if (controls) {
+      controls.target.copy(
+        new THREE.Vector3(interior.x, interior.y, interior.z - 1),
+      )
+      controls.update()
+    }
 
+    showExterior = false
+    showInterior = true
     gsap.to(ambientInterior, { intensity: 0.6, duration: 1.2 })
     gsap.to(interiorLight, { intensity: 1.4, duration: 1.2 })
-
-    setTimeout(focusOnAvailableSeat, 600)
+    setTimeout(focusSeat, 600)
     viewMode = "interior"
   }
 
   export function goBack() {
-    interiorGroup.visible = false
-    exteriorGroup.visible = true
+    showInterior = false
+    showExterior = true
 
     gsap.to(cam.position, {
-      x: 0,
-      y: 3,
-      z: 8,
-      duration: 1,
+      x: exteriorPos.x,
+      y: exteriorPos.y,
+      z: exteriorPos.z,
+      duration: 1.0,
       ease: "power4.inOut",
-      onUpdate: requestRender,
+      onUpdate: req,
       onComplete: closeDoor,
     })
+    if (controls) {
+      gsap.to(controls.target, {
+        x: exteriorTarget.x,
+        y: exteriorTarget.y,
+        z: exteriorTarget.z,
+        duration: 1.0,
+        ease: "power4.inOut",
+        onUpdate: () => {
+          controls.update()
+          req()
+        },
+      })
+    }
     gsap.to(ambientInterior, { intensity: 0.05, duration: 0.6 })
     gsap.to(interiorLight, { intensity: 0.1, duration: 0.6 })
     viewMode = "exterior"
   }
 
-  // ── Click handling ────────────────────────────────────────────────────────
-  function handleExteriorClick(event: CustomEvent<{ object: THREE.Object3D }>) {
-    const obj = event.detail?.object
-    if (!obj) return
-    let node: THREE.Object3D | null = obj
+  // ── Click handling ─────────────────────────────────────────────────────────
+  function onExteriorClick(e: CustomEvent<{ object: THREE.Object3D }>) {
+    let node: THREE.Object3D | null = e.detail?.object
     while (node) {
       if (node.name === "Door_Main") {
         enterInterior()
@@ -373,110 +525,136 @@
     }
   }
 
-  function handleInteriorClick(event: CustomEvent<{ object: THREE.Object3D }>) {
-    const obj = event.detail?.object
-    if (!obj) return
-    let node: THREE.Object3D | null = obj
+  function onInteriorClick(e: CustomEvent<{ object: THREE.Object3D }>) {
+    let node: THREE.Object3D | null = e.detail?.object
+    if (busInterior?.interaction) {
+      busInterior.interaction.handleClick(node!)
+      return
+    }
     while (node) {
       if (node.name.startsWith("Seat_")) {
-        if (node.userData.disabled) return
-        const seatNumber = parseInt(node.name.split("_")[1])
-        toggleSeat(seatNumber)
+        if (!node.userData.disabled)
+          toggleSeat(parseInt(node.name.split("_")[1]))
         return
       }
       node = node.parent
     }
   }
 
-  // ── Seat color reactivity ─────────────────────────────────────────────────
-  let glowTweens = new Map<number, gsap.core.Tween>()
+  // ── Seat colour reactivity ─────────────────────────────────────────────────
+  const glowTweens = new Map<number, gsap.core.Tween>()
 
   $effect(() => {
-    // Access reactive deps
-    const _r = reservedSeats.length
-    const _s = selectedSeats.length
+    void reservedSeats.length
+    void selectedSeats.length
 
-    seatMeshes.forEach((mesh, seatNumber) => {
+    seatMeshes.forEach((mesh, n) => {
       const mat = mesh.material as THREE.MeshStandardMaterial
       if (!mat) return
+      const existing = glowTweens.get(n)
 
-      mat.transparent = false
-      let existingTween = glowTweens.get(seatNumber)
-
-      if (reservedSeats.includes(seatNumber)) {
-        mat.color.set(0xff0000)
+      if (reservedSeats.includes(n)) {
+        mat.color.set(0xef4444)
         mat.emissive.set(0x000000)
-        existingTween?.kill()
+        existing?.kill()
+        glowTweens.delete(n)
         mesh.userData.disabled = true
-      } else if (selectedSeats.includes(seatNumber)) {
+      } else if (selectedSeats.includes(n)) {
         mat.color.set(0x0ea5e9)
-        if (!existingTween || !existingTween.isActive()) {
-          existingTween?.kill()
-          const tween = gsap.to(mat.emissive, {
-            r: 0.6,
-            g: 0.9,
-            b: 1,
-            duration: 0.8,
-            yoyo: true,
-            repeat: -1,
-            ease: "sine.inOut",
-            onUpdate: requestRender,
-          })
-          glowTweens.set(seatNumber, tween)
+        if (!existing?.isActive()) {
+          existing?.kill()
+          glowTweens.set(
+            n,
+            gsap.to(mat.emissive, {
+              r: 0.4,
+              g: 0.8,
+              b: 1.0,
+              duration: 0.9,
+              yoyo: true,
+              repeat: -1,
+              ease: "sine.inOut",
+              onUpdate: req,
+            }),
+          )
         }
         mesh.userData.disabled = false
       } else {
         mat.color.set(0xffffff)
         mat.emissive.set(0x000000)
-        existingTween?.kill()
-        glowTweens.delete(seatNumber)
+        existing?.kill()
+        glowTweens.delete(n)
         mesh.userData.disabled = false
       }
     })
 
-    requestRender()
+    req()
   })
 
   onDestroy(() => {
     gsap.killTweensOf(cam?.position)
     glowTweens.forEach((t) => t.kill())
+    composer?.dispose()
   })
 </script>
 
-<!-- Camera -->
 <T.PerspectiveCamera
-  makeDefault={undefined}
-  fov={60}
-  near={0.1}
-  far={1000}
-  position={[0, 3, 8]}
+  makeDefault
+  fov={55}
+  near={0.01}
+  far={5000}
+  position={[0, 5, 20]}
   on:create={({ ref }) => {
     cam = ref as THREE.PerspectiveCamera
   }}
 >
   <OrbitControls
-    enableZoom={false}
+    enableZoom={true}
     enablePan={false}
     enableDamping
+    dampingFactor={0.08}
+    minDistance={0.5}
+    maxDistance={500}
     on:create={({ ref }) => {
       controls = ref
     }}
   />
 </T.PerspectiveCamera>
 
-<!-- Global lighting -->
-<T.HemisphereLight skyColor={0xffffff} groundColor={0x444444} intensity={1} />
+<T.AmbientLight intensity={0.4} color={0xd0e8ff} />
+<T.HemisphereLight skyColor={0xd0e8ff} groundColor={0x303040} intensity={0.9} />
+<T.DirectionalLight
+  intensity={1.4}
+  position={[4, 8, 5]}
+  castShadow
+  shadow.mapSize.width={2048}
+  shadow.mapSize.height={2048}
+  shadow.camera.near={0.5}
+  shadow.camera.far={500}
+/>
+<T.DirectionalLight intensity={0.3} position={[-4, 4, -4]} />
 
-<!-- Exterior group -->
-<T.Group on:click={handleExteriorClick}>
-  {#if ModelComponent && viewMode === "exterior"}
-    <ModelComponent loader={gltfLoader} />
-  {/if}
-</T.Group>
+{#if showExterior}
+  <T.Group
+    on:click={onExteriorClick}
+    on:create={({ ref }) => {
+      exteriorGroupRef = ref
+    }}
+  >
+    {#if ModelComponent}
+      <svelte:component
+        this={ModelComponent}
+        onload={handleModelLoad}
+        capacity={parseInt(capacity) || 14}
+      />
+    {/if}
+  </T.Group>
+{/if}
 
-<!-- Interior group -->
-<T.Group on:click={handleInteriorClick}>
-  {#if ModelComponent && viewMode === "interior"}
-    <ModelComponent loader={gltfLoader} />
-  {/if}
-</T.Group>
+{#if showInterior}
+  <T.Group
+    on:click={onInteriorClick}
+    on:create={({ ref }) => {
+      interiorGroupRef = ref
+    }}
+  />
+{/if}

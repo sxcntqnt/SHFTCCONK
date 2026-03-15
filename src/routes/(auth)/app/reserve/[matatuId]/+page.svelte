@@ -1,11 +1,4 @@
 <script lang="ts">
-  /**
-   * /reserve/[id]/+page.svelte
-   *
-   * The seat reservation experience.
-   * Flow: Feed card → goto(/reserve/[id]) → load() → this page → goto(/track/[id])
-   */
-
   import { goto } from "$app/navigation"
   import { onMount, tick } from "svelte"
   import gsap from "gsap"
@@ -20,7 +13,6 @@
   let config = $derived(data.config)
   let modelKey = $derived(data.modelKey ?? matatu.capacity)
 
-  // ── State ─────────────────────────────────────────────────────────────────
   let selectedSeats = $state<number[]>([])
   let showModal = $state(false)
   let processing = $state(false)
@@ -46,18 +38,10 @@
     showModal = true
 
     await tick()
-    const tooltipEl = document.querySelector(".seat-tooltip")
-    if (tooltipEl) {
-      gsap.fromTo(
-        tooltipEl,
-        { scale: 0.9, opacity: 0 },
-        { scale: 1, opacity: 1 },
-      )
-    }
     gsap.fromTo(
       ".modal-card",
-      { opacity: 0, y: 24, scale: 0.97 },
-      { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "power3.out" },
+      { opacity: 0, y: 28, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.38, ease: "power3.out" },
     )
     gsap.fromTo(
       ".modal-backdrop",
@@ -91,10 +75,7 @@
       ".summary-bar",
       { x: 0 },
       {
-        keyframes: {
-          x: [-10, 10, -8, 8, -4, 4, 0],
-          ease: "power1.inOut", // Eases between each keyframe
-        },
+        keyframes: { x: [-10, 10, -8, 8, -4, 4, 0], ease: "power1.inOut" },
         duration: 0.45,
       },
     )
@@ -131,34 +112,7 @@
     }
   }
 
-  type Tooltip = {
-    visible: boolean
-    seat: number
-    x: number
-    y: number
-  }
-
-  let tooltip = $state<Tooltip>({
-    visible: false,
-    seat: 0,
-    x: 0,
-    y: 0,
-  })
-
-  function showTooltip(seat: number, x: number, y: number) {
-    tooltip = { visible: true, seat, x, y }
-  }
-
-  function hideTooltip() {
-    tooltip.visible = false
-  }
-
-  function getSeatType(seat: number) {
-    if (seat % 4 === 1 || seat % 4 === 0) return "Window"
-    return "Aisle"
-  }
-
-  // ── Entrance animation ────────────────────────────────────────────────────
+  // ── Entrance animation ─────────────────────────────────────────────────────
   onMount(() => {
     const tl = gsap.timeline({ defaults: { ease: "power3.out" } })
     tl.fromTo(
@@ -196,12 +150,6 @@
         { opacity: 1, y: 0, duration: 0.45 },
         "-=0.3",
       )
-      .fromTo(
-        ".seat-tooltip",
-        { scale: 0.9, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.2 },
-        "-=0.4",
-      )
   })
 </script>
 
@@ -211,20 +159,23 @@
 
 <div class="page">
   <!-- Atmospheric orbs -->
-  <div class="page-orb page-orb-1"></div>
-  <div class="page-orb page-orb-2"></div>
+  <div class="page-orb page-orb-1" aria-hidden="true"></div>
+  <div class="page-orb page-orb-2" aria-hidden="true"></div>
 
   <div class="inner">
     <!-- Back -->
     <a href="/app/feed" class="back-link">
       <svg
-        width="14"
-        height="14"
+        width="13"
+        height="13"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7" /></svg
+        stroke-width="2.5"
+        stroke-linecap="round"
       >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
       Back to live feed
     </a>
 
@@ -247,10 +198,10 @@
           fill="none"
           stroke="currentColor"
           stroke-width="2.5"
-          ><line x1="12" y1="1" x2="12" y2="23" /><path
-            d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"
-          /></svg
         >
+          <line x1="12" y1="1" x2="12" y2="23" />
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
         KES {matatu.pricePerSeat} / seat
       </span>
       <span class="meta-chip status">
@@ -276,29 +227,31 @@
         >
           {#if selectedSeats.length > 0}
             <svg
-              width="11"
-              height="11"
+              width="10"
+              height="10"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2.5"><polyline points="20 6 9 17 4 12" /></svg
+              stroke-width="2.5"
             >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
             {selectedSeats.length} selected
           {:else}
             <svg
-              width="11"
-              height="11"
+              width="10"
+              height="10"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
-              ><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg
             >
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
             Tap seats to select
           {/if}
         </div>
       </div>
-
       <div class="seat-inner">
         <SeatViewer
           {selectedSeats}
@@ -316,15 +269,13 @@
       <div class="summary-left">
         <div class="summary-row">
           <span class="summary-label">Selected</span>
-          <span class="summary-val"
-            >{selectedSeats.length} seat{selectedSeats.length !== 1
-              ? "s"
-              : ""}</span
-          >
+          <span class="summary-val">
+            {selectedSeats.length} seat{selectedSeats.length !== 1 ? "s" : ""}
+          </span>
         </div>
         {#if selectedSeats.length > 0}
           <div class="summary-seat-nums">
-            {#each selectedSeats.slice().sort((a, b) => a - b) as s, i}
+            {#each selectedSeats.slice().sort((a, b) => a - b) as s}
               <span class="seat-num-chip">#{s}</span>
             {/each}
           </div>
@@ -344,19 +295,15 @@
           disabled={selectedSeats.length === 0}
         >
           <svg
-            width="15"
-            height="15"
+            width="14"
+            height="14"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
             stroke-width="2.2"
           >
-            <rect x="2" y="5" width="20" height="14" rx="2" /><line
-              x1="2"
-              y1="10"
-              x2="22"
-              y2="10"
-            />
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <line x1="2" y1="10" x2="22" y2="10" />
           </svg>
           Reserve & Pay
         </button>
@@ -446,6 +393,7 @@
   /* ── Page ── */
   .page {
     min-height: 100%;
+    background: var(--ink); /* ← was missing; caused the olive bg */
     font-family: var(--font-body);
     position: relative;
     overflow: hidden;
@@ -454,28 +402,37 @@
   .page-orb {
     position: fixed;
     border-radius: 50%;
-    filter: blur(100px);
+    filter: blur(90px);
     pointer-events: none;
     z-index: 0;
   }
   .page-orb-1 {
     top: -80px;
     right: -60px;
-    width: 400px;
-    height: 400px;
-    background: rgba(242, 101, 34, 0.06);
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(
+      circle,
+      rgba(242, 101, 34, 0.07),
+      transparent 65%
+    );
   }
   .page-orb-2 {
     bottom: -60px;
     left: -40px;
-    width: 320px;
-    height: 320px;
-    background: rgba(0, 176, 155, 0.04);
+    width: 340px;
+    height: 340px;
+    background: radial-gradient(
+      circle,
+      rgba(0, 176, 155, 0.05),
+      transparent 65%
+    );
   }
 
   .inner {
-    max-width: 820px;
+    max-width: 840px;
     margin: 0 auto;
+    padding: 28px 32px 48px;
     position: relative;
     z-index: 1;
   }
@@ -485,15 +442,15 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-3);
     text-decoration: none;
-    margin-bottom: 24px;
+    margin-bottom: 22px;
+    opacity: 0;
     transition:
       color 0.15s,
       gap 0.15s;
-    opacity: 0;
   }
   .back-link:hover {
     color: var(--text-1);
@@ -518,6 +475,18 @@
     height: 6px;
     border-radius: 50%;
     background: var(--orange);
+    animation: pulse-o 2s ease-out infinite;
+  }
+  @keyframes pulse-o {
+    0% {
+      box-shadow: 0 0 0 0 rgba(242, 101, 34, 0.5);
+    }
+    70% {
+      box-shadow: 0 0 0 5px rgba(242, 101, 34, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(242, 101, 34, 0);
+    }
   }
 
   .page-title {
@@ -535,6 +504,7 @@
     color: var(--orange);
   }
 
+  /* ── Meta chips ── */
   .meta-strip {
     display: flex;
     flex-wrap: wrap;
@@ -570,21 +540,13 @@
     color: #f87171;
     background: rgba(248, 113, 113, 0.06);
   }
+
   .status-dot {
     width: 5px;
     height: 5px;
     border-radius: 50%;
     background: var(--orange);
-    animation: status-blink 2s ease-in-out infinite;
-  }
-  @keyframes status-blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
+    animation: pulse-o 2s ease-in-out infinite;
   }
 
   /* ── Seat panel ── */
@@ -603,7 +565,7 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0.05),
       transparent
     );
   }
@@ -615,7 +577,7 @@
     justify-content: space-between;
   }
   .seat-panel-ey {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -624,12 +586,11 @@
   }
   .seat-panel-ti {
     font-family: var(--font-display);
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--text-1);
   }
-
   .selected-badge {
     display: flex;
     align-items: center;
@@ -638,7 +599,7 @@
     background: rgba(0, 176, 155, 0.1);
     border: 1px solid rgba(0, 176, 155, 0.22);
     border-radius: 100px;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 700;
     color: var(--teal);
     transition: all 0.2s ease;
@@ -648,7 +609,6 @@
     border-color: rgba(255, 255, 255, 0.06);
     color: var(--text-3);
   }
-
   .seat-inner {
     padding: 0;
   }
@@ -666,7 +626,6 @@
     flex-wrap: wrap;
     opacity: 0;
   }
-
   .summary-left {
     display: flex;
     flex-direction: column;
@@ -678,15 +637,14 @@
     gap: 6px;
   }
   .summary-label {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     color: var(--text-3);
   }
   .summary-val {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
     color: var(--text-1);
   }
-
   .summary-seat-nums {
     display: flex;
     gap: 4px;
@@ -694,9 +652,9 @@
   }
   .seat-num-chip {
     font-family: monospace;
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     font-weight: 700;
-    padding: 2px 8px;
+    padding: 2px 7px;
     border-radius: 6px;
     background: rgba(14, 165, 233, 0.08);
     color: #0ea5e9;
@@ -706,28 +664,28 @@
   .summary-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 18px;
   }
   .total-block {
     text-align: right;
   }
   .total-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     color: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     font-weight: 600;
   }
   .total-amount {
     font-family: var(--font-display);
-    font-size: 1.8rem;
+    font-size: 1.9rem;
     font-weight: 900;
     letter-spacing: -0.05em;
     color: var(--text-1);
     line-height: 1;
   }
   .total-currency {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--text-3);
     font-weight: 600;
     font-family: var(--font-body);
@@ -744,13 +702,13 @@
     border: none;
     border-radius: 12px;
     font-family: var(--font-display);
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     font-weight: 800;
     letter-spacing: -0.02em;
     color: #fff;
     cursor: pointer;
     box-shadow:
-      0 6px 22px rgba(242, 101, 34, 0.3),
+      0 6px 22px rgba(242, 101, 34, 0.28),
       inset 0 1px 0 rgba(255, 255, 255, 0.15);
     transition:
       box-shadow 0.2s,
@@ -769,10 +727,9 @@
   .pay-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    transform: none;
   }
 
-  /* Message */
+  /* ── Page message ── */
   .page-message {
     margin-top: 12px;
     padding: 10px 16px;
@@ -793,26 +750,25 @@
     position: fixed;
     inset: 0;
     z-index: 50;
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
   }
   .modal-card {
-    background: var(--ink-2, #0f0f16);
+    background: var(--ink-2, #0d0d18);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 22px;
     width: 100%;
     max-width: 440px;
     overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-    position: relative;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65);
   }
   .modal-accent-line {
     height: 3px;
-    background: linear-gradient(90deg, var(--orange), rgba(242, 101, 34, 0.15));
+    background: linear-gradient(90deg, var(--orange), rgba(242, 101, 34, 0.1));
   }
   .modal-body {
     padding: 22px 24px 10px;
@@ -841,12 +797,12 @@
     margin-bottom: 16px;
   }
   .modal-seats-label {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: var(--text-3);
-    margin-bottom: 6px;
+    margin-bottom: 7px;
     display: block;
   }
   .modal-seat-chips {
@@ -896,7 +852,6 @@
     align-items: center;
     padding: 14px 0 6px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
-    margin-top: 4px;
   }
   .breakdown-total .label {
     font-size: 0.85rem;
@@ -935,7 +890,7 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding: 16px 24px 20px;
+    padding: 14px 24px 20px;
   }
   .btn-cancel {
     padding: 10px 18px;
@@ -972,7 +927,7 @@
     color: #fff;
     cursor: pointer;
     box-shadow:
-      0 4px 16px rgba(76, 175, 80, 0.3),
+      0 4px 16px rgba(76, 175, 80, 0.28),
       inset 0 1px 0 rgba(255, 255, 255, 0.15);
     transition:
       box-shadow 0.2s,
@@ -981,7 +936,7 @@
   }
   .btn-mpesa:hover:not(:disabled) {
     box-shadow:
-      0 8px 24px rgba(76, 175, 80, 0.4),
+      0 8px 24px rgba(76, 175, 80, 0.38),
       inset 0 1px 0 rgba(255, 255, 255, 0.15);
     transform: translateY(-1px);
   }
@@ -991,7 +946,6 @@
   .btn-mpesa:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
   }
 
   .spin {
@@ -1010,7 +964,7 @@
   }
 
   .mpesa-mark {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 900;
     letter-spacing: 0.04em;
     background: rgba(255, 255, 255, 0.18);
@@ -1020,6 +974,9 @@
 
   /* ── Responsive ── */
   @media (max-width: 640px) {
+    .inner {
+      padding: 20px 16px 40px;
+    }
     .summary-bar {
       flex-direction: column;
       align-items: stretch;
@@ -1030,20 +987,6 @@
     }
     .total-block {
       text-align: left;
-    }
-    .page-title {
-      font-size: 1.5rem;
-    }
-    .seat-tooltip {
-      position: absolute;
-      transform: translate(-50%, -140%);
-      background: rgba(20, 20, 20, 0.9);
-      color: white;
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      pointer-events: none;
-      backdrop-filter: blur(6px);
     }
   }
 </style>

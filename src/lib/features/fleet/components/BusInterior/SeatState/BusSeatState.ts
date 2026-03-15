@@ -1,4 +1,4 @@
-import { COLORS } from './BusConstants.js';
+import { COLORS } from '.././BusConstants';
 
 export class BusSeatState {
   constructor(seatInstance, seatIndexMap) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRID_RESOLUTION } from './BusConstants.js';
+import { GRID_RESOLUTION } from '.././BusConstants';
 
 export class BusGeometry {
   constructor(busModel) {
