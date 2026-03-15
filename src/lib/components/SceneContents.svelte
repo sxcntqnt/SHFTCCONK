@@ -4,7 +4,7 @@
   import { OrbitControls, interactivity } from "@threlte/extras"
   import * as THREE from "three"
   import { vehicleModelLoaders, resolveModelKey } from "$lib/features/fleet"
-  import { BusInterior } from "$lib/features/fleet/components/BusInterior/NgNyAnAn"
+  import { BusInterior } from "$lib/features/fleet/components/BusInterior/NgNyAnAN"
   import { useGltfWithDraco } from "$lib/features/fleet/services/three/useGltfWithDraco"
   import {
     RGBELoader,
@@ -614,13 +614,13 @@
 </script>
 
 <T.PerspectiveCamera
-  makeDefault
   fov={55}
   near={0.01}
   far={5000}
   position={[0, 5, 20]}
   on:create={({ ref }) => {
     cam = ref as THREE.PerspectiveCamera
+    useThrelte().camera.set(ref as THREE.PerspectiveCamera)
   }}
 >
   <OrbitControls
@@ -657,8 +657,7 @@
     }}
   >
     {#if ModelComponent}
-      <svelte:component
-        this={ModelComponent}
+      <ModelComponent
         onload={handleModelLoad}
         capacity={parseInt(capacity) || 14}
       />
