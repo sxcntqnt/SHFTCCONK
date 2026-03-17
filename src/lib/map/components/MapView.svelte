@@ -1,20 +1,4 @@
 <script lang="ts">
-  /**
-   * MapView
-   *
-   * Replaces the Leaflet map with MapLibre GL JS + svelte-maplibre-gl.
-   *
-   * Features:
-   *  - Routes rendered as GeoJSON line layers
-   *  - Geofences rendered as GeoJSON polygon + point layers  (from MapStore)
-   *  - Draw toolbar via @mapbox/maplibre-gl-draw (polygon, rectangle, marker)
-   *  - Optional DuckDB H3 vector tile layer (when dbReady = true)
-   *  - Custom dark map style matching the app design system
-   *
-   * Props match the old Leaflet component interface exactly so drop-in
-   * replacement requires zero changes at call-sites.
-   */
-
   import { onMount, onDestroy } from "svelte"
   import { browser } from "$app/environment"
   import {
@@ -23,30 +7,31 @@
     routesGeoJSON,
     addGeofence,
   } from "$lib/map/stores/MapStore"
-  import type {
-    Coordinates,
-    MapRoute,
-    Geofence,
-    DuckDBLayerConfig,
-  } from "$lib/map/types/MapTypes"
+  import type { Coordinates, MapRoute, Geofence } from "$lib/map/types/MapTypes"
+
+  // ── DuckDBLayerConfig defined locally with all fields optional ──────────
+  // Importing it from MapTypes caused `Property X does not exist on type '{}'`
+  // when the prop defaulted to `{}`. Declaring it here with optional fields
+  // and using it as the default type makes `cfg.sourceId ?? FALLBACK` safe.
+  interface DuckDBLayerConfig {
+    sourceId?: string
+    fillLayerId?: string
+    strokeLayerId?: string
+    fillColor?: string
+    fillOpacity?: number
+    strokeColor?: string
+  }
 
   // ── Props ─────────────────────────────────────────────────────────────────
-
   interface Props {
     initialCenter?: Coordinates
     initialZoom?: number
     routes?: MapRoute[]
-    /** Name to attach to the next drawn geofence */
     nextName?: string
-    /** Set true once DuckDBTileProvider signals onReady */
     dbReady?: boolean
-    /** DuckDB H3 layer config — only used when dbReady is true */
     duckdbLayer?: DuckDBLayerConfig
-    /** Called after a new Geofence is created via the draw tool */
     oncreated?: (g: Geofence) => void
-    /** Height of the map container. Default: "100%" */
     height?: string
-    /** Dark style override. Default: Protomaps dark. */
     mapStyle?: string
   }
 
@@ -56,17 +41,16 @@
     routes = [],
     nextName = "",
     dbReady = false,
-    duckdbLayer,
+    duckdbLayer = {} as DuckDBLayerConfig, // ← typed default; no more `{}` mismatch
     oncreated,
     height = "100%",
     mapStyle = "https://api.protomaps.com/styles/v4/dark.json?key=REPLACE_WITH_KEY",
   }: Props = $props()
 
   // ── Map DOM ref & instance ────────────────────────────────────────────────
-
   let container: HTMLDivElement
-  let map: any // maplibregl.Map
-  let drawControl: any // MapboxDraw instance
+  let map: any
+  let drawControl: any
 
   // ── Source/layer IDs ──────────────────────────────────────────────────────
   const GEOFENCE_SOURCE = "geofences"
@@ -77,27 +61,30 @@
 
   const ROUTE_SOURCE = "routes"
   const ROUTE_LAYER = "routes-line"
-  const ROUTE_CASE = "routes-case" // halo under the line
+  const ROUTE_CASE = "routes-case"
 
   const DUCKDB_SOURCE = "duckdb-h3"
   const DUCKDB_FILL = "h3-fill"
   const DUCKDB_STROKE = "h3-stroke"
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Cleanup handles ───────────────────────────────────────────────────────
+  // Stored here so onDestroy can reach them — onMount is async so it cannot
+  // return a cleanup function (Svelte drops Promise<() => void> cleanups).
+  let unsubGeofences: (() => void) | null = null
+  let unsubRoutes: (() => void) | null = null
 
+  // ── Init ──────────────────────────────────────────────────────────────────
   onMount(async () => {
     if (!browser) return
 
     const [mlModule, drawModule] = await Promise.all([
       import("maplibre-gl"),
-      // @ts-ignore — types may not ship with the package
-      import("@mapbox/maplibre-gl-draw"),
+      import("maplibre-gl-draw"),
     ])
 
     const maplibregl = mlModule.default
     const MapboxDraw = drawModule.default
 
-    // ── Inject MapLibre CSS ──────────────────────────────────────────────
     if (!document.getElementById("maplibre-css")) {
       const link = document.createElement("link")
       link.id = "maplibre-css"
@@ -109,12 +96,10 @@
       const link = document.createElement("link")
       link.id = "mgl-draw-css"
       link.rel = "stylesheet"
-      link.href =
-        "https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css"
+      link.href = "https://unpkg.com/maplibre-gl-draw/dist/maplibre-gl-draw.css"
       document.head.appendChild(link)
     }
 
-    // ── Create map ───────────────────────────────────────────────────────
     map = new maplibregl.Map({
       container,
       style: mapStyle,
@@ -124,44 +109,28 @@
 
     await new Promise<void>((res) => map.once("load", res))
 
-    // ── Attribution control tweak ────────────────────────────────────────
     map
       .getContainer()
       .querySelector(".maplibregl-ctrl-attrib")
       ?.classList.add("maplibregl-compact")
 
     // ── Geofence sources + layers ────────────────────────────────────────
-    map.addSource(GEOFENCE_SOURCE, {
-      type: "geojson",
-      data: $geofencesGeoJSON,
-    })
+    map.addSource(GEOFENCE_SOURCE, { type: "geojson", data: $geofencesGeoJSON })
 
-    // Fill (polygons only)
     map.addLayer({
       id: GEOFENCE_FILL,
       type: "fill",
       source: GEOFENCE_SOURCE,
       filter: ["==", ["geometry-type"], "Polygon"],
-      paint: {
-        "fill-color": "#f26522",
-        "fill-opacity": 0.18,
-      },
+      paint: { "fill-color": "#f26522", "fill-opacity": 0.18 },
     })
-
-    // Stroke
     map.addLayer({
       id: GEOFENCE_STROKE,
       type: "line",
       source: GEOFENCE_SOURCE,
       filter: ["==", ["geometry-type"], "Polygon"],
-      paint: {
-        "line-color": "#f26522",
-        "line-width": 2,
-        "line-opacity": 0.7,
-      },
+      paint: { "line-color": "#f26522", "line-width": 2, "line-opacity": 0.7 },
     })
-
-    // Point geofences
     map.addLayer({
       id: GEOFENCE_POINTS,
       type: "circle",
@@ -175,8 +144,6 @@
         "circle-opacity": 0.9,
       },
     })
-
-    // Labels
     map.addLayer({
       id: GEOFENCE_LABELS,
       type: "symbol",
@@ -196,12 +163,8 @@
     })
 
     // ── Route sources + layers ───────────────────────────────────────────
-    map.addSource(ROUTE_SOURCE, {
-      type: "geojson",
-      data: $routesGeoJSON,
-    })
+    map.addSource(ROUTE_SOURCE, { type: "geojson", data: $routesGeoJSON })
 
-    // Halo/casing under the line
     map.addLayer({
       id: ROUTE_CASE,
       type: "line",
@@ -214,7 +177,6 @@
         "line-gap-width": 0,
       },
     } as any)
-
     map.addLayer({
       id: ROUTE_LAYER,
       type: "line",
@@ -227,7 +189,6 @@
       },
     })
 
-    // Route tooltip on hover
     map.on("mouseenter", ROUTE_LAYER, (e: any) => {
       map.getCanvas().style.cursor = "pointer"
       const id = e.features?.[0]?.properties?.id
@@ -246,77 +207,57 @@
     // ── Draw toolbar ─────────────────────────────────────────────────────
     drawControl = new MapboxDraw({
       displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        line_string: false,
-        point: true,
-        trash: true,
-      },
+      controls: { polygon: true, line_string: false, point: true, trash: true },
       styles: drawStyles(),
     })
     map.addControl(drawControl as any, "top-left")
-
     map.on("draw.create", handleDrawCreate)
-    map.on("draw.modechange", () => {
-      // Keep cursor consistent
+    map.on("draw.modechange", (_e: any) => {
       map.getCanvas().style.cursor =
         drawControl.getMode() === "simple_select" ? "" : "crosshair"
     })
 
-    // ── Geofences reactive update ────────────────────────────────────────
-    const unsubGeofences = geofencesGeoJSON.subscribe((geoJSON) => {
+    // ── Reactive subscriptions ───────────────────────────────────────────
+    // Stored in module-level variables so onDestroy can call them.
+    // NOT returned from this async onMount — Svelte can't use that.
+    unsubGeofences = geofencesGeoJSON.subscribe((geoJSON) => {
       ;(map.getSource(GEOFENCE_SOURCE) as any)?.setData(geoJSON)
     })
-
-    // ── Routes reactive update ───────────────────────────────────────────
-    const unsubRoutes = routesGeoJSON.subscribe((geoJSON) => {
+    unsubRoutes = routesGeoJSON.subscribe((geoJSON) => {
       ;(map.getSource(ROUTE_SOURCE) as any)?.setData(geoJSON)
     })
-
-    // Store unsubs for cleanup
-    ;(map as any)._appUnsubs = [unsubGeofences, unsubRoutes]
-
-    return () => {
-      unsubGeofences()
-      unsubRoutes()
-    }
   })
 
   // ── DuckDB layer — added reactively once dbReady flips ───────────────────
-
   $effect(() => {
     if (!dbReady || !map) return
 
-    const cfg = duckdbLayer ?? {}
-    const sourceId = cfg.sourceId ?? DUCKDB_SOURCE
-    const fillId = cfg.fillLayerId ?? DUCKDB_FILL
-    const strokeId = cfg.strokeLayerId ?? DUCKDB_STROKE
-    const fillColor = cfg.fillColor ?? "#f26522"
-    const fillOpacity = cfg.fillOpacity ?? 0.25
-    const strokeColor = cfg.strokeColor ?? "#f26522"
+    // duckdbLayer is typed as DuckDBLayerConfig (all fields optional) so
+    // every `?.` access below is safe and TS no longer errors.
+    const sourceId = duckdbLayer.sourceId ?? DUCKDB_SOURCE
+    const fillId = duckdbLayer.fillLayerId ?? DUCKDB_FILL
+    const strokeId = duckdbLayer.strokeLayerId ?? DUCKDB_STROKE
+    const fillColor = duckdbLayer.fillColor ?? "#f26522"
+    const fillOpacity = duckdbLayer.fillOpacity ?? 0.25
+    const strokeColor = duckdbLayer.strokeColor ?? "#f26522"
 
-    if (map.getSource(sourceId)) return // already added
+    if (map.getSource(sourceId)) return
 
     map.addSource(sourceId, {
       type: "vector",
       tiles: [`duckdb://nairobi?z={z}&x={x}&y={y}`],
       scheme: "xyz",
     })
-
     map.addLayer(
       {
         id: fillId,
         type: "fill",
         source: sourceId,
         "source-layer": "default",
-        paint: {
-          "fill-color": fillColor,
-          "fill-opacity": fillOpacity,
-        },
+        paint: { "fill-color": fillColor, "fill-opacity": fillOpacity },
       },
-      GEOFENCE_FILL, // insert below geofences
+      GEOFENCE_FILL,
     )
-
     map.addLayer(
       {
         id: strokeId,
@@ -334,13 +275,11 @@
   })
 
   // ── Routes prop watcher ───────────────────────────────────────────────────
-
   $effect(() => {
-    // routes prop changed — update store so the subscriber fires
     if (!map) return
     const source = map.getSource?.(ROUTE_SOURCE) as any
     if (!source) return
-    const geojson = {
+    source.setData({
       type: "FeatureCollection",
       features: routes
         .filter((r) => r.path.length >= 2)
@@ -358,12 +297,10 @@
             coordinates: r.path.map((p) => [p.lng, p.lat]),
           },
         })),
-    }
-    source.setData(geojson)
+    })
   })
 
   // ── Draw create handler ───────────────────────────────────────────────────
-
   function handleDrawCreate(e: any) {
     const feature = e.features?.[0]
     if (!feature) return
@@ -401,29 +338,22 @@
       name: nextName.trim(),
       coords,
     }
-
     addGeofence(geofence)
-
-    // Remove the draw-tool feature (the GeoJSON source takes over rendering)
     drawControl.delete(feature.id)
-
     oncreated?.(geofence)
   }
 
-  // ── Draw styles (dark theme) ──────────────────────────────────────────────
-
+  // ── Draw styles ───────────────────────────────────────────────────────────
   function drawStyles() {
     const ORANGE = "#f26522"
     const WHITE = "#ffffff"
     return [
-      // Fill (active polygon while drawing)
       {
         id: "gl-draw-polygon-fill",
         type: "fill",
         filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
         paint: { "fill-color": ORANGE, "fill-opacity": 0.15 },
       },
-      // Stroke (active)
       {
         id: "gl-draw-polygon-stroke-active",
         type: "line",
@@ -435,14 +365,12 @@
           "line-dasharray": [3, 2],
         },
       },
-      // Midpoints
       {
         id: "gl-draw-polygon-midpoint",
         type: "circle",
         filter: ["all", ["==", "$type", "Point"], ["==", "meta", "midpoint"]],
         paint: { "circle-radius": 4, "circle-color": ORANGE },
       },
-      // Vertices
       {
         id: "gl-draw-polygon-and-line-vertex-active",
         type: "circle",
@@ -454,7 +382,6 @@
           "circle-stroke-width": 2,
         },
       },
-      // Point marker
       {
         id: "gl-draw-point-point-stroke-active",
         type: "circle",
@@ -471,7 +398,6 @@
           "circle-stroke-width": 2,
         },
       },
-      // Inactive features
       {
         id: "gl-draw-polygon-fill-inactive",
         type: "fill",
@@ -488,9 +414,9 @@
   }
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
-
   onDestroy(() => {
-    ;(map as any)?._appUnsubs?.forEach((fn: () => void) => fn())
+    unsubGeofences?.()
+    unsubRoutes?.()
     map?.remove()
   })
 </script>
@@ -506,17 +432,14 @@
     border-radius: 18px;
     overflow: hidden;
     background: var(--ink-2, #0f0f16);
-    /* Dark border matching design system */
     border: 1px solid var(--rim, rgba(255, 255, 255, 0.08));
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
-
   .map-container {
     width: 100%;
     height: 100%;
   }
 
-  /* ── MapLibre control overrides — dark theme ────────────────────────────── */
   :global(.maplibregl-ctrl-group) {
     background: rgba(15, 15, 22, 0.92) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -524,7 +447,6 @@
     backdrop-filter: blur(8px) !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
   }
-
   :global(.maplibregl-ctrl-group button) {
     background: transparent !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
@@ -545,8 +467,6 @@
     background: rgba(242, 101, 34, 0.18) !important;
     color: #f26522 !important;
   }
-
-  /* Attribution */
   :global(.maplibregl-ctrl-attrib) {
     background: rgba(0, 0, 0, 0.55) !important;
     color: rgba(255, 255, 255, 0.35) !important;
@@ -556,8 +476,6 @@
   :global(.maplibregl-ctrl-attrib a) {
     color: rgba(255, 255, 255, 0.45) !important;
   }
-
-  /* Popup override */
   :global(.maplibregl-popup-content) {
     background: rgba(15, 15, 22, 0.95) !important;
     color: rgba(255, 255, 255, 0.85) !important;
@@ -575,8 +493,6 @@
   :global(.mp-popup .maplibregl-popup-content) {
     padding: 6px 12px !important;
   }
-
-  /* Draw toolbar icon tints */
   :global(.mapbox-gl-draw_ctrl-draw-btn) {
     filter: invert(0.7) !important;
   }

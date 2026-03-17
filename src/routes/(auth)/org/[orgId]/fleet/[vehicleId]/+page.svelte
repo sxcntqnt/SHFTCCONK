@@ -15,7 +15,6 @@
   import L from "leaflet"
   import "leaflet/dist/leaflet.css"
 
-  let vehicleId: string
   let vehicle = null
   let alerts = []
   let revenue = 0

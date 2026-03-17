@@ -12,7 +12,6 @@
   import { writable } from "svelte/store"
   import { supabase } from "$lib/supabaseClient"
 
-  let vehicleId: string
   let vehicle = null
   let alerts = []
   let revenue = 0
