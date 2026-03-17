@@ -7,7 +7,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   if (!matatuId) throw error(400, 'Missing matatu ID')
 
-  const session = await locals.getSession()
+  const session = await locals.safeGetSession()
   if (!session?.user) throw error(401, 'Not authenticated')
 
   // ── Fetch vehicle ──
@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // ── Fetch existing reservation for this user + vehicle if any ──
   const { data: reservation } = await locals.supabase
-    .from('reservations')
+    .from('bookings')
     .select('id, status, fare, route_from, route_to, created_at')
     .eq('vehicle_id', vehicle.id)
     .eq('passenger_actor_id', session.user.id)
@@ -36,7 +36,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // ── Seat occupancy (confirmed reservations on this vehicle) ──
   const { count: occupancy } = await locals.supabase
-    .from('reservations')
+    .from('bookings')
     .select('id', { count: 'exact', head: true })
     .eq('vehicle_id', vehicle.id)
     .in('status', ['pending', 'confirmed'])

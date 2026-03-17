@@ -95,7 +95,7 @@
 
   const businessItems: BusinessItem[] = [
     {
-      reg: "KAA 123B",
+      reg: "KAA-111A",
       driver: "Peter K.",
       fuel: 78,
       status: "Active",
@@ -104,7 +104,7 @@
       route: "111",
     },
     {
-      reg: "KBZ 441C",
+      reg: "KAA-125B",
       driver: "James M.",
       fuel: 45,
       status: "Active",
@@ -113,7 +113,7 @@
       route: "125",
     },
     {
-      reg: "KCE 887A",
+      reg: "KAA-058C",
       driver: "Samuel O.",
       fuel: 22,
       status: "Idle",
@@ -122,7 +122,7 @@
       route: "58",
     },
     {
-      reg: "KDA 302F",
+      reg: "KAA-046D",
       driver: "David W.",
       fuel: 91,
       status: "Off Route",
