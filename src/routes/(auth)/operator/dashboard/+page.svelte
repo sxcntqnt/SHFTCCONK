@@ -8,7 +8,7 @@
   import Contracts from "$lib/components/Contracts.svelte"
   import { initFleet } from "$lib/features/fleet/stores/fleet"
   import { initContracts } from "$lib/features/contracts/contracts"
-  import { initAnalytics } from "$lib/features/analytics/+analytics"
+  import { initAnalytics } from "$lib/features/analytics/analytics"
 
   let user = $derived($authStore)
   let loading = $state(true)

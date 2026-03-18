@@ -2,7 +2,7 @@
   import {
     analyticsStore,
     type RouteStats,
-  } from "$lib/features/analytics/+analytics"
+  } from "$lib/features/analytics/analytics"
   import { derived } from "svelte/store"
 
   let stats = $derived($analyticsStore ?? [])
