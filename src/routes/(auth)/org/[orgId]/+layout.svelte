@@ -2,29 +2,23 @@
   /**
    * /org/[orgId]/+layout.svelte
    *
-   * FIXES FROM PREVIOUS VERSION:
+   * FIXES:
    *
-   *   BUG 1 — Duplicate declarations:
-   *     `let role` declared twice → compile error
-   *     `currentPath` declared as both let + const $derived → compile error
-   *     `authStore.subscribe` called twice → double subscription
+   *   BUG 1 — Svelte 4 reactive syntax:
+   *     `$: navItems = [...]` is Svelte 4.
+   *     This file already uses $props(), $state(), $derived() (Svelte 5).
+   *     Mixed syntax causes unpredictable reactivity.
+   *     Fixed: `let navItems = $derived([...])`
    *
-   *   BUG 2 — Wrong nav routes:
-   *     All nav hrefs pointed to /operator/* — completely wrong.
-   *     Fixed to /org/[orgId]/* routes.
+   *   BUG 2 — Overview href points to /org/[orgId]:
+   *     That route now redirects (303) to /org/[orgId]/dashboard.
+   *     Every click on Overview caused an unnecessary round-trip.
+   *     Fixed: href → `/org/${data.orgId}/dashboard`
    *
-   *   BUG 3 — Wrong permission check:
-   *     hasPermission(role, "command") used non-existent strings.
-   *     Now uses canInOrg() from auth.store with real ACTIONS.
-   *
-   *   BUG 4 — Deprecated authStore:
-   *     Replaced with sessionStore + orgChairContext.
-   *
-   *   BUG 5 — Svelte 4 slot syntax:
-   *     <slot /> → {@render children()} (Svelte 5)
-   *
-   *   BUG 6 — Wrong import path:
-   *     '$lib/features/auth/stores/auth' → '$lib/features/auth/stores/auth.store'
+   *   BUG 3 — Breadcrumb root check used /org/[orgId]:
+   *     `{#if currentPath !== \`/org/${data.orgId}\`}` never matched
+   *     because the user is always on /org/[orgId]/dashboard or deeper.
+   *     Fixed: check against /org/[orgId]/dashboard
    */
 
   import { page } from "$app/state"
@@ -35,10 +29,7 @@
   import { ACTIONS } from "$lib/features/auth/stores/permissions"
   import {
     activateOrgChairContext,
-    orgChairCtx,
-    activeOrgName,
     canApproveMembers,
-    canManageVehicles,
     canViewFinance,
     canViewOrgReports,
     canChangeSettings,
@@ -61,18 +52,16 @@
     }
   } = $props()
 
-  // ── Activate org chair context for this org ──────────────────
+  // ── Activate org context ─────────────────────────────────────
   onMount(() => {
-    const ok = activateOrgChairContext(data.orgId)
-    // Non-admin users (e.g. Secretary) may not have ORG_CHAIR actor
-    // but still have membership — they get limited nav visibility.
-    // Only hard-redirect if completely no session.
+    activateOrgChairContext(data.orgId)
     if (!$sessionStore.profile) goto("/login/sign_in")
   })
 
-  // ── Reactive ─────────────────────────────────────────────────
+  // ── Reactive state ───────────────────────────────────────────
   let currentPath = $derived(page.url.pathname)
   let mobileOpen = $state(false)
+  let profile = $derived($sessionStore.profile)
 
   function isActive(href: string): boolean {
     return currentPath === href || currentPath.startsWith(href + "/")
@@ -88,15 +77,14 @@
       .toUpperCase()
   }
 
-  // ── Nav items — /org/[orgId]/* routes ────────────────────────
-  // Each item checks a real ACTIONS permission scoped to this org.
-  // canCheck is a function so it re-evaluates reactively.
-  $: navItems = [
+  // FIX: was `$: navItems = [...]` (Svelte 4) → `$derived` (Svelte 5)
+  // FIX: Overview href was /org/${data.orgId} → /org/${data.orgId}/dashboard
+  let navItems = $derived([
     {
-      label: "Overview",
-      href: `/org/${data.orgId}`,
+      label: "Dashboard",
+      href: `/org/${data.orgId}/dashboard`, // ← was /org/${data.orgId}
       exact: true,
-      canCheck: () => true, // always visible — it's the home
+      canCheck: () => true,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
         <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
@@ -106,6 +94,7 @@
       label: "Fleet",
       href: `/org/${data.orgId}/fleet`,
       badge: data.vehicleCount > 0 ? data.vehicleCount : undefined,
+      exact: false,
       canCheck: () => canInOrg(ACTIONS.VEHICLE_LIST, data.orgId),
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <rect x="1" y="3" width="15" height="13" rx="2"/>
@@ -116,7 +105,7 @@
     {
       label: "Members",
       href: `/org/${data.orgId}/members`,
-      badge: $canApproveMembers && data.memberCount > 0 ? undefined : undefined,
+      exact: false,
       canCheck: () =>
         canInOrg(ACTIONS.MEMBER_REQUESTS, data.orgId) || $canApproveMembers,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -129,6 +118,7 @@
     {
       label: "Finance",
       href: `/org/${data.orgId}/finance`,
+      exact: false,
       canCheck: () =>
         canInOrg(ACTIONS.FINANCE_LIST, data.orgId) || $canViewFinance,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -139,6 +129,7 @@
     {
       label: "Routes",
       href: `/org/${data.orgId}/routes`,
+      exact: false,
       canCheck: () => canInOrg(ACTIONS.GEOFENCE_LIST, data.orgId),
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
@@ -148,6 +139,7 @@
     {
       label: "Compliance",
       href: `/org/${data.orgId}/compliance`,
+      exact: false,
       canCheck: () => canInOrg(ACTIONS.REMINDER_LIST, data.orgId),
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -156,6 +148,7 @@
     {
       label: "Reports",
       href: `/org/${data.orgId}/reports`,
+      exact: false,
       canCheck: () =>
         canInOrg(ACTIONS.REPORTS_VIEW, data.orgId) || $canViewOrgReports,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -168,6 +161,7 @@
     {
       label: "Settings",
       href: `/org/${data.orgId}/settings`,
+      exact: false,
       canCheck: () =>
         canInOrg(ACTIONS.SETTINGS_ALL, data.orgId) || $canChangeSettings,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -175,10 +169,10 @@
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>`,
     },
-  ]
+  ])
 
-  // Profile for sidebar footer
-  let profile = $derived($sessionStore.profile)
+  // Dashboard href for breadcrumb root check
+  const dashboardHref = $derived(`/org/${data.orgId}/dashboard`)
 </script>
 
 <!-- Mobile overlay -->
@@ -224,7 +218,6 @@
 <div class="shell">
   <!-- Sidebar -->
   <aside class="sidebar">
-    <!-- Org header -->
     <div class="sb-header">
       <div class="org-avatar">{initials(data.organization?.name ?? null)}</div>
       <div class="sb-org-info">
@@ -238,7 +231,6 @@
       </div>
     </div>
 
-    <!-- Nav -->
     <nav class="sidebar-nav">
       {#each navItems as item}
         {#if item.canCheck()}
@@ -257,7 +249,6 @@
       {/each}
     </nav>
 
-    <!-- Quick stats -->
     <div class="sb-stats">
       <div class="sb-stat">
         <span class="sb-stat-num">{data.vehicleCount}</span>
@@ -270,7 +261,6 @@
       </div>
     </div>
 
-    <!-- Footer: profile + sign out -->
     <div class="sb-footer">
       {#if profile}
         <div class="user-card">
@@ -303,7 +293,6 @@
 
   <!-- Main -->
   <div class="main">
-    <!-- Topbar -->
     <div class="topbar">
       <div class="tb-left">
         <button class="hamburger" onclick={() => (mobileOpen = true)}>
@@ -324,10 +313,11 @@
           <a href="/org/select">SACCOs</a>
           <span class="bc-sep">›</span>
           <span class="bc-org">{data.organization?.name ?? ""}</span>
-          {#if currentPath !== `/org/${data.orgId}`}
+          <!-- FIX: was /org/${data.orgId} → /org/${data.orgId}/dashboard -->
+          {#if currentPath !== dashboardHref}
             <span class="bc-sep">›</span>
             <span class="bc-cur">
-              {navItems.find((n) => isActive(n.href) && !n.exact)?.label ?? ""}
+              {navItems.find((n) => !n.exact && isActive(n.href))?.label ?? ""}
             </span>
           {/if}
         </nav>
@@ -338,7 +328,6 @@
       </div>
     </div>
 
-    <!-- Child page content -->
     <div class="content">
       {@render children()}
     </div>
@@ -358,7 +347,6 @@
     color: #e2e4e9;
   }
 
-  /* ── Sidebar ── */
   .sidebar {
     width: 240px;
     flex-shrink: 0;
@@ -376,7 +364,6 @@
     display: none;
   }
 
-  /* Org header */
   .sb-header {
     display: flex;
     align-items: center;
@@ -428,7 +415,6 @@
     color: #4ade80;
   }
 
-  /* Nav */
   .sidebar-nav {
     padding: 0.75rem 0.65rem;
     flex: 1;
@@ -500,11 +486,9 @@
     padding: 0 4px;
   }
 
-  /* Quick stats */
   .sb-stats {
     display: flex;
     align-items: center;
-    gap: 0;
     padding: 0.75rem 1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -535,7 +519,6 @@
     flex-shrink: 0;
   }
 
-  /* Footer */
   .sb-footer {
     padding: 0.75rem 0.65rem;
     flex-shrink: 0;
@@ -591,7 +574,6 @@
     color: #f87171;
   }
 
-  /* ── Mobile ── */
   .mob-overlay {
     position: fixed;
     inset: 0;
@@ -630,7 +612,6 @@
     font-size: 1rem;
   }
 
-  /* ── Main ── */
   .main {
     flex: 1;
     min-width: 0;

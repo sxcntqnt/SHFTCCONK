@@ -1,73 +1,70 @@
 /**
  * src/routes/(auth)/org/[orgId]/+layout.server.ts
  *
- * FIXES FROM PREVIOUS VERSION:
+ * FIX — Critical: subquery passed to .in() doesn't work in Supabase JS.
  *
- *   BUG 1 — LayoutLoad → LayoutServerLoad:
- *     Was running Supabase queries client-side via LayoutLoad.
- *     Supabase DB queries must run server-side. Renamed to .server.ts.
+ *   BEFORE (broken):
+ *     .in('actor_id', supabase.from('actors').select('id').eq(...))
  *
- *   BUG 2 — No server-side org access guard:
- *     requireOrgAccess was called but it checked client-side store state.
- *     Now validates directly against the DB: actor must have org-level
- *     or federal jurisdiction over this orgId, or be an ORG_CHAIR member.
- *     Redirects to /org/select if no access found.
+ *   `.in()` expects a plain `string[]`. Passing a PostgrestFilterBuilder
+ *   object silently evaluates to zero results — every user fails the
+ *   access check and gets redirected to /org/select regardless of their
+ *   actual permissions.
  *
- * LOADS FOR ALL /org/[orgId]/* CHILD ROUTES:
- *   - organization   → name, status, metadata
- *   - branches       → for sub-navigation
- *   - members        → for member management pages
- *   - orgStats       → vehicle count, member count (for sidebar badges)
+ *   AFTER (fixed):
+ *     Step 1 — fetch actor IDs for this user (awaited, returns string[])
+ *     Step 2 — use those IDs in the membership + jurisdiction queries
+ *
+ * Everything else unchanged.
  */
 
 import type { LayoutServerLoad } from './$types'
 import { redirect }              from '@sveltejs/kit'
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
-  const { supabase, session, user } = locals
-  const { orgId } = params
+  const { supabase, session } = locals
+  const { orgId }             = params
 
   if (!session?.user?.id) throw redirect(303, '/login/sign_in')
 
-  // ── Org access check ──────────────────────────────────────────
+  // ── Step 1: get this user's active actor IDs ─────────────────
+  // Must be awaited before use — .in() requires a plain string[].
+  const { data: actorRows } = await supabase
+    .from('actors')
+    .select('id, type')
+    .eq('profile_id', session.user.id)
+    .eq('status', 'active')
+
+  const actorIds      = (actorRows ?? []).map((a) => a.id)
+  const adminActorIds = (actorRows ?? [])
+    .filter((a) => ['ADMIN', 'SUPER_ADMIN', 'ORG_CHAIR'].includes(a.type))
+    .map((a) => a.id)
+
+  // ── Step 2: access check with real arrays ────────────────────
   // User must either:
-  //   (a) be an ORG_CHAIR member of this org, OR
-  //   (b) have an actor with federal/org jurisdiction (admin or chair)
-  // Real enforcement is via RLS — this prevents bad UX redirects.
-
+  //   (a) be a member of this org via any of their active actors, OR
+  //   (b) have federal/org jurisdiction via an admin-type actor
   const [{ data: membership }, { data: jurisdictions }] = await Promise.all([
-    supabase
-      .from('organization_members')
-      .select('actor_id, role')
-      .eq('organization_id', orgId)
-      .in(
-        'actor_id',
-        // Subquery: get actor ids for this user
-        supabase
-          .from('actors')
-          .select('id')
-          .eq('profile_id', session.user.id)
-          .eq('status', 'active'),
-      )
-      .limit(1),
+    actorIds.length > 0
+      ? supabase
+          .from('organization_members')
+          .select('actor_id, role')
+          .eq('organization_id', orgId)
+          .in('actor_id', actorIds)          // ← now a real string[]
+          .limit(1)
+      : Promise.resolve({ data: [] }),
 
-    supabase
-      .from('actor_jurisdictions')
-      .select('level, scope_id')
-      .in(
-        'actor_id',
-        supabase
-          .from('actors')
-          .select('id')
-          .eq('profile_id', session.user.id)
-          .in('type', ['ADMIN', 'SUPER_ADMIN', 'ORG_CHAIR'])
-          .eq('status', 'active'),
-      )
-      .or(`level.eq.federal,and(level.eq.org,scope_id.eq.${orgId})`),
+    adminActorIds.length > 0
+      ? supabase
+          .from('actor_jurisdictions')
+          .select('level, scope_id')
+          .in('actor_id', adminActorIds)     // ← now a real string[]
+          .or(`level.eq.federal,and(level.eq.org,scope_id.eq.${orgId})`)
+      : Promise.resolve({ data: [] }),
   ])
 
   const hasAccess =
-    (membership && membership.length > 0) ||
+    (membership  && membership.length  > 0) ||
     (jurisdictions && jurisdictions.length > 0)
 
   if (!hasAccess) {
@@ -118,16 +115,19 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
     throw redirect(303, '/org/select?reason=org_not_found')
   }
 
-  // Determine the current user's role in this org
-  const userMembership = membership?.[0] ?? null
+  // Find this user's role in the org from membership data
+  const userActorIds  = new Set(actorIds)
+  const userMembership = (members ?? []).find((m) =>
+    userActorIds.has(m.actor_id),
+  ) ?? null
 
   return {
     orgId,
     organization,
-    branches:      branches     ?? [],
-    members:       members      ?? [],
-    vehicleCount:  vehicleCount ?? 0,
-    memberCount:   members?.length ?? 0,
-    userOrgRole:   userMembership?.role ?? null,
+    branches:    branches    ?? [],
+    members:     members     ?? [],
+    vehicleCount: vehicleCount ?? 0,
+    memberCount:  members?.length ?? 0,
+    userOrgRole:  userMembership?.role ?? null,
   }
 }
