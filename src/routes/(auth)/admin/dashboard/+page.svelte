@@ -1,179 +1,119 @@
 <script lang="ts">
+  /**
+   * /admin/+page.svelte — sxcntqnt Platform Admin Dashboard
+   *
+   * FIXES FROM PREVIOUS VERSION:
+   *
+   *   BUG 1 — All mock data:
+   *     Every KPI, table row, and audit entry was hardcoded.
+   *     Now reads from load() which queries the actual DB.
+   *
+   *   BUG 2 — approveReq() / rejectReq() were client-side only:
+   *     Mutations never hit the DB. Now POST to ?/approve_request
+   *     and ?/reject_request server actions.
+   *
+   *   BUG 3 — Wrong store import path:
+   *     '$lib/features/auth/stores/auth' → '$lib/features/auth/stores/auth.store'
+   *
+   *   BUG 4 — authStore is @deprecated:
+   *     Now uses sessionStore directly.
+   *
+   *   BUG 5 — Wrong product name:
+   *     'Matatu Pulse' / 'MatatuPL' → 'sxcntqnt'
+   */
+
   import { onMount } from "svelte"
   import { browser } from "$app/environment"
   import { page } from "$app/stores"
-  import { authStore } from "$lib/features/auth/stores/auth"
+  import { enhance } from "$app/forms"
+  import { sessionStore } from "$lib/features/auth/stores/auth.store"
 
-  let user = $derived($authStore)
+  // ── Props from load() ──────────────────────────────────────────
+  type OrgSummary = {
+    id: string
+    name: string
+    status: string
+    memberCount: number
+    vehicleCount: number
+    metadata: Record<string, unknown> | null
+  }
+  type Request = {
+    id: string
+    requested_type: string
+    status: string
+    payload: Record<string, unknown> | null
+    created_at: string
+    profiles: { full_name: string | null; avatar_url: string | null } | null
+  }
+  type AuditEntry = {
+    id: string
+    event_type: string
+    severity: string
+    performed_by: string | null
+    created_at: string
+    performer: { full_name: string | null } | null
+  }
+  type Data = {
+    pendingRequestCount: number
+    totalUserCount: number
+    totalOrgCount: number
+    totalJurisdictionCount: number
+    criticalAuditCount: number
+    recentRequests: Request[]
+    recentAuditEntries: AuditEntry[]
+    orgSummaries: OrgSummary[]
+  }
+
+  let { data }: { data: Data } = $props()
+
+  // ── Auth store ─────────────────────────────────────────────────
+  let profile = $derived($sessionStore.profile)
   let loading = $state(true)
   let mobileOpen = $state(false)
   let currentPath = $derived($page.url.pathname)
 
-  /* ── Mock data ──────────────────────────────────────────── */
-  interface ActorRequest {
-    id: string
-    user: string
-    role: string
-    sacco?: string
-    submitted: string
-    status: "pending" | "approved" | "rejected"
-  }
-  interface AuditEntry {
-    id: string
-    actor: string
-    action: string
-    resource: string
-    time: string
-    severity: "info" | "warn" | "critical"
-  }
-  interface OrgSummary {
-    name: string
-    users: number
-    vehicles: number
-    plan: string
-    status: "active" | "suspended"
+  // ── Helpers ────────────────────────────────────────────────────
+  function initials(name?: string | null) {
+    if (!name) return "?"
+    return name
+      .split(" ")
+      .map((w: string) => w[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase()
   }
 
-  let pendingRequests = $state(7)
-  let totalUsers = $state(1_284)
-  let totalOrgs = $state(34)
-  let activeApiKeys = $state(12)
-  let totalJurisdictions = $state(6)
-  let criticalAudits = $state(2)
+  function timeAgo(dateStr: string): string {
+    if (!dateStr) return ""
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return "Just now"
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    return `${Math.floor(hrs / 24)}d ago`
+  }
 
-  let actorRequests = $state<ActorRequest[]>([
-    {
-      id: "AR-081",
-      user: "Kamau Mwangi",
-      role: "DRIVER",
-      sacco: "Super Metro",
-      submitted: "10m ago",
-      status: "pending",
-    },
-    {
-      id: "AR-080",
-      user: "Aisha Oduya",
-      role: "CONDUCTOR",
-      sacco: "2NK Sacco",
-      submitted: "1h ago",
-      status: "pending",
-    },
-    {
-      id: "AR-079",
-      user: "Njoroge Peter",
-      role: "STAGE_OPERATOR",
-      sacco: "Mololine",
-      submitted: "3h ago",
-      status: "pending",
-    },
-    {
-      id: "AR-078",
-      user: "Wanjiku Atieno",
-      role: "OWNER",
-      submitted: "Yesterday",
-      status: "approved",
-    },
-    {
-      id: "AR-077",
-      user: "Kipchoge Limo",
-      role: "DRIVER",
-      sacco: "4NTE",
-      submitted: "2d ago",
-      status: "rejected",
-    },
-  ])
+  function formatRequestLabel(r: Request): string {
+    const role = (r.payload?.role_requested as string) ?? r.requested_type
+    const org = (r.payload?.org_name as string) ?? ""
+    return [role.replace(/_/g, " "), org].filter(Boolean).join(" · ")
+  }
 
-  let auditLog = $state<AuditEntry[]>([
-    {
-      id: "A-901",
-      actor: "admin@pulse.ke",
-      action: "ROLE_APPROVED",
-      resource: "user/AR-078",
-      time: "2m ago",
-      severity: "info",
-    },
-    {
-      id: "A-900",
-      actor: "system",
-      action: "API_RATE_EXCEEDED",
-      resource: "key/gps_feed_1",
-      time: "18m ago",
-      severity: "warn",
-    },
-    {
-      id: "A-899",
-      actor: "ops@ntsa.go.ke",
-      action: "JURISDICTION_EDIT",
-      resource: "jur/nairobi",
-      time: "1h ago",
-      severity: "info",
-    },
-    {
-      id: "A-898",
-      actor: "unknown",
-      action: "AUTH_BRUTE_FORCE",
-      resource: "auth/login",
-      time: "2h ago",
-      severity: "critical",
-    },
-    {
-      id: "A-897",
-      actor: "admin@pulse.ke",
-      action: "ORG_SUSPENDED",
-      resource: "org/ronga-sacco",
-      time: "Yest.",
-      severity: "warn",
-    },
-  ])
-
-  let orgs = $state<OrgSummary[]>([
-    {
-      name: "Super Metro",
-      users: 124,
-      vehicles: 38,
-      plan: "Enterprise",
-      status: "active",
-    },
-    {
-      name: "2NK Sacco",
-      users: 87,
-      vehicles: 22,
-      plan: "Pro",
-      status: "active",
-    },
-    {
-      name: "Ronga Sacco",
-      users: 41,
-      vehicles: 11,
-      plan: "Pro",
-      status: "suspended",
-    },
-    {
-      name: "Mololine",
-      users: 63,
-      vehicles: 17,
-      plan: "Pro",
-      status: "active",
-    },
-    {
-      name: "4NTE Express",
-      users: 29,
-      vehicles: 8,
-      plan: "Free",
-      status: "active",
-    },
-  ])
-
-  const REQ_STATUS = {
+  // ── Status / severity colour maps ─────────────────────────────
+  const REQ_STATUS: Record<
+    string,
+    { color: string; bg: string; border: string }
+  > = {
     pending: {
       color: "#facc15",
       bg: "rgba(250,204,21,0.09)",
       border: "rgba(250,204,21,0.22)",
     },
     approved: {
-      color: "var(--teal)",
-      bg: "rgba(0,176,155,0.09)",
-      border: "rgba(0,176,155,0.22)",
+      color: "#4ade80",
+      bg: "rgba(74,222,128,0.09)",
+      border: "rgba(74,222,128,0.22)",
     },
     rejected: {
       color: "#f87171",
@@ -181,7 +121,11 @@
       border: "rgba(248,113,113,0.22)",
     },
   }
-  const AUDIT_SEV = {
+
+  const AUDIT_SEV: Record<
+    string,
+    { color: string; bg: string; border: string }
+  > = {
     info: {
       color: "#9ca3af",
       bg: "rgba(156,163,175,0.07)",
@@ -194,52 +138,38 @@
     },
     critical: {
       color: "#f87171",
-      bg: "rgba(248,113,113,0.1)",
+      bg: "rgba(248,113,113,0.10)",
       border: "rgba(248,113,113,0.22)",
     },
   }
-  const ORG_STATUS = {
+
+  const ORG_STATUS: Record<
+    string,
+    { color: string; bg: string; border: string }
+  > = {
     active: {
-      color: "var(--teal)",
-      bg: "rgba(0,176,155,0.09)",
-      border: "rgba(0,176,155,0.22)",
+      color: "#4ade80",
+      bg: "rgba(74,222,128,0.09)",
+      border: "rgba(74,222,128,0.22)",
+    },
+    pending_activation: {
+      color: "#facc15",
+      bg: "rgba(250,204,21,0.09)",
+      border: "rgba(250,204,21,0.18)",
     },
     suspended: {
       color: "#f87171",
       bg: "rgba(248,113,113,0.09)",
       border: "rgba(248,113,113,0.22)",
     },
-  }
-  const PLAN_COLOR: Record<string, string> = {
-    Enterprise: "var(--orange)",
-    Pro: "var(--teal)",
-    Free: "rgba(255,255,255,0.35)",
-  }
-
-  function approveReq(id: string) {
-    actorRequests = actorRequests.map((r) =>
-      r.id === id ? { ...r, status: "approved" as const } : r,
-    )
-    pendingRequests = actorRequests.filter((r) => r.status === "pending").length
-  }
-  function rejectReq(id: string) {
-    actorRequests = actorRequests.map((r) =>
-      r.id === id ? { ...r, status: "rejected" as const } : r,
-    )
-    pendingRequests = actorRequests.filter((r) => r.status === "pending").length
+    inactive: {
+      color: "#6b7280",
+      bg: "rgba(107,114,128,0.08)",
+      border: "rgba(107,114,128,0.12)",
+    },
   }
 
-  function initials(name?: string | null) {
-    if (!name) return "?"
-    return name
-      .split(" ")
-      .map((w: string) => w[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase()
-  }
-
-  /* ── Nav ────────────────────────────────────────────────── */
+  // ── Nav ────────────────────────────────────────────────────────
   const homeItem = {
     key: "home",
     label: "Overview",
@@ -255,7 +185,7 @@
           key: "actor_requests",
           label: "Actor Requests",
           href: "/admin/actor_requests",
-          badge: pendingRequests,
+          badge: data.pendingRequestCount,
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
         },
         {
@@ -281,12 +211,6 @@
           href: "/admin/jurisdictions",
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
         },
-        {
-          key: "api",
-          label: "API Keys",
-          href: "/admin/api",
-          icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`,
-        },
       ],
     },
     {
@@ -296,7 +220,8 @@
           key: "audit_logs",
           label: "Audit Logs",
           href: "/admin/audit_logs",
-          badge: criticalAudits,
+          badge:
+            data.criticalAuditCount > 0 ? data.criticalAuditCount : undefined,
           icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
         },
       ],
@@ -310,11 +235,11 @@
   }
 
   onMount(() => {
-    if (browser) setTimeout(() => (loading = false), 350)
+    if (browser) setTimeout(() => (loading = false), 200)
   })
 </script>
 
-<svelte:head><title>Admin Panel — Matatu Pulse</title></svelte:head>
+<svelte:head><title>Admin — sxcntqnt</title></svelte:head>
 
 <!-- Mobile overlay -->
 <div
@@ -332,23 +257,25 @@
             fill="none"
             stroke="#fff"
             stroke-width="2"
-            ><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg
           >
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
         </div>
-        <span class="logo-text">Matatu<span>PL</span></span>
+        <span class="logo-text">sx<span>cntqnt</span></span>
       </div>
       <button class="close-x" onclick={() => (mobileOpen = false)}>✕</button>
     </div>
     <span class="role-badge" style="margin:14px 14px 0"
-      ><span class="role-dot"></span>Admin</span
+      ><span class="role-dot"></span>Super Admin</span
     >
     <div class="sb-nav" style="padding-top:8px">
       <a
         href="/admin"
         class="nav-link {isActive('/admin') ? 'active' : ''}"
         onclick={() => (mobileOpen = false)}
-        >{@html homeItem.icon}{homeItem.label}</a
       >
+        {@html homeItem.icon}{homeItem.label}
+      </a>
       {#each navSections as section}
         <p class="sec-label">{section.label}</p>
         {#each section.items as item}
@@ -380,19 +307,19 @@
           fill="none"
           stroke="#fff"
           stroke-width="2"
-          ><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg
         >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
       </div>
-      <span class="logo-text">Matatu<span>PL</span></span>
+      <span class="logo-text">sx<span>cntqnt</span></span>
     </div>
 
-    <span class="role-badge"><span class="role-dot"></span>Admin</span>
+    <span class="role-badge"><span class="role-dot"></span>Super Admin</span>
 
     <nav class="sb-nav" style="padding-top:8px">
       <a href="/admin" class="nav-link {isActive('/admin') ? 'active' : ''}"
         >{@html homeItem.icon}{homeItem.label}</a
       >
-
       {#each navSections as section}
         <p class="sec-label">{section.label}</p>
         <div class="sb-section">
@@ -412,11 +339,11 @@
     </nav>
 
     <div class="sb-footer">
-      {#if user}
+      {#if profile}
         <div class="user-card">
-          <div class="user-av">{initials(user.fullName)}</div>
+          <div class="user-av">{initials(profile.full_name)}</div>
           <div>
-            <div class="user-name">{user.fullName ?? "Admin"}</div>
+            <div class="user-name">{profile.full_name ?? "Admin"}</div>
             <div class="user-role-lbl">Platform Admin</div>
           </div>
         </div>
@@ -429,16 +356,18 @@
           fill="none"
           stroke="currentColor"
           stroke-width="2"
-          ><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline
-            points="16 17 21 12 16 7"
-          /><line x1="21" y1="12" x2="9" y2="12" /></svg
         >
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
         Sign Out
       </a>
     </div>
   </aside>
 
   <div class="main">
+    <!-- Topbar -->
     <div class="topbar">
       <div class="tb-left">
         <button class="hamburger" onclick={() => (mobileOpen = true)}>
@@ -449,13 +378,11 @@
             fill="none"
             stroke="currentColor"
             stroke-width="2"
-            ><line x1="3" y1="6" x2="21" y2="6" /><line
-              x1="3"
-              y1="12"
-              x2="21"
-              y2="12"
-            /><line x1="3" y1="18" x2="21" y2="18" /></svg
           >
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
         </button>
         <nav class="breadcrumb">
           <a href="/">Home</a><span class="bc-sep">›</span>
@@ -487,11 +414,11 @@
           <span class="spinner"></span>Loading platform data…
         </div>
       {:else}
-        <!-- KPIs -->
+        <!-- KPIs — real data from load() -->
         <div class="kpi-strip">
           <div class="kpi">
-            {#if pendingRequests > 0}<div class="alert-badge">
-                {pendingRequests}
+            {#if data.pendingRequestCount > 0}<div class="alert-badge">
+                {data.pendingRequestCount}
               </div>{/if}
             <div class="kpi-lbl">
               <svg
@@ -506,16 +433,20 @@
                   cy="7"
                   r="4"
                 /></svg
-              >Pending Roles
+              >
+              Pending Roles
             </div>
             <div
               class="kpi-val"
-              style="color:{pendingRequests > 0 ? '#facc15' : 'var(--teal)'}"
+              style="color:{data.pendingRequestCount > 0
+                ? '#facc15'
+                : '#4ade80'}"
             >
-              {pendingRequests}
+              {data.pendingRequestCount}
             </div>
             <div class="kpi-meta">awaiting review</div>
           </div>
+
           <div class="kpi">
             <div class="kpi-lbl">
               <svg
@@ -530,11 +461,13 @@
                   cy="7"
                   r="4"
                 /></svg
-              >Users
+              >
+              Users
             </div>
-            <div class="kpi-val">{totalUsers.toLocaleString()}</div>
-            <div class="kpi-meta">+24 this week</div>
+            <div class="kpi-val">{data.totalUserCount.toLocaleString()}</div>
+            <div class="kpi-meta">registered profiles</div>
           </div>
+
           <div class="kpi">
             <div class="kpi-lbl">
               <svg
@@ -547,28 +480,13 @@
                 ><rect x="2" y="7" width="20" height="14" rx="2" /><path
                   d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"
                 /></svg
-              >Orgs
+              >
+              SACCOs
             </div>
-            <div class="kpi-val">{totalOrgs}</div>
-            <div class="kpi-meta">2 suspended</div>
+            <div class="kpi-val">{data.totalOrgCount}</div>
+            <div class="kpi-meta">organizations</div>
           </div>
-          <div class="kpi">
-            <div class="kpi-lbl">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><path d="M18 8h1a4 4 0 010 8h-1" /><path
-                  d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"
-                /></svg
-              >API Keys
-            </div>
-            <div class="kpi-val">{activeApiKeys}</div>
-            <div class="kpi-meta">active tokens</div>
-          </div>
+
           <div class="kpi">
             <div class="kpi-lbl">
               <svg
@@ -579,14 +497,16 @@
                 stroke="currentColor"
                 stroke-width="2"
                 ><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" /></svg
-              >Jurisdictions
+              >
+              Jurisdictions
             </div>
-            <div class="kpi-val">{totalJurisdictions}</div>
-            <div class="kpi-meta">configured</div>
+            <div class="kpi-val">{data.totalJurisdictionCount}</div>
+            <div class="kpi-meta">assigned</div>
           </div>
+
           <div class="kpi">
-            {#if criticalAudits > 0}<div class="alert-badge">
-                {criticalAudits}
+            {#if data.criticalAuditCount > 0}<div class="alert-badge">
+                {data.criticalAuditCount}
               </div>{/if}
             <div class="kpi-lbl">
               <svg
@@ -599,20 +519,24 @@
                 ><path
                   d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
                 /><polyline points="14 2 14 8 20 8" /></svg
-              >Critical
+              >
+              Critical
             </div>
             <div
               class="kpi-val"
-              style="color:{criticalAudits > 0 ? '#f87171' : 'var(--teal)'}"
+              style="color:{data.criticalAuditCount > 0
+                ? '#f87171'
+                : '#4ade80'}"
             >
-              {criticalAudits}
+              {data.criticalAuditCount}
             </div>
-            <div class="kpi-meta">audit alerts</div>
+            <div class="kpi-meta">audit alerts (24h)</div>
           </div>
         </div>
 
         <!-- Actor Requests + Audit Log -->
         <div class="two-col">
+          <!-- Actor Requests — real data + server actions -->
           <div class="card">
             <div class="card-hd">
               <div>
@@ -622,66 +546,87 @@
               <a href="/admin/actor_requests" class="link-sm">All requests →</a>
             </div>
             <div class="req-list">
-              {#each actorRequests as r}
-                {@const s = REQ_STATUS[r.status]}
+              {#each data.recentRequests as r}
+                {@const s = REQ_STATUS[r.status] ?? REQ_STATUS.pending}
                 <div class="req-row">
-                  <span class="req-id">{r.id}</span>
+                  <code class="req-id">{r.id.slice(0, 8)}</code>
                   <div class="req-info">
-                    <div class="req-name">{r.user}</div>
-                    <div class="req-meta">
-                      {r.role.replace("_", " ")}{r.sacco ? ` · ${r.sacco}` : ""}
+                    <div class="req-name">
+                      {r.profiles?.full_name ?? "Unknown"}
                     </div>
+                    <div class="req-meta">{formatRequestLabel(r)}</div>
                   </div>
                   <span
                     class="s-pill"
                     style="color:{s.color};background:{s.bg};border:1px solid {s.border}"
                     >{r.status}</span
                   >
-                  <span class="req-time">{r.submitted}</span>
+                  <span class="req-time">{timeAgo(r.created_at)}</span>
                   {#if r.status === "pending"}
                     <div class="action-btns">
-                      <button
-                        class="act-btn btn-approve"
-                        onclick={() => approveReq(r.id)}
-                        title="Approve"
+                      <!-- FIX: real server action, not client-side state -->
+                      <form
+                        method="post"
+                        action="?/approve_request"
+                        use:enhance
+                        style="display:contents"
                       >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          ><polyline points="20 6 9 17 4 12" /></svg
+                        <input type="hidden" name="request_id" value={r.id} />
+                        <button
+                          type="submit"
+                          class="act-btn btn-approve"
+                          title="Approve"
                         >
-                      </button>
-                      <button
-                        class="act-btn btn-reject"
-                        onclick={() => rejectReq(r.id)}
-                        title="Reject"
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                            ><polyline points="20 6 9 17 4 12" /></svg
+                          >
+                        </button>
+                      </form>
+                      <form
+                        method="post"
+                        action="?/reject_request"
+                        use:enhance
+                        style="display:contents"
                       >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="3"
-                          ><line x1="18" y1="6" x2="6" y2="18" /><line
-                            x1="6"
-                            y1="6"
-                            x2="18"
-                            y2="18"
-                          /></svg
+                        <input type="hidden" name="request_id" value={r.id} />
+                        <button
+                          type="submit"
+                          class="act-btn btn-reject"
+                          title="Reject"
                         >
-                      </button>
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                            ><line x1="18" y1="6" x2="6" y2="18" /><line
+                              x1="6"
+                              y1="6"
+                              x2="18"
+                              y2="18"
+                            /></svg
+                          >
+                        </button>
+                      </form>
                     </div>
                   {/if}
                 </div>
               {/each}
+              {#if data.recentRequests.length === 0}
+                <div class="card-empty">No recent requests</div>
+              {/if}
             </div>
           </div>
 
+          <!-- Audit Log — real data -->
           <div class="card">
             <div class="card-hd">
               <div>
@@ -691,8 +636,8 @@
               <a href="/admin/audit_logs" class="link-sm">Full log →</a>
             </div>
             <div class="audit-list">
-              {#each auditLog as e}
-                {@const sev = AUDIT_SEV[e.severity]}
+              {#each data.recentAuditEntries as e}
+                {@const sev = AUDIT_SEV[e.severity ?? "info"] ?? AUDIT_SEV.info}
                 <div class="audit-row">
                   <div
                     class="audit-sev"
@@ -706,23 +651,34 @@
                       stroke="currentColor"
                       stroke-width="2.5"
                     >
-                      {#if e.severity === "critical"}<path
+                      {#if e.severity === "critical"}
+                        <path
                           d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                        />{:else}<circle cx="12" cy="12" r="10" />{/if}
+                        />
+                      {:else}
+                        <circle cx="12" cy="12" r="10" />
+                      {/if}
                     </svg>
                   </div>
                   <div class="audit-inf">
-                    <div class="audit-action">{e.action}</div>
-                    <div class="audit-detail">{e.actor} · {e.resource}</div>
+                    <div class="audit-action">{e.event_type}</div>
+                    <div class="audit-detail">
+                      {e.performer?.full_name ??
+                        e.performed_by?.slice(0, 8) ??
+                        "system"}
+                    </div>
                   </div>
-                  <span class="audit-time">{e.time}</span>
+                  <span class="audit-time">{timeAgo(e.created_at)}</span>
                 </div>
               {/each}
+              {#if data.recentAuditEntries.length === 0}
+                <div class="card-empty">No recent events</div>
+              {/if}
             </div>
           </div>
         </div>
 
-        <!-- Organisations -->
+        <!-- Organizations table — real data -->
         <div class="full-row card">
           <div class="card-hd">
             <div>
@@ -733,36 +689,37 @@
           </div>
           <div class="t-scroll">
             <table>
-              <thead
-                ><tr
-                  ><th>Organization</th><th>Users</th><th>Vehicles</th><th
-                    >Plan</th
-                  ><th>Status</th></tr
-                ></thead
-              >
+              <thead>
+                <tr
+                  ><th>SACCO</th><th>Members</th><th>Vehicles</th><th>Status</th
+                  ></tr
+                >
+              </thead>
               <tbody>
-                {#each orgs as org}
-                  {@const st = ORG_STATUS[org.status]}
+                {#each data.orgSummaries as org}
+                  {@const st = ORG_STATUS[org.status] ?? ORG_STATUS.inactive}
                   <tr>
                     <td><span class="org-name">{org.name}</span></td>
-                    <td>{org.users}</td>
-                    <td>{org.vehicles}</td>
-                    <td
-                      ><span
-                        class="plan-tag"
-                        style="color:{PLAN_COLOR[org.plan] ?? 'var(--text-2)'}"
-                        >{org.plan}</span
-                      ></td
-                    >
-                    <td
-                      ><span
+                    <td>{org.memberCount}</td>
+                    <td>{org.vehicleCount}</td>
+                    <td>
+                      <span
                         class="s-pill"
                         style="color:{st.color};background:{st.bg};border:1px solid {st.border}"
-                        >{org.status}</span
-                      ></td
-                    >
+                      >
+                        {org.status === "pending_activation"
+                          ? "pending"
+                          : org.status}
+                      </span>
+                    </td>
                   </tr>
                 {/each}
+                {#if data.orgSummaries.length === 0}
+                  <tr
+                    ><td colspan="4" class="card-empty">No organizations yet</td
+                    ></tr
+                  >
+                {/if}
               </tbody>
             </table>
           </div>
@@ -773,20 +730,20 @@
 </div>
 
 <style>
-  /* ─────── SHELL ─────── */
+  /* ── Shell ── */
   .shell {
     display: flex;
     min-height: 100vh;
-    background: var(--ink);
-    font-family: var(--font-body);
+    background: #0a0a0c;
+    font-family: "DM Sans", system-ui, sans-serif;
   }
 
-  /* ─────── SIDEBAR ─────── */
+  /* ── Sidebar ── */
   .sidebar {
     width: 232px;
     flex-shrink: 0;
-    background: var(--ink-2);
-    border-right: 1px solid var(--rim);
+    background: #0f0f12;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     flex-direction: column;
     position: sticky;
@@ -801,7 +758,7 @@
 
   .sb-logo {
     padding: 22px 20px 16px;
-    border-bottom: 1px solid var(--rim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -817,11 +774,10 @@
     justify-content: center;
   }
   .logo-text {
-    font-family: var(--font-display);
     font-size: 1.05rem;
     font-weight: 800;
     letter-spacing: -0.03em;
-    color: var(--text-1);
+    color: #f0f1f4;
   }
   .logo-text span {
     color: #a78bfa;
@@ -865,7 +821,8 @@
     font-weight: 700;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
+    margin: 0;
   }
   .sb-nav {
     padding: 0 10px;
@@ -883,36 +840,28 @@
     border-radius: 10px;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--text-2);
+    color: rgba(255, 255, 255, 0.5);
     text-decoration: none;
     margin-bottom: 2px;
     border: 1px solid transparent;
     transition:
       background 0.15s,
-      color 0.15s,
-      border-color 0.15s;
+      color 0.15s;
     position: relative;
   }
   .nav-link :global(svg) {
     flex-shrink: 0;
     opacity: 0.5;
-    transition: opacity 0.15s;
   }
   .nav-link:hover {
-    background: var(--rim);
-    color: var(--text-1);
-  }
-  .nav-link:hover :global(svg) {
-    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f0f1f4;
   }
   .nav-link.active {
     background: rgba(139, 92, 246, 0.1);
     border-color: rgba(139, 92, 246, 0.22);
     color: #a78bfa;
     font-weight: 600;
-  }
-  .nav-link.active :global(svg) {
-    opacity: 1;
   }
   .nav-link.active::before {
     content: "";
@@ -925,7 +874,6 @@
     border-radius: 0 3px 3px 0;
     background: #a78bfa;
   }
-
   .nav-badge {
     margin-left: auto;
     min-width: 18px;
@@ -943,7 +891,7 @@
 
   .sb-footer {
     padding: 12px 10px;
-    border-top: 1px solid var(--rim);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
   }
   .user-card {
@@ -972,11 +920,11 @@
   .user-name {
     font-size: 0.78rem;
     font-weight: 600;
-    color: var(--text-1);
+    color: #f0f1f4;
   }
   .user-role-lbl {
     font-size: 0.6rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
   }
   .sign-out {
     display: flex;
@@ -987,10 +935,10 @@
     border-radius: 9px;
     background: none;
     border: none;
-    font-family: var(--font-body);
+    font-family: "DM Sans", system-ui, sans-serif;
     font-size: 0.78rem;
     font-weight: 500;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
     cursor: pointer;
     text-decoration: none;
     transition:
@@ -1002,14 +950,13 @@
     color: #f87171;
   }
 
-  /* ─────── MOBILE ─────── */
+  /* ── Mobile ── */
   .m-overlay {
     display: none;
     position: fixed;
     inset: 0;
     z-index: 200;
     background: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(6px);
   }
   .m-overlay.open {
     display: block;
@@ -1020,15 +967,15 @@
     top: 0;
     height: 100%;
     width: 232px;
-    background: var(--ink-2);
-    border-right: 1px solid var(--rim);
+    background: #0f0f12;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
   }
   .m-head {
     padding: 18px;
-    border-bottom: 1px solid var(--rim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1038,31 +985,26 @@
     width: 30px;
     height: 30px;
     border-radius: 50%;
-    background: var(--rim);
+    background: rgba(255, 255, 255, 0.06);
     border: none;
     cursor: pointer;
-    color: var(--text-2);
+    color: rgba(255, 255, 255, 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s;
-  }
-  .close-x:hover {
-    background: var(--rim-2);
   }
 
-  /* ─────── MAIN ─────── */
+  /* ── Main ── */
   .main {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
   }
-
   .topbar {
     height: 52px;
     padding: 0 32px;
-    border-bottom: 1px solid var(--rim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1083,40 +1025,35 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--text-2);
+    color: rgba(255, 255, 255, 0.5);
     padding: 5px;
     border-radius: 8px;
-    transition:
-      background 0.15s,
-      color 0.15s;
   }
   .hamburger:hover {
-    background: var(--rim);
-    color: var(--text-1);
+    background: rgba(255, 255, 255, 0.04);
+    color: #f0f1f4;
   }
   .breadcrumb {
     display: flex;
     align-items: center;
     gap: 6px;
     font-size: 0.78rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
   }
   .breadcrumb a {
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
     text-decoration: none;
-    transition: color 0.15s;
   }
   .breadcrumb a:hover {
-    color: var(--text-2);
+    color: rgba(255, 255, 255, 0.5);
   }
   .bc-sep {
     opacity: 0.35;
   }
   .bc-cur {
-    color: var(--text-1);
+    color: #f0f1f4;
     font-weight: 500;
   }
-
   .admin-pill {
     display: flex;
     align-items: center;
@@ -1134,18 +1071,7 @@
     height: 5px;
     border-radius: 50%;
     background: #a78bfa;
-    animation: pulse-v 2s ease-out infinite;
-  }
-  @keyframes pulse-v {
-    0% {
-      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5);
-    }
-    70% {
-      box-shadow: 0 0 0 5px rgba(139, 92, 246, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
-    }
+    animation: blink 2s infinite;
   }
 
   .content {
@@ -1153,7 +1079,7 @@
     padding: 36px 40px;
   }
 
-  /* ─────── PAGE ─────── */
+  /* ── Page header ── */
   .page-hd {
     margin-bottom: 28px;
   }
@@ -1173,27 +1099,15 @@
     height: 6px;
     border-radius: 50%;
     background: #a78bfa;
-    animation: pulse-v2 2s ease-out infinite;
-  }
-  @keyframes pulse-v2 {
-    0% {
-      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5);
-    }
-    70% {
-      box-shadow: 0 0 0 6px rgba(139, 92, 246, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
-    }
+    animation: blink 2s infinite;
   }
   .page-title {
-    font-family: var(--font-display);
     font-size: clamp(1.6rem, 2.5vw, 2.2rem);
     font-weight: 900;
     letter-spacing: -0.05em;
     line-height: 1.1;
-    color: var(--text-1);
-    margin-bottom: 5px;
+    color: #f0f1f4;
+    margin: 0 0 5px;
   }
   .page-title em {
     font-style: normal;
@@ -1201,19 +1115,20 @@
   }
   .page-sub {
     font-size: 0.875rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
+    margin: 0;
   }
 
-  /* KPIs */
+  /* ── KPIs ── */
   .kpi-strip {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     margin-bottom: 22px;
   }
   .kpi {
     background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--rim);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 14px;
     padding: 14px 16px;
     display: flex;
@@ -1233,7 +1148,7 @@
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
     display: flex;
     align-items: center;
     gap: 5px;
@@ -1242,16 +1157,15 @@
     color: #a78bfa;
   }
   .kpi-val {
-    font-family: var(--font-display);
     font-size: 1.6rem;
     font-weight: 900;
     letter-spacing: -0.05em;
     line-height: 1;
-    color: var(--text-1);
+    color: #f0f1f4;
   }
   .kpi-meta {
     font-size: 0.6rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
   }
   .alert-badge {
     position: absolute;
@@ -1269,7 +1183,7 @@
     justify-content: center;
   }
 
-  /* Grids */
+  /* ── Grids ── */
   .two-col {
     display: grid;
     grid-template-columns: 1.3fr 1fr;
@@ -1280,10 +1194,10 @@
     margin-bottom: 14px;
   }
 
-  /* Cards */
+  /* ── Cards ── */
   .card {
     background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--rim);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 18px;
     overflow: hidden;
   }
@@ -1309,15 +1223,14 @@
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
     margin-bottom: 3px;
   }
   .card-ti {
-    font-family: var(--font-display);
     font-size: 0.92rem;
     font-weight: 800;
     letter-spacing: -0.03em;
-    color: var(--text-1);
+    color: #f0f1f4;
   }
   .link-sm {
     font-size: 0.7rem;
@@ -1325,13 +1238,18 @@
     color: #a78bfa;
     text-decoration: none;
     opacity: 0.8;
-    transition: opacity 0.15s;
   }
   .link-sm:hover {
     opacity: 1;
   }
+  .card-empty {
+    text-align: center;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.2);
+    padding: 1.5rem;
+  }
 
-  /* Actor requests */
+  /* ── Actor requests ── */
   .req-list {
     padding: 0 11px 12px;
     display: flex;
@@ -1346,7 +1264,6 @@
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.05);
-    transition: background 0.15s;
   }
   .req-row:hover {
     background: rgba(255, 255, 255, 0.04);
@@ -1354,9 +1271,9 @@
   .req-id {
     font-size: 0.58rem;
     font-weight: 700;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
     font-family: monospace;
-    width: 44px;
+    width: 70px;
     flex-shrink: 0;
   }
   .req-info {
@@ -1366,11 +1283,11 @@
   .req-name {
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-1);
+    color: #f0f1f4;
   }
   .req-meta {
     font-size: 0.63rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
     margin-top: 1px;
   }
   .s-pill {
@@ -1384,7 +1301,7 @@
   }
   .req-time {
     font-size: 0.6rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
     white-space: nowrap;
   }
   .action-btns {
@@ -1410,11 +1327,11 @@
     transform: translateY(-1px);
   }
   .btn-approve {
-    border-color: rgba(0, 176, 155, 0.3);
-    color: var(--teal);
+    border-color: rgba(74, 222, 128, 0.3);
+    color: #4ade80;
   }
   .btn-approve:hover {
-    background: rgba(0, 176, 155, 0.12);
+    background: rgba(74, 222, 128, 0.12);
   }
   .btn-reject {
     border-color: rgba(248, 113, 113, 0.3);
@@ -1424,7 +1341,7 @@
     background: rgba(248, 113, 113, 0.1);
   }
 
-  /* Audit log */
+  /* ── Audit log ── */
   .audit-list {
     padding: 0 11px 12px;
     display: flex;
@@ -1448,7 +1365,6 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin-top: 1px;
   }
   .audit-inf {
     flex: 1;
@@ -1457,21 +1373,21 @@
   .audit-action {
     font-size: 0.7rem;
     font-weight: 700;
-    color: var(--text-1);
+    color: #f0f1f4;
     font-family: monospace;
     margin-bottom: 2px;
   }
   .audit-detail {
     font-size: 0.62rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
   }
   .audit-time {
     font-size: 0.62rem;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
     white-space: nowrap;
   }
 
-  /* Orgs table */
+  /* ── Orgs table ── */
   .t-scroll {
     overflow-x: auto;
   }
@@ -1486,13 +1402,13 @@
     font-weight: 700;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.25);
     text-align: left;
-    border-bottom: 1px solid var(--rim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
   td {
     padding: 11px 16px;
-    color: var(--text-2);
+    color: rgba(255, 255, 255, 0.6);
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     vertical-align: middle;
   }
@@ -1504,22 +1420,17 @@
   }
   .org-name {
     font-weight: 700;
-    color: var(--text-1);
-  }
-  .plan-tag {
-    font-size: 0.62rem;
-    font-weight: 800;
-    letter-spacing: 0.05em;
+    color: #f0f1f4;
   }
 
-  /* Loading */
+  /* ── Loading ── */
   .loading {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 200px;
     gap: 10px;
-    color: var(--text-3);
+    color: rgba(255, 255, 255, 0.3);
     font-size: 0.82rem;
   }
   .spinner {
@@ -1536,8 +1447,8 @@
     }
   }
 
-  /* Responsive */
-  @media (max-width: 1300px) {
+  /* ── Responsive ── */
+  @media (max-width: 1200px) {
     .kpi-strip {
       grid-template-columns: repeat(3, 1fr);
     }
