@@ -1,6 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit"
 import { sendAdminEmail, sendUserEmail } from "$lib/mailer"
-import { WebsiteBaseUrl } from "../../../../config"
+import { WebsiteBaseUrl } from "../../../config"
 
 export const actions = {
   toggleEmailSubscription: async ({ locals: { supabase, safeGetSession } }) => {

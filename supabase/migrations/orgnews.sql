@@ -84,3 +84,94 @@ create trigger on_org_news_update
   before update on public.org_news
   for each row
   execute function public.handle_org_news_updated_at();
+
+
+
+  create or replace function public.bump_permissions_version()
+returns trigger language plpgsql security definer as $$
+declare
+  target_profile_id uuid;
+  target_actor_id   uuid;
+begin
+  target_actor_id := coalesce(
+    case tg_table_name
+      when 'actor_permissions'   then coalesce(new.actor_id, old.actor_id)
+      when 'actor_policy_groups' then coalesce(new.actor_id, old.actor_id)
+      when 'actor_jurisdictions' then coalesce(new.actor_id, old.actor_id)
+      -- use row_to_json to defer field lookup to runtime —
+      -- direct new.to_actor_id reference fails at parse time on other tables
+      when 'delegated_authority' then coalesce(
+        (row_to_json(new) ->> 'to_actor_id')::uuid,
+        (row_to_json(old) ->> 'to_actor_id')::uuid
+      )
+      else null
+    end
+  );
+
+  select a.profile_id into target_profile_id
+  from actors a
+  where a.id = target_actor_id;
+
+  if target_profile_id is not null then
+    update profiles
+    set permissions_version = permissions_version + 1
+    where id = target_profile_id;
+  end if;
+
+  return coalesce(new, old);
+end;
+$$;
+
+
+UPDATE actor_permissions SET action = replace(action, ':', '.');
+UPDATE policy_group_permissions SET action = replace(action, ':', '.');
+
+
+-- migrations/20240001_actor_verification_tokens.sql
+--
+-- Stores OTP codes (SMS path) and email magic-link tokens.
+-- Supabase handles the email delivery; we handle SMS via Africa's Talking.
+--
+-- LIFECYCLE:
+--   1. Admin clicks "Send Verification" (SMS or Email)
+--   2. Row inserted here with method, token/otp, expiry
+--   3. User enters OTP or clicks link → row marked used_at
+--   4. actor.status → 'active'
+
+create table if not exists actor_verification_tokens (
+  id         uuid        primary key default gen_random_uuid(),
+  actor_id   uuid        not null references actors(id) on delete cascade,
+  profile_id uuid        not null references profiles(id) on delete cascade,
+
+  -- 'email' | 'sms'
+  method     text        not null check (method in ('email', 'sms')),
+
+  -- For SMS path: 6-digit code stored as bcrypt hash
+  -- For email path: opaque random token (UUID) used in the link
+  token_hash text        not null,
+
+  -- Destination — phone number or email address
+  destination text       not null,
+
+  expires_at  timestamptz not null default (now() + interval '15 minutes'),
+  used_at     timestamptz,
+  created_at  timestamptz not null default now(),
+
+  -- Only one active (unused, unexpired) token per actor at a time
+  -- Old ones are invalidated by the send_verification action
+  constraint one_active_token_per_actor
+    unique (actor_id, method)
+);
+
+-- Index for token lookup on the verify page
+create index if not exists idx_avt_token_hash
+  on actor_verification_tokens (token_hash)
+  where used_at is null;
+
+-- RLS: only service role can touch this table (admin uses service role)
+alter table actor_verification_tokens enable row level security;
+
+create policy "Service role only"
+  on actor_verification_tokens
+  for all
+  using (auth.role() = 'service_role');
