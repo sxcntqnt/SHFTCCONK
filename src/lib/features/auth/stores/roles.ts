@@ -27,7 +27,7 @@
  *   Pump Attendant
  */
 
-import { ACTIONS, ALL_ACTIONS } from './permissions'
+import { ACTIONS, ALL_ACTIONS } from './permisions'
 
 // src/lib/features/auth/stores/roles.ts
 
