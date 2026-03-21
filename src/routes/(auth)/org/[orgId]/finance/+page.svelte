@@ -6,12 +6,12 @@
     reconciliationStore,
     ledgerStore,
     dailyRevenueStore,
-  } from "$lib/features/finance/stores/finance"
-  import { getRevenueTrend } from "$lib/features/finance/reconciliation"
+  } from "$lib/features/finance/finance.store"
+  import { getRevenueTrend } from "$lib/features/finance/reconciliation.store"
   import {
     paymentStatus,
     subscribeToPayment,
-  } from "$lib/features/finance/stores/payment"
+  } from "$lib/features/finance/payments.store"
   import GlassCard from "$lib/components/GlassCard.svelte"
   import Chart from "$lib/components/Chart.svelte"
 

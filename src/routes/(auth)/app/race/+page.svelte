@@ -17,11 +17,15 @@
     menuVisible,
     vrMode,
     mobile,
-  } from "$lib/stores"
-  import { connectToFirebase, getDatabase, firebaseRef } from "$lib/firebase"
-  import { loadMap } from "$lib/mapLoader"
-  import Car from "$lib/components/Car.svelte"
-  import Menu from "$lib/components/Menu.svelte"
+  } from "$lib/features/race/stores/stores"
+  import {
+    connectToFirebase,
+    getDatabase,
+    firebaseRef,
+  } from "$lib/features/race/firebase"
+  import { loadMap } from "$lib/features/race/mapLoader"
+  import Car from "$lib/features/race/Car.svelte"
+  import Menu from "$lib/features/race/Menu.svelte"
   import {
     SPEED,
     CAMERA_LAG,

@@ -1,14 +1,28 @@
+// src/routes/(marketing)/pricing/pricing_plans.ts
+
 export const defaultPlanId = "free"
 
-export const pricingPlans = [
+export interface PricingPlan {
+  id: string
+  name: string
+  description: string
+  price: string               // display string e.g. "KES 900"
+  priceIntervalName: string
+  mpesaAmount: number | null  // numeric KES for STK push — null = no payment
+  note: string | null
+  features: string[]
+  targetUser: string
+  contactSales?: boolean      // true = skip STK, show contact link instead
+}
+
+export const pricingPlans: PricingPlan[] = [
   {
     id: "free",
     name: "Free",
     description: "Perfect for individuals getting started with basic access.",
-    price: "$0",
+    price: "KES 0",
     priceIntervalName: "per month",
-    stripe_price_id: null,
-    stripe_product_id: null,
+    mpesaAmount: null, // no payment required
     note: null,
     features: [
       "Live Feed access",
@@ -25,10 +39,9 @@ export const pricingPlans = [
     id: "starter",
     name: "Starter",
     description: "Ideal for small operators needing more capacity and exports.",
-    price: "$9",
+    price: "KES 900",
     priceIntervalName: "per month",
-    stripe_price_id: "price_starter_monthly",
-    stripe_product_id: "prod_starter",
+    mpesaAmount: 900,
     note: null,
     features: [
       "Everything in Free",
@@ -45,10 +58,9 @@ export const pricingPlans = [
     id: "pro",
     name: "Pro",
     description: "Unlimited everything for professionals demanding full control.",
-    price: "$29",
+    price: "KES 2,900",
     priceIntervalName: "per month",
-    stripe_price_id: "price_pro_monthly",
-    stripe_product_id: "prod_pro",
+    mpesaAmount: 2900,
     note: null,
     features: [
       "Everything in Starter",
@@ -66,11 +78,10 @@ export const pricingPlans = [
     id: "business",
     name: "Business",
     description: "Scalable for teams — volume discounts from 10+ seats.",
-    price: "$49",
+    price: "KES 4,900",
     priceIntervalName: "per user / month",
-    stripe_price_id: "price_business_monthly",
-    stripe_product_id: "prod_business",
-    note: "$39/user at 10+  ·  $29/user at 50+",
+    mpesaAmount: 4900,
+    note: "KES 3,900/user at 10+  ·  KES 2,900/user at 50+",
     features: [
       "Everything in Pro",
       "Custom Integrations",
@@ -87,8 +98,8 @@ export const pricingPlans = [
     description: "Custom contracts for large organisations with premium SLAs.",
     price: "Custom",
     priceIntervalName: "billed annually",
-    stripe_price_id: null,
-    stripe_product_id: null,
+    mpesaAmount: null, // contact sales — no STK push
+    contactSales: true,
     note: "Contact sales@matatupulse.com for a demo & quote",
     features: [
       "Everything in Business",
