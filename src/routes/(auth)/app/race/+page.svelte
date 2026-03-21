@@ -36,7 +36,7 @@
     OOB_DIST,
     LAPS,
     CAR_POSITIONS,
-  } from "$lib/constants"
+  } from "$lib/features/race/constants"
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
   let nameInput: HTMLInputElement
@@ -123,8 +123,9 @@
   // ── Mount: Firebase + submodule + device orientation ─────────────────────
   onMount(async () => {
     // Submodule init
-    raceModule = await import("src/lib/index.js")
-    raceModule.init?.()
+
+    raceModule = await import("$lib/features/race/index.js")
+    await raceModule.init() // connects Firebase, fires animateMenuIn
 
     // Firebase
     try {

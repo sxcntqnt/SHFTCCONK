@@ -1,97 +1,169 @@
+<!-- src/routes/(auth)/app/onboarding/+page.svelte -->
 <script lang="ts">
-  import { onMount } from "svelte"
-  import { ROLES } from "$lib/features/auth/stores/roles"
-  import type { Role } from "$lib/features/auth/stores/roles"
   import { fly, fade } from "svelte/transition"
   import { enhance } from "$app/forms"
+  import { z } from "zod"
+  import { ROLES } from "$lib/features/auth/stores/roles"
+  import type { Role } from "$lib/features/auth/stores/roles"
 
   let { form } = $props<{ form?: { message?: string } }>()
 
-  // ── State ────────────────────────────────────────────────
+  // ── Zod schema — role must be one of the ROLES const values ──────────────
+  // This runs client-side before submit AND documents the valid set.
+  // The server (page.server.ts) performs the same check independently.
+  const RoleSchema = z.enum(Object.values(ROLES) as [Role, ...Role[]], {
+    errorMap: () => ({ message: "Please select a valid role." }),
+  })
+
+  // ── Roles shown in the onboarding UI ─────────────────────────────────────
+  // These are the roles a new user can self-select.
+  // ADMIN / SUPER_ADMIN are excluded — platform-assigned only.
+  const SELECTABLE_ROLES: {
+    id: Role
+    label: string
+    description: string
+    color: string
+    group: string
+    icon: string
+  }[] = [
+    {
+      id: ROLES.PASSENGER,
+      label: "Passenger",
+      group: "Traveller",
+      description: "Book seats, track matatus, and pay fares digitally.",
+      color: "var(--teal)",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+    },
+    {
+      id: ROLES.DRIVER,
+      label: "Driver",
+      group: "Crew",
+      description: "Manage routes, telemetry and earnings.",
+      color: "#a78bfa",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,
+    },
+    {
+      id: ROLES.CONDUCTOR,
+      label: "Conductor",
+      group: "Crew",
+      description: "Handle fares, passengers and manifests.",
+      color: "#fb923c",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7z"/></svg>`,
+    },
+    {
+      id: ROLES.OWNER,
+      label: "Vehicle Owner",
+      group: "Asset Owner",
+      description: "Fleet management, analytics and payroll.",
+      color: "#facc15",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>`,
+    },
+    {
+      id: ROLES.ORGANIZATION,
+      label: "SACCO / Operator",
+      group: "Organisation",
+      description: "Run a SACCO or transport organisation end-to-end.",
+      color: "var(--orange)",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>`,
+    },
+    {
+      id: ROLES.FLEET_MANAGER,
+      label: "Fleet Manager",
+      group: "SACCO Staff",
+      description: "Vehicles, assignments, compliance and settings.",
+      color: "#34d399",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="7" cy="12" r="2"/><circle cx="17" cy="12" r="2"/><path d="M7 8h10"/></svg>`,
+    },
+    {
+      id: ROLES.MECHANIC,
+      label: "Mechanic",
+      group: "SACCO Staff",
+      description: "Log and update vehicle maintenance records.",
+      color: "#94a3b8",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>`,
+    },
+    {
+      id: ROLES.STAGE_OPERATOR,
+      label: "Stage Operator",
+      group: "Operations",
+      description: "Control stage queues and dispatch.",
+      color: "#38bdf8",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
+    },
+    {
+      id: ROLES.PLANNER,
+      label: "Route Planner",
+      group: "Operations",
+      description: "Route design, demand analysis and scheduling.",
+      color: "#818cf8",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+    },
+    {
+      id: ROLES.REGULATOR,
+      label: "Regulator",
+      group: "Regulatory",
+      description: "Compliance, licensing and oversight.",
+      color: "#f472b6",
+      icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    },
+  ]
+
+  // ── PRO roles — require NTSA / admin verification ─────────────────────────
+  const PRO_ROLES = new Set<Role>([
+    ROLES.DRIVER,
+    ROLES.CONDUCTOR,
+    ROLES.STAGE_OPERATOR,
+  ])
+
+  // ── State ─────────────────────────────────────────────────────────────────
   let step = $state(1)
-  let selectedRole = $state<Role | "">("")
-  let selectedSacco = $state<string | null>(null)
-  let fullName = $state("")
-  let isPro = $derived(selectedRole !== "" && isProRole(selectedRole))
-  let searchState = $state("")
+  let selectedRole = $state<Role | null>(null)
+  let validationErr = $state<string | null>(null)
   let loading = $state(false)
 
-  const saccos = [
-    "sxcntqnt",
-    "2NK Sacco",
-    "Super Metro",
-    "4NTE",
-    "Mololine",
-    "Shuttle Masters",
-    "Other",
-  ] as const
+  // ── Derived ───────────────────────────────────────────────────────────────
+  let isPro = $derived(selectedRole !== null && PRO_ROLES.has(selectedRole))
+  let totalSteps = $derived(isPro ? 3 : 2)
+  let finalStep = $derived(isPro ? 3 : 2)
+  let selectedMeta = $derived(
+    SELECTABLE_ROLES.find((r) => r.id === selectedRole) ?? null,
+  )
 
-  // ── PRO roles (require verification) ────────────────────
-  const PRO_ROLES = ["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"] as const
-  type ProRole = (typeof PRO_ROLES)[number]
+  // Group by .group field for display
+  let groupedRoles = $derived(() => {
+    const map = new Map<string, typeof SELECTABLE_ROLES>()
+    for (const role of SELECTABLE_ROLES) {
+      if (!map.has(role.group)) map.set(role.group, [])
+      map.get(role.group)!.push(role)
+    }
+    return [...map.entries()]
+  })
 
-  function isProRole(role: Role | "" | null | undefined): role is ProRole {
-    if (!role) return false
-    return PRO_ROLES.includes(role as ProRole)
+  // ── Client-side Zod validation ────────────────────────────────────────────
+  function validateRole(): boolean {
+    validationErr = null
+    const result = RoleSchema.safeParse(selectedRole)
+    if (!result.success) {
+      validationErr = result.error.errors[0]?.message ?? "Invalid role."
+      return false
+    }
+    return true
   }
 
-  // ── Derived values ───────────────────────────────────────
-  let filteredSaccos = $derived(
-    saccos.filter((s) => s.toLowerCase().includes(searchState.toLowerCase())),
-  )
-  let totalSteps = $derived(isPro ? 4 : 3)
-  let saccoStep = $derived(isPro ? 3 : 2)
-  let finalStep = $derived(isPro ? 4 : 3)
-
-  // ── Role metadata ───────────────────────────────────────
-  const ROLE_META: Partial<Record<Role, { icon: string; desc: string }>> = {
-    PASSENGER: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
-      desc: "Plan trips, track matatus, book seats",
-    },
-    DRIVER: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>`,
-      desc: "Manage routes, telemetry & earnings",
-    },
-    CONDUCTOR: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7z"/></svg>`,
-      desc: "Handle fares, passengers & manifests",
-    },
-    OWNER: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>`,
-      desc: "Fleet management, analytics & payroll",
-    },
-    STAGE_OPERATOR: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-      desc: "Control stage queues & dispatch",
-    },
-    ORGANIZATION: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>`,
-      desc: "Corporate mobility & team travel",
-    },
-    PLANNER: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
-      desc: "Route design, demand & scheduling",
-    },
-    REGULATOR: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-      desc: "Compliance, licensing & oversight",
-    },
-    ADMIN: {
-      icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
-      desc: "Full platform access & configuration",
-    },
+  function advanceStep() {
+    if (validateRole()) step++
   }
 </script>
 
-<!-- 
-  No .onboard-page wrapper needed — the layout.svelte provides
-  the full-viewport dark background + centered flexbox.
-  This component just renders the card.
--->
+<svelte:head>
+  <title>Welcome — Matatu Pulse</title>
+</svelte:head>
+
 <div class="onboard-card">
-  <!-- ── Step indicator ── -->
-  <div class="step-track">
+  <div class="card-line" aria-hidden="true"></div>
+
+  <!-- ── Step indicator ────────────────────────────────────────────────────── -->
+  <div class="step-track" role="list" aria-label="Onboarding progress">
     {#each { length: totalSteps } as _, i}
       <div
         class="step-node {step > i + 1
@@ -99,6 +171,8 @@
           : step === i + 1
             ? 'active'
             : ''}"
+        role="listitem"
+        aria-current={step === i + 1 ? "step" : undefined}
       >
         {#if step > i + 1}
           <svg
@@ -116,44 +190,82 @@
         {/if}
       </div>
       {#if i < totalSteps - 1}
-        <div class="step-line {step > i + 1 ? 'done' : ''}"></div>
+        <div
+          class="step-line {step > i + 1 ? 'done' : ''}"
+          aria-hidden="true"
+        ></div>
       {/if}
     {/each}
   </div>
 
-  <!-- ═══ STEP 1 — Role selection ═══ -->
+  <!-- ═══ STEP 1 — Role selection ═══════════════════════════════════════════ -->
   {#if step === 1}
-    <div in:fly={{ y: 16, duration: 280 }}>
-      <div class="step-eyebrow">Step 1 of {totalSteps || 3}</div>
+    <div in:fly={{ y: 16, duration: 260 }}>
+      <div class="step-eyebrow">Step 1 of {totalSteps}</div>
       <h1 class="step-title">Your <em>Role</em></h1>
       <p class="step-sub">How will you be using Matatu Pulse?</p>
 
-      <div class="role-grid">
-        {#each Object.values(ROLES) as role}
-          {@const meta = ROLE_META[role]}
-          {@const isVerified = PRO_ROLES.includes(role as ProRole)}
-          <button
-            type="button"
-            class="role-btn {selectedRole === role ? 'selected' : ''}"
-            onclick={() => (selectedRole = role)}
-          >
-            <div class="role-icon">
-              {@html meta?.icon ?? ""}
+      <div class="role-groups" role="radiogroup" aria-label="Select your role">
+        {#each groupedRoles() as [group, roles]}
+          <div class="role-group">
+            <div class="group-label">{group}</div>
+            <div class="role-grid">
+              {#each roles as role}
+                {@const isSelected = selectedRole === role.id}
+                <button
+                  type="button"
+                  class="role-btn {isSelected ? 'selected' : ''}"
+                  style="--role-color: {role.color}"
+                  onclick={() => {
+                    selectedRole = role.id
+                    validationErr = null
+                  }}
+                  role="radio"
+                  aria-checked={isSelected}
+                >
+                  <div class="role-icon" style="color:{role.color}">
+                    {@html role.icon}
+                  </div>
+                  <div class="role-info">
+                    {#if PRO_ROLES.has(role.id)}
+                      <span class="verified-badge">Verified</span>
+                    {/if}
+                    <div class="role-name">{role.label}</div>
+                    <div class="role-desc">{role.description}</div>
+                  </div>
+                  <div
+                    class="role-check {isSelected ? 'checked' : ''}"
+                    aria-hidden="true"
+                  >
+                    {#if isSelected}
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3.5"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    {/if}
+                  </div>
+                </button>
+              {/each}
             </div>
-            <div>
-              {#if isVerified}<span class="pro-badge">Verified</span>{/if}
-              <div class="role-name">{role.replace("_", " ")}</div>
-              <div class="role-desc">{meta?.desc ?? ""}</div>
-            </div>
-          </button>
+          </div>
         {/each}
       </div>
+
+      {#if validationErr}
+        <div class="err-inline" role="alert">{validationErr}</div>
+      {/if}
 
       <button
         type="button"
         class="btn-primary"
         disabled={!selectedRole}
-        onclick={() => step++}
+        onclick={advanceStep}
       >
         Continue
         <svg
@@ -169,13 +281,14 @@
       </button>
     </div>
 
-    <!-- ═══ STEP 2 — Verification (PRO roles only) ═══ -->
-  {:else if step === 2 && PRO_ROLES.includes(selectedRole as ProRole)}
-    <div in:fly={{ x: 24, duration: 280 }}>
+    <!-- ═══ STEP 2 (PRO only) — Verification notice ═══════════════════════════ -->
+  {:else if step === 2 && isPro}
+    <div in:fly={{ x: 24, duration: 260 }}>
       <div class="step-eyebrow">Step 2 of {totalSteps}</div>
       <h1 class="step-title">Verify <em>Credentials</em></h1>
       <p class="step-sub">
-        {selectedRole.replace("_", " ")} accounts require verification before activation.
+        {selectedMeta?.label ?? selectedRole} accounts require verification before
+        activation.
       </p>
 
       <div class="verify-block">
@@ -192,10 +305,11 @@
           </svg>
         </div>
         <div>
-          <div class="verify-title">Identity Verification</div>
-          <div class="verify-sub">
-            We'll cross-reference your details with the NTSA operator registry.
-            This keeps the platform safe for all users.
+          <div class="verify-title">Identity Verification Required</div>
+          <div class="verify-body">
+            We cross-reference your details with the NTSA operator registry.
+            You'll have full passenger access while your request is reviewed —
+            typically within 24 hours.
           </div>
         </div>
       </div>
@@ -207,10 +321,10 @@
         <button
           type="button"
           class="btn-primary"
-          style="flex:1;"
+          style="flex:1"
           onclick={() => step++}
         >
-          Continue
+          I understand, continue
           <svg
             width="14"
             height="14"
@@ -225,111 +339,15 @@
       </div>
     </div>
 
-    <!-- ═══ SACCO STEP ═══ -->
-  {:else if step === saccoStep}
-    <div in:fly={{ x: 24, duration: 280 }}>
-      <div class="step-eyebrow">Step {saccoStep} of {totalSteps}</div>
-      <h1 class="step-title">Your <em>SACCO</em></h1>
-      <p class="step-sub">
-        Linking to a SACCO unlocks route data and operator tools. Optional.
-      </p>
-
-      {#if selectedSacco}
-        <div class="sacco-chip">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-          >
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          {selectedSacco}
-          <button
-            class="chip-clear"
-            onclick={() => {
-              selectedSacco = null
-              searchState = ""
-            }}
-            aria-label="Remove SACCO"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" /><line
-                x1="6"
-                y1="6"
-                x2="18"
-                y2="18"
-              />
-            </svg>
-          </button>
-        </div>
-      {:else}
-        <input
-          class="search-field"
-          bind:value={searchState}
-          placeholder="Search for your SACCO…"
-        />
-        {#if searchState}
-          <div class="sacco-dropdown">
-            {#each filteredSaccos as sacco}
-              <button
-                type="button"
-                class="sacco-option"
-                onclick={() => {
-                  selectedSacco = sacco
-                  searchState = sacco
-                }}
-              >
-                {sacco}
-              </button>
-            {/each}
-            {#if filteredSaccos.length === 0}
-              <div
-                style="padding:14px;font-size:0.78rem;color:var(--text-3);text-align:center;"
-              >
-                No match — try "Other"
-              </div>
-            {/if}
-          </div>
-        {/if}
-      {/if}
-
-      <button type="button" class="btn-primary" onclick={() => step++}>
-        Continue
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-        >
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </button>
-      <button type="button" class="btn-ghost" onclick={() => step++}>
-        I'll do this later
-      </button>
-    </div>
-
-    <!-- ═══ FINAL STEP — Submit ═══ -->
+    <!-- ═══ FINAL STEP — Summary + submit ═════════════════════════════════════ -->
   {:else}
-    <div in:fade={{ duration: 240 }}>
+    <div in:fade={{ duration: 220 }}>
       <div class="step-eyebrow">Step {finalStep} of {totalSteps}</div>
 
       <div class="final-icon">
         <svg
-          width="28"
-          height="28"
+          width="26"
+          height="26"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -340,20 +358,36 @@
         </svg>
       </div>
 
-      <h1 class="step-title" style="text-align:center;">
-        You're <em>set!</em>
+      <h1 class="step-title" style="text-align:center">
+        You're <em>all set!</em>
       </h1>
-      <p class="step-sub" style="text-align:center;margin-bottom:24px;">
-        {#if selectedRole === "PASSENGER"}
+      <p class="step-sub" style="text-align:center;margin-bottom:20px">
+        {#if selectedRole === ROLES.PASSENGER}
           Your profile is ready. Let's get you into the app.
         {:else}
-          Your request will be reviewed. You can use the app as a passenger
-          while you wait.
+          Your <strong style="color:var(--text-1)"
+            >{selectedMeta?.label ?? selectedRole}</strong
+          >
+          request will be reviewed by an admin. You'll have passenger access while
+          you wait.
         {/if}
       </p>
 
+      <!-- Role summary chip -->
+      {#if selectedMeta}
+        <div class="summary-chip" style="--role-color:{selectedMeta.color}">
+          <div class="summary-icon" style="color:{selectedMeta.color}">
+            {@html selectedMeta.icon}
+          </div>
+          <div>
+            <div class="summary-role">{selectedMeta.label}</div>
+            <div class="summary-group">{selectedMeta.group}</div>
+          </div>
+        </div>
+      {/if}
+
       {#if form?.message}
-        <div class="error-banner">
+        <div class="error-banner" role="alert">
           <svg
             width="13"
             height="13"
@@ -362,22 +396,26 @@
             stroke="currentColor"
             stroke-width="2.5"
           >
-            <circle cx="12" cy="12" r="10" /><line
-              x1="12"
-              y1="8"
-              x2="12"
-              y2="12"
-            />
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           {form.message}
         </div>
       {/if}
 
+      <!--
+        `role` is validated by Zod client-side before this form can submit.
+        The server runs the same check via VALID_ROLES in page.server.ts.
+        No other hidden inputs — name/phone are collected by create_profile.
+      -->
       <form
         method="POST"
         action="?/completeOnboarding"
         use:enhance={() => {
+          // Final Zod guard — prevents submitting if somehow selectedRole
+          // was tampered with between steps (e.g. via devtools)
+          if (!validateRole()) return () => {}
           loading = true
           return async ({ update }) => {
             await update()
@@ -385,17 +423,30 @@
           }
         }}
       >
-        <input type="hidden" name="role" value={selectedRole} />
-        <input type="hidden" name="sacco" value={selectedSacco ?? ""} />
-        <!-- full_name included so page.server.ts can update the profile -->
-        <input type="hidden" name="full_name" value={fullName} />
+        <input type="hidden" name="role" value={selectedRole ?? ""} />
 
-        <button type="submit" class="btn-primary" disabled={loading}>
+        <button
+          type="submit"
+          class="btn-primary"
+          disabled={loading || !selectedRole}
+        >
           {#if loading}
-            <span class="btn-spinner"></span>
-            Setting up your account…
+            <span class="btn-spinner" aria-hidden="true"></span>
+            Setting up…
+          {:else if selectedRole === ROLES.PASSENGER}
+            Continue to Profile
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
           {:else}
-            {selectedRole === "PASSENGER" ? "Enter App" : "Submit & Enter App"}
+            Submit &amp; Continue
             <svg
               width="14"
               height="14"
@@ -411,17 +462,17 @@
       </form>
 
       <button type="button" class="btn-ghost" onclick={() => step--}>
-        Go back
+        ← Go back and change role
       </button>
     </div>
   {/if}
 </div>
 
 <style>
-  /* ── Card (layout.svelte handles viewport background) ── */
+  /* ── Card ── */
   .onboard-card {
     width: 100%;
-    max-width: 600px;
+    max-width: 620px;
     background: #13131e;
     border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 24px;
@@ -430,8 +481,7 @@
     position: relative;
     overflow: hidden;
   }
-  .onboard-card::before {
-    content: "";
+  .card-line {
     position: absolute;
     top: 0;
     left: 32px;
@@ -445,41 +495,40 @@
     );
   }
 
-  /* ── Step indicator ── */
+  /* ── Step track ── */
   .step-track {
     display: flex;
     align-items: center;
-    gap: 0;
     margin-bottom: 32px;
   }
   .step-node {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     width: 28px;
     height: 28px;
     border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-size: 0.68rem;
     font-weight: 800;
     flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-3);
+    background: rgba(255, 255, 255, 0.04);
     transition:
       background 0.3s,
       border-color 0.3s,
       color 0.3s;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    color: var(--text-3);
-    background: rgba(255, 255, 255, 0.04);
-  }
-  .step-node.done {
-    background: rgba(0, 176, 155, 0.15);
-    border-color: rgba(0, 176, 155, 0.4);
-    color: var(--teal);
   }
   .step-node.active {
     background: rgba(242, 101, 34, 0.15);
     border-color: rgba(242, 101, 34, 0.5);
     color: var(--orange);
     box-shadow: 0 0 0 3px rgba(242, 101, 34, 0.12);
+  }
+  .step-node.done {
+    background: rgba(0, 176, 155, 0.15);
+    border-color: rgba(0, 176, 155, 0.4);
+    color: var(--teal);
   }
   .step-line {
     flex: 1;
@@ -519,110 +568,170 @@
   .step-sub {
     font-size: 0.875rem;
     color: var(--text-3);
-    margin-bottom: 28px;
+    margin-bottom: 24px;
     line-height: 1.6;
   }
 
-  /* ── Role grid ── */
-  .role-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    max-height: 380px;
+  /* ── Role groups ── */
+  .role-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-height: 420px;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--rim-2) transparent;
     padding-right: 4px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
-  .role-grid::-webkit-scrollbar {
+  .role-groups::-webkit-scrollbar {
     width: 3px;
   }
-  .role-grid::-webkit-scrollbar-thumb {
+  .role-groups::-webkit-scrollbar-thumb {
     background: var(--rim-2);
     border-radius: 2px;
   }
 
+  .role-group {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .group-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    padding-left: 2px;
+  }
+
+  .role-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* ── Role button ── */
   .role-btn {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 14px;
-    border-radius: 14px;
+    gap: 11px;
+    padding: 13px;
+    border-radius: 13px;
     border: 1px solid rgba(255, 255, 255, 0.07);
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.025);
     cursor: pointer;
     text-align: left;
-    transition:
-      border-color 0.2s,
-      background 0.2s,
-      transform 0.15s;
     font-family: var(--font-body);
+    position: relative;
+    overflow: hidden;
+    transition:
+      border-color 0.18s,
+      background 0.18s,
+      transform 0.14s;
   }
-  .role-btn:hover {
-    border-color: rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.06);
+  .role-btn::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 12px;
+    right: 12px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.05),
+      transparent
+    );
+  }
+  .role-btn:hover:not(.selected) {
+    border-color: rgba(255, 255, 255, 0.13);
+    background: rgba(255, 255, 255, 0.05);
     transform: translateY(-1px);
   }
   .role-btn.selected {
-    border-color: rgba(242, 101, 34, 0.45);
-    background: rgba(242, 101, 34, 0.08);
+    border-color: color-mix(in srgb, var(--role-color) 45%, transparent);
+    background: color-mix(in srgb, var(--role-color) 8%, transparent);
+    transform: translateY(-1px);
   }
 
   .role-icon {
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-3);
     flex-shrink: 0;
-    transition:
-      background 0.2s,
-      color 0.2s,
-      border-color 0.2s;
-  }
-  .role-btn.selected .role-icon {
-    background: rgba(242, 101, 34, 0.12);
-    border-color: rgba(242, 101, 34, 0.3);
-    color: var(--orange);
   }
 
-  .role-name {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--text-1);
-    text-transform: capitalize;
-    margin-bottom: 3px;
-    letter-spacing: -0.01em;
-  }
-  .role-desc {
-    font-size: 0.68rem;
-    color: var(--text-3);
-    line-height: 1.4;
+  .role-info {
+    flex: 1;
+    min-width: 0;
   }
 
-  .pro-badge {
+  .verified-badge {
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.55rem;
-    font-weight: 700;
+    font-size: 0.52rem;
+    font-weight: 800;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--orange);
     background: rgba(242, 101, 34, 0.1);
     border: 1px solid rgba(242, 101, 34, 0.2);
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 100px;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     width: fit-content;
   }
 
-  /* ── Verification block ── */
+  .role-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-1);
+    margin-bottom: 2px;
+    letter-spacing: -0.01em;
+  }
+  .role-desc {
+    font-size: 0.66rem;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  .role-check {
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    transition: all 0.14s;
+  }
+  .role-check.checked {
+    background: var(--role-color);
+    border-color: var(--role-color);
+    color: #fff;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-color) 20%, transparent);
+  }
+
+  /* ── Validation error ── */
+  .err-inline {
+    font-size: 0.72rem;
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 14px;
+  }
+
+  /* ── Verify block ── */
   .verify-block {
     background: rgba(242, 101, 34, 0.06);
     border: 1px solid rgba(242, 101, 34, 0.15);
@@ -638,7 +747,7 @@
     height: 36px;
     border-radius: 10px;
     background: rgba(242, 101, 34, 0.12);
-    border: 1px solid rgba(242, 101, 34, 0.2);
+    border: 1px solid rgba(242, 101, 34, 0.22);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -651,97 +760,73 @@
     color: var(--text-1);
     margin-bottom: 4px;
   }
-  .verify-sub {
+  .verify-body {
     font-size: 0.78rem;
     color: var(--text-3);
-    line-height: 1.5;
+    line-height: 1.55;
   }
 
-  /* ── SACCO search ── */
-  .search-field {
-    width: 100%;
-    padding: 11px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    border-radius: 12px;
-    font-family: var(--font-body);
-    font-size: 0.875rem;
-    color: var(--text-1);
-    outline: none;
-    margin-bottom: 10px;
-    transition:
-      border-color 0.2s,
-      background 0.2s,
-      box-shadow 0.2s;
-  }
-  .search-field::placeholder {
-    color: var(--text-3);
-  }
-  .search-field:focus {
-    border-color: rgba(242, 101, 34, 0.4);
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow: 0 0 0 3px rgba(242, 101, 34, 0.1);
-  }
-
-  .sacco-dropdown {
-    background: #0f0f18;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    max-height: 200px;
-    overflow-y: auto;
-    margin-bottom: 16px;
-    scrollbar-width: thin;
-  }
-  .sacco-option {
-    display: block;
-    width: 100%;
-    padding: 11px 14px;
-    background: none;
-    border: none;
-    font-family: var(--font-body);
-    font-size: 0.875rem;
-    color: var(--text-2);
-    text-align: left;
-    cursor: pointer;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    transition:
-      background 0.15s,
-      color 0.15s;
-  }
-  .sacco-option:last-child {
-    border-bottom: none;
-  }
-  .sacco-option:hover {
-    background: rgba(242, 101, 34, 0.08);
-    color: var(--text-1);
-  }
-
-  .sacco-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 12px;
+  /* ── Final step ── */
+  .final-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
     background: rgba(0, 176, 155, 0.1);
     border: 1px solid rgba(0, 176, 155, 0.25);
-    border-radius: 100px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--teal);
-    margin-bottom: 16px;
-  }
-  .chip-clear {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--teal);
-    opacity: 0.7;
     display: flex;
     align-items: center;
-    transition: opacity 0.15s;
-    padding: 0;
+    justify-content: center;
+    color: var(--teal);
+    margin: 0 auto 20px;
   }
-  .chip-clear:hover {
-    opacity: 1;
+
+  .summary-chip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    background: color-mix(in srgb, var(--role-color) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--role-color) 25%, transparent);
+    border-radius: 14px;
+    margin-bottom: 24px;
+  }
+  .summary-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .summary-role {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-1);
+  }
+  .summary-group {
+    font-size: 0.62rem;
+    color: var(--text-3);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  /* ── Error banner ── */
+  .error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 10px;
+    font-size: 0.78rem;
+    color: #f87171;
+    margin-bottom: 18px;
   }
 
   /* ── Buttons ── */
@@ -764,7 +849,8 @@
     transition:
       background 0.18s,
       box-shadow 0.18s,
-      transform 0.15s;
+      transform 0.14s;
+    margin-top: 4px;
   }
   .btn-primary:hover:not(:disabled) {
     background: #d95618;
@@ -782,8 +868,8 @@
   .btn-row {
     display: flex;
     gap: 10px;
-    margin-top: 24px;
   }
+
   .btn-secondary {
     flex: 1;
     padding: 13px;
@@ -808,7 +894,7 @@
     background: none;
     border: none;
     font-family: var(--font-body);
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--text-3);
     cursor: pointer;
     margin-top: 12px;
@@ -816,14 +902,15 @@
     width: 100%;
     text-align: center;
     transition: color 0.15s;
+    padding: 4px;
   }
   .btn-ghost:hover {
     color: var(--text-2);
   }
 
   .btn-spinner {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     border: 2px solid rgba(255, 255, 255, 0.3);
     border-top-color: #fff;
     border-radius: 50%;
@@ -836,39 +923,16 @@
     }
   }
 
-  /* ── Final step ── */
-  .final-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 18px;
-    background: rgba(0, 176, 155, 0.1);
-    border: 1px solid rgba(0, 176, 155, 0.25);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--teal);
-    margin: 0 auto 20px;
-  }
-
-  .error-banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: rgba(248, 113, 113, 0.08);
-    border: 1px solid rgba(248, 113, 113, 0.2);
-    border-radius: 10px;
-    font-size: 0.78rem;
-    color: #f87171;
-    margin-bottom: 20px;
-  }
-
-  @media (max-width: 540px) {
+  /* ── Responsive ── */
+  @media (max-width: 560px) {
     .onboard-card {
-      padding: 28px 22px;
+      padding: 28px 20px;
     }
     .role-grid {
       grid-template-columns: 1fr;
+    }
+    .role-groups {
+      max-height: none;
     }
   }
 </style>

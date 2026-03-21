@@ -1,105 +1,127 @@
-// src/routes/(auth)/onboarding/+page.server.ts
-import { fail, redirect } from '@sveltejs/kit';
-import type { Actions } from './$types';
-import { ROLES } from '$lib/features/auth/stores/roles';
+// src/routes/(auth)/app/onboarding/+page.server.ts
+//
+// Onboarding form action — step 1 of the new user flow.
+//
+// Flow:
+//   /app/onboarding      → role selection + PRO verification acknowledgement
+//   /app/create_profile  → name, phone, org associations  (← we redirect here)
+//   /app/select_plan     → plan selection
+//   /app/dashboard       → done
+//
+// What this action does:
+//   1. Validates the submitted role against your `roles` table values
+//   2. For PASSENGER: redirects straight to create_profile (no actor_request yet)
+//   3. For PRO/org roles: creates a pending actor_request so admins can approve
+//      while the user continues onboarding as a passenger
+//   4. Passes `role` forward as a URL param so create_profile can store it
+//
+// What this does NOT do:
+//   - Collect name/phone (that's create_profile's job)
+//   - Handle SACCO/org associations (that's create_profile's job — DB-driven)
+//   - Create actors directly (admin approval or redeem_invite does that)
+//
+// Schema used:
+//   actor_requests: profile_id, requested_type, payload (jsonb), status
+//   The handle_new_user trigger already created a PASSENGER actor on signup.
 
-// src/routes/(auth)/onboarding/+page.server.ts
-//
-// Onboarding form action — handles the final "Enter Dashboard" submit.
-//
-// What this does:
-//   1. Updates the user's profile (full_name) if provided
-//   2. If role ≠ PASSENGER, creates an actor_request for admin approval
-//   3. If a SACCO was selected, stores it in the request payload
-//   4. Redirects to the appropriate dashboard
-//
-// What it does NOT do:
-//   - Create actors directly (that's admin approval or redeem_invite)
-//   - Update profiles.role or profiles.sacco_id (these columns don't exist)
-//   - The handle_new_user trigger already created a PASSENGER actor
-//
-// Schema alignment:
-//   - profiles: id, full_name, company_name, avatar_url, website, unsubscribed, permissions_version
-//   - actor_requests: profile_id, requested_type, payload, status ('pending')
-//   - actors: created by admin approval or redeem_invite, NOT by onboarding
+import { fail, redirect } from "@sveltejs/kit"
+import type { Actions, PageServerLoad } from "./$types"
 
+// ── Load ──────────────────────────────────────────────────────────────────────
+// Redirect away if the user already completed onboarding
+// (has a non-empty full_name and phone set by create_profile)
 
+export const load: PageServerLoad = async ({ locals }) => {
+  const { session } = await locals.safeGetSession()
+  if (!session) redirect(303, "/login/sign_in")
+
+  const { data: profile } = await locals.supabase
+    .from("profiles")
+    .select("full_name, phone")
+    .eq("id", session.user.id)
+    .maybeSingle()
+
+  // If they already finished create_profile, push them forward
+  if (profile?.full_name?.trim() && profile?.phone?.trim()) {
+    redirect(303, "/app/select_plan")
+  }
+
+  return {}
+}
+
+// ── Valid roles (must match your `roles` table) ───────────────────────────────
+const VALID_ROLES = new Set([
+  "PASSENGER",
+  "DRIVER",
+  "CONDUCTOR",
+  "OWNER",
+  "ORGANIZATION",
+  "STAGE_OPERATOR",
+  "PLANNER",
+  "REGULATOR",
+])
+
+const PRO_ROLES = new Set(["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"])
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 
 export const actions: Actions = {
   completeOnboarding: async ({ request, locals }) => {
-    const { supabase, user } = locals
+    const { session } = await locals.safeGetSession()
+    if (!session) redirect(303, "/login/sign_in")
 
-    if (!user) {
-      redirect(303, "/login/sign_in")
-    }
-
+    const supabase = locals.supabase
+    const userId   = session.user.id
     const formData = await request.formData()
-    const role = formData.get("role")?.toString()
-    const sacco = formData.get("sacco")?.toString() || null
-    const fullName = formData.get("full_name")?.toString() || null
 
-    if (!role) {
-      return fail(400, { message: "Role is required" })
+    const role = formData.get("role")?.toString()?.trim()
+
+    // ── Validate role ─────────────────────────────────────────────────────────
+    if (!role || !VALID_ROLES.has(role)) {
+      return fail(400, { message: "Please select a valid role to continue." })
     }
 
-    // ─── Update profile name if provided ────────────────────
-    // The profile was created by handle_new_user with the name
-    // from the OAuth provider (or null). Onboarding lets them
-    // set/correct it.
-    if (fullName && fullName.trim() !== "User") {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ full_name: fullName.trim() })
-        .eq("id", user.id)
-
-      if (profileError) {
-        console.error("[onboarding] Profile update failed:", profileError)
-        return fail(500, { message: "Failed to update profile" })
-      }
-    }
-
-    // ─── PASSENGER: no actor request needed ─────────────────
-    // handle_new_user already created a PASSENGER actor.
-    // Just redirect to the main app.
+    // ── PASSENGER — no actor_request needed ───────────────────────────────────
+    // handle_new_user trigger already created a PASSENGER actor on signup.
+    // Skip straight to create_profile to collect name + phone.
     if (role === "PASSENGER") {
-      redirect(303, "/app/dashboard")
+      redirect(303, `/app/create_profile?role=PASSENGER`)
     }
 
-    // ─── Other roles: create an actor_request ───────────────
-    // PRO roles (DRIVER, CONDUCTOR, STAGE_OPERATOR) and org roles
-    // (OWNER, ORGANIZATION) require admin approval. The request
-    // goes into actor_requests with status 'pending'.
-    //
-    // An admin in /admin/actor_requests can approve → which creates
-    // the actor + jurisdiction + policy group binding.
-    const payload: Record<string, unknown> = {}
-    if (sacco) {
-      payload.requested_sacco = sacco
-    }
-
+    // ── PRO / org roles — create pending actor_request ────────────────────────
+    // The user still only has PASSENGER access until an admin approves.
+    // We log the request now so approval can happen in parallel while
+    // the user completes the rest of onboarding.
     const { error: requestError } = await supabase
       .from("actor_requests")
       .insert({
-        profile_id: user.id,
+        profile_id:     userId,
         requested_type: role,
-        payload,
+        payload: {
+          // PRO roles need NTSA verification — flag it in the payload
+          // so the admin panel can surface the right approval workflow
+          requires_verification: PRO_ROLES.has(role),
+        },
         status: "pending",
       })
 
     if (requestError) {
-      // Duplicate request check (unique constraint or existing pending)
+      // 23505 = unique constraint violation — duplicate pending request
       if (requestError.code === "23505") {
-        return fail(409, {
-          message: "You already have a pending request for this role",
-        })
+        // Not a hard error — just continue to create_profile
+        // They may have refreshed or gone back
+        redirect(303, `/app/create_profile?role=${role}`)
       }
-      console.error("[onboarding] Actor request failed:", requestError)
-      return fail(500, { message: "Failed to submit role request" })
+
+      console.error("[onboarding] actor_request insert failed:", requestError)
+      return fail(500, {
+        message: "Something went wrong submitting your role request. Please try again.",
+      })
     }
 
-    // ─── Redirect based on what happens next ────────────────
-    // The user still only has PASSENGER access until approved.
-    // Redirect to the app with a success message.
-    redirect(303, "/app/dashboard?onboarding=complete&requested_role=" + role)
+    // ── Forward role to create_profile ────────────────────────────────────────
+    // create_profile will read ?role from the URL and include it in
+    // the actor_requests.payload when saving org associations + phone.
+    redirect(303, `/app/create_profile?role=${role}`)
   },
 }

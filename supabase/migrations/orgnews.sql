@@ -175,3 +175,12 @@ create policy "Service role only"
   on actor_verification_tokens
   for all
   using (auth.role() = 'service_role');
+
+
+-- supabase/migrations/YYYYMMDDHHMMSS_add_phone_to_profiles.sql
+--
+-- Adds a phone column to profiles.
+-- Run via: supabase db push  (or paste into the SQL editor)
+
+alter table profiles
+  add column if not exists phone text;
