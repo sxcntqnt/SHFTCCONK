@@ -1,18 +1,37 @@
-import { json } from '@sveltejs/kit';
-import { db } from '$lib/prisma';
+// src/routes/api/webhooks/mpesa/query/+server.ts
+//
+// Polls the payment status for a given CheckoutRequestID.
+// The billing page uses Supabase realtime (subscribeToPayment) as the primary
+// update mechanism — this endpoint is a fallback for environments where
+// WebSockets are unavailable or as a one-off check.
+//
+// Original used Prisma (db.payment.findUnique) inconsistently alongside
+// Supabase everywhere else. Replaced with locals.supabase.
 
-export async function GET({ url }) {
-    const checkoutRequestId = url.searchParams.get('id');
+import type { RequestHandler } from "./$types"
+import { json } from "@sveltejs/kit"
 
-    if (!checkoutRequestId) return json({ status: 'error', message: 'Missing ID' }, { status: 400 });
+export const GET: RequestHandler = async ({ url, locals }) => {
+  const checkoutRequestId = url.searchParams.get("id")
 
-    const payment = await db.payment.findUnique({
-        where: { transactionId: checkoutRequestId }
-    });
+  if (!checkoutRequestId) {
+    return json({ error: "Missing id parameter" }, { status: 400 })
+  }
 
-    // We return the database status, which is updated by the M-Pesa Callback webhook
-    return json({
-        status: payment?.status || 'PENDING', // COMPLETED, FAILED, or PENDING
-        message: payment?.resultDesc || 'Waiting for user input'
-    });
+  const supabase = locals.supabase
+
+  const { data: payment, error } = await supabase
+    .from("payments")
+    .select("status, result_desc")
+    .eq("transaction_id", checkoutRequestId)
+    .single()
+
+  if (error || !payment) {
+    return json({ status: "pending", message: "Waiting for confirmation" })
+  }
+
+  return json({
+    status: payment.status,               // pending | completed | failed
+    message: payment.result_desc ?? "—",
+  })
 }

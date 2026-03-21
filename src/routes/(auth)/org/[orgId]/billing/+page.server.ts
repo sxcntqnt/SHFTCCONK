@@ -1,46 +1,51 @@
-import { error, redirect } from "@sveltejs/kit"
-import {
-  fetchSubscription,
-  getOrCreateCustomerId,
-} from "../../subscription_helpers.server"
+// src/routes/(app)/account/billing/+page.server.ts
+//
+// Replaces the Stripe-based load. Reads subscription status directly from
+// the subscriptions table, which the stk-callback webhook writes to after
+// a successful M-Pesa payment.
+
 import type { PageServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
 
 export const load: PageServerLoad = async ({
-  locals: { safeGetSession, supabaseServiceRole },
+  locals: { safeGetSession, supabase },
 }) => {
   const { session, user } = await safeGetSession()
   if (!session || !user?.id) {
     redirect(303, "/login")
   }
 
-  const { error: idError, customerId } = await getOrCreateCustomerId({
-    supabaseServiceRole,
-    user,
-  })
-  if (idError || !customerId) {
-    console.error("Error creating customer id", idError)
-    error(500, {
-      message: "Unknown error. If issue persists, please contact us.",
-    })
-  }
+  // ── Active subscription ──────────────────────────────────────────────
+  // The stk-callback webhook upserts a row here when payment succeeds.
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("id, plan_id, status, current_period_end, created_at")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single()
 
-  const {
-    primarySubscription,
-    hasEverHadSubscription,
-    error: fetchErr,
-  } = await fetchSubscription({
-    customerId,
-  })
-  if (fetchErr) {
-    console.error("Error fetching subscription", fetchErr)
-    error(500, {
-      message: "Unknown error. If issue persists, please contact us.",
-    })
-  }
+  // ── Payment history (replaces Stripe portal invoices) ───────────────
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("transaction_id, amount, status, result_desc, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(10)
+
+  // ── Has ever paid (for showing invoice history link) ─────────────────
+  const { count: paymentCount } = await supabase
+    .from("payments")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("status", "completed")
 
   return {
-    isActiveCustomer: !!primarySubscription,
-    hasEverHadSubscription,
-    currentPlanId: primarySubscription?.appSubscription?.id,
+    isActiveCustomer: !!subscription,
+    hasEverPaid: (paymentCount ?? 0) > 0,
+    currentPlanId: subscription?.plan_id ?? null,
+    currentPeriodEnd: subscription?.current_period_end ?? null,
+    recentPayments: payments ?? [],
   }
 }
