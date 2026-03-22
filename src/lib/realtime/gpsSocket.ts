@@ -1,5 +1,5 @@
 // lib/realtime/gpsSocket.ts
-import { gpsStore, GPSData } from '$lib/stores/gps.store';
+import { gpsStore, GPSData } from '$lib/features/vehicles/stores/Gps.store';
 import { logger } from '$lib/utils/logger'; // Optional: logging helper
 
 let socket: WebSocket | null = null;

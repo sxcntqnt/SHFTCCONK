@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { logSecurityEvent } from '$lib/features/utils/logger';
+import { logSecurityEvent } from '$lib/utils/logger';
 import { env } from '$env/dynamic/private';
 
 if (!env.UPSTASH_REDIS_REST_URL) {

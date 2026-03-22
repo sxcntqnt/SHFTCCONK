@@ -1,4 +1,4 @@
-import { logSecurityEvent } from '$lib/features/utils/logger';
+import { logSecurityEvent } from '$lib/utils/logger';
 
 interface TurnstileResponse {
   success: boolean;

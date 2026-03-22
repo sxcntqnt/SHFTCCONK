@@ -6,7 +6,7 @@ import { verifyTurnstile } from "$lib/security/verifyTurnstile"
 import { escapeHtml } from "$lib/security/sanitize"
 import { rateLimit } from "$lib/security/rateLimit"
 import { preventDuplicate } from "$lib/security/dedupe"
-import { logSecurityEvent } from "$lib/features/utils/logger"
+import { logSecurityEvent } from "$lib/utils/logger"
 import { sendAdminEmail } from "$lib/mailer"
 import { getPostHogClient } from "$lib/server/posthog"
 
