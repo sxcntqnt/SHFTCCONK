@@ -6,7 +6,7 @@
   } from "$lib/features/compliance/stores/compliance"
   import GlassCard from "$lib/components/GlassCard.svelte"
   import Chart from "$lib/components/Chart.svelte"
-  import DuckDBTileProvider from "$lib/components/DuckDBTileProvider.svelte"
+  import DuckDBTileProvider from "$lib/map/components/MapCache.svelte"
 
   // ── Page data (from +page.server.ts) ────────────────────────────────────
   interface Props {

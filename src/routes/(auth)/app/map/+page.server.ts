@@ -1,51 +1,54 @@
-// src/routes/(app)/[orgId]/fleet/map/+page.server.ts
+// src/routes/(auth)/org/[orgId]/map/+page.server.ts
 //
-// Returns the parquet URL for the DuckDB historical tile layer,
-// plus lightweight vehicle metadata for the realtime overlay.
-// Mirrors the compliance map pattern — no DuckDB on the server.
+// Map page data load — vehicle counts and non-compliant IDs only.
+// Finance and reconciliation data is NOT loaded here — it belongs
+// on /finance and /compliance pages respectively.
 
 import type { PageServerLoad } from "./$types"
-import { redirect } from "@sveltejs/kit"
+import { requireOrgMemberAccess } from "$lib/security/authGuard"
 
-export const load: PageServerLoad = async ({ params, locals }) => {
-  const { safeGetSession, supabase } = locals
-  const { session } = await safeGetSession()
+export const load: PageServerLoad = async (event) => {
+  await requireOrgMemberAccess(event, event.params.orgId)
 
-  if (!session) {
-    redirect(303, "/login")
-  }
+  const { params, locals } = event
+  const { orgId }          = params
+  const supabase           = locals.supabase
 
-  const { orgId } = params
+  const [orgRes, vehicleRes, nonCompliantRes] = await Promise.allSettled([
+    supabase
+      .from("organizations")
+      .select("name, metadata")
+      .eq("id", orgId)
+      .maybeSingle(),
 
-  // ── Vehicle count (gate the parquet URL) ──────────────────────────
-  const { count: vehicleCount } = await supabase
-    .from("vehicles")
-    .select("*", { count: "exact", head: true })
-    .eq("organizationId", orgId)
-    .eq("active", true)
+    supabase
+      .from("vehicles")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId),
 
-  // ── Compliance summary for marker colour logic ────────────────────
-  // Per-vehicle worst status so live markers can be coloured
-  // without loading the full compliance store on mount.
-  const { data: complianceSummary } = await supabase
-    .from("compliance_alerts")
-    .select("vehicleId, status")
-    .eq("organizationId", orgId)
-    .in("status", ["EXPIRED", "WARNING"])
+    // Non-compliant vehicle IDs for marker colour coding
+    supabase
+      .from("vehicles")
+      .select("id")
+      .eq("organization_id", orgId)
+      .eq("status", "NON_COMPLIANT"),
+  ])
 
-  const nonCompliantIds = [
-    ...new Set((complianceSummary ?? []).map((c) => c.vehicleId)),
-  ]
+  const org              = orgRes.status             === "fulfilled" ? orgRes.value.data             : null
+  const vehicleCount     = vehicleRes.status         === "fulfilled" ? (vehicleRes.value.count ?? 0) : 0
+  const nonCompliantRows = nonCompliantRes.status     === "fulfilled" ? (nonCompliantRes.value.data ?? []) : []
+
+  // parquetUrl is optional — stored in org metadata when a DuckDB export is available
+  const parquetUrl   = (org?.metadata as Record<string, unknown> | null)?.parquet_url as string | null ?? null
+  const protomapsKey = process.env.PROTOMAPS_API_KEY ?? ""
 
   return {
+    supabase,          // passed to page for realtime channel setup
     orgId,
-    vehicleCount: vehicleCount ?? 0,
-    nonCompliantIds,
-    // DuckDB tile layer — same API route as compliance map
-    // Stage 2: replace with static S3/R2 signed URL
-    parquetUrl:
-      (vehicleCount ?? 0) > 0
-        ? `/api/orgs/${orgId}/compliance/vehicle-compliance`
-        : null,
+    orgName:         org?.name ?? orgId,
+    vehicleCount,
+    nonCompliantIds: nonCompliantRows.map((r: { id: string }) => r.id),
+    parquetUrl,
+    protomapsKey,
   }
 }

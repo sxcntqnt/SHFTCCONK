@@ -32,8 +32,11 @@ export default defineConfig({
     host: true,
     allowedHosts: ["sxcntcnqunts.com"],
   },
+   optimizeDeps: {
+    exclude: ["layerchart"],          // don't pre-bundle through commonjs resolver
+  },
 ssr: {
-  noExternal: ["three" ,"firebase", "@firebase/*"]
+  noExternal: ["three" ,"firebase", "@firebase/*","layerchart"]
 },
 
   test: {

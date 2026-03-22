@@ -1,1021 +1,675 @@
+<!-- src/routes/(auth)/org/[orgId]/map/+page.svelte -->
+<!--
+  SEPARATION OF CONCERNS — what was removed and why:
+    reconciliationStore  → finance data has no place in a map view
+    getRevenueTrend()    → revenue charts belong on /finance, not map markers
+    Chart.js sparklines  → replaced with clean status-only popups
+    supabase direct import → server already passes supabase via locals;
+                             live GPS now uses Supabase realtime from page data
+    GlassCard            → replaced with design-system panel styling
+    Tailwind classes     → replaced with CSS matching the org layout aesthetic
+
+  WHAT STAYS:
+    DuckDBTileProvider   → historical aggregated vehicle layer (H3 / circles)
+    Live GPS overlay     → Supabase realtime channel on vehicle_locations
+    markerColor()        → rain / compliance / normal colour coding
+    Popup on historical  → name, status, type from parquet properties
+    Popup on live markers → plate, speed, satellites, rain, compliance
+
+  LIVE GPS:
+    Reads from vehicle_locations realtime channel (not vehicle_positions —
+    that table doesn't exist; vehicle_locations is what gps/ingest writes to).
+    Channel scoped to org via filter.
+-->
 <script lang="ts">
   import { onMount, onDestroy } from "svelte"
-  import { writable, get } from "svelte/store"
-  import DuckDBTileProvider from "$lib/map/components/DuckDBTileProvider.svelte"
-  import gsap from "gsap"
+  import { browser } from "$app/environment"
+  import DuckDBTileProvider from "$lib/map/components/MapCache.svelte"
+  import type { PageData } from "./$types"
 
-  export let data: {
-    matatuId: string
-    hex: string
+  interface Props {
+    data: PageData
+  }
+  let { data }: Props = $props()
+
+  // ── Live GPS state ────────────────────────────────────────────────────────
+
+  interface LiveVehicle {
+    vehicleId: string
+    plate: string
     lat: number
     lng: number
-    k: number
+    speed: number | null
+    satellites: number | null
+    fixStatus: number | null // 0=NO_FIX 2=2D 3=3D
+    rain: boolean
+    complianceIssue: boolean
   }
 
-  export let reservedMatatus: {
-    matatuId: string
-    saccoName: string
-    routeNumber: string
-    routePolyline: { lat: number; lng: number }[]
-  }[] = []
+  let liveVehicles = $state<Record<string, LiveVehicle>>({})
+  let liveCount = $derived(Object.keys(liveVehicles).length)
+  let duckdbReady = $state(false)
 
-  // ── Types ────────────────────────────────────────────────────────────────
-  type FleetMarker = {
-    id: string
-    label: string
-    coords: { lat: number; lng: number }
-    iconUrl: string
-    currentIndex: number
-  }
+  // ── MapLibre ──────────────────────────────────────────────────────────────
 
-  // ── Stores & state ───────────────────────────────────────────────────────
-  let markers = writable<FleetMarker[]>([])
-  let dbReady = false
-  let mapInstance: any = null // maplibregl.Map
   let mapContainer: HTMLDivElement
+  let mapInstance: any = null
+  let liveMarkers: Record<string, any> = {}
+  let gpsChannel: ReturnType<typeof data.supabase.channel> | null = null
+  let mlRef: any = null // maplibregl module reference
 
-  // ── MapLibre source/layer IDs ────────────────────────────────────────────
-  const FLEET_SOURCE = "fleet-markers"
-  const FLEET_LAYER = "fleet-circles"
-  const FLEET_LABELS = "fleet-labels"
-  const DUCKDB_SOURCE = "duckdb-h3"
-  const DUCKDB_FILL = "h3-fill"
-  const DUCKDB_STROKE = "h3-stroke"
+  // ── Colour coding ─────────────────────────────────────────────────────────
 
-  // ── Kalman smoother ──────────────────────────────────────────────────────
-  const K = 0.5
-  function kalmanUpdate(
-    pos: { lat: number; lng: number },
-    estimate: { lat: number; lng: number },
-  ) {
-    return {
-      lat: estimate.lat + K * (pos.lat - estimate.lat),
-      lng: estimate.lng + K * (pos.lng - estimate.lng),
-    }
+  function markerColor(v: LiveVehicle): string {
+    if (v.rain) return "#3b82f6" // blue  — raining
+    if (v.complianceIssue) return "#ef4444" // red   — compliance flagged
+    if (v.fixStatus === 0) return "#6b7280" // grey  — no GPS fix
+    return "#00b09b" // teal  — normal
   }
 
-  // ── GSAP route animation ─────────────────────────────────────────────────
-  function animateAlongRoute(
-    marker: FleetMarker,
-    route: { lat: number; lng: number }[],
-  ) {
-    if (!route.length) return
-    const nextIndex = (marker.currentIndex + 1) % route.length
-    const end = route[nextIndex]
-
-    gsap.to(marker.coords, {
-      lat: end.lat,
-      lng: end.lng,
-      duration: 4.5,
-      ease: "power1.inOut",
-      onUpdate: () => {
-        markers.update((list) =>
-          list.map((m) => (m.id === marker.id ? { ...m } : m)),
-        )
-        flushMarkersToMap()
-      },
-      onComplete: () => {
-        marker.currentIndex = nextIndex
-        animateAlongRoute(marker, route)
-      },
-    })
+  function fixLabel(fx: number | null): string {
+    if (fx === 0) return "No fix"
+    if (fx === 2) return "2D fix"
+    if (fx === 3) return "3D fix"
+    return "Unknown"
   }
 
-  // ── Push current marker list into MapLibre source ────────────────────────
-  function flushMarkersToMap() {
-    if (!mapInstance) return
-    const source = mapInstance.getSource(FLEET_SOURCE) as any
-    if (!source) return
-    const mList = get(markers)
-    source.setData({
-      type: "FeatureCollection",
-      features: mList.map((m) => ({
-        type: "Feature",
-        id: m.id,
-        properties: { label: m.label },
-        geometry: { type: "Point", coordinates: [m.coords.lng, m.coords.lat] },
-      })),
-    })
-  }
+  // ── Marker builder ────────────────────────────────────────────────────────
 
-  // ── Live position polling ────────────────────────────────────────────────
-  async function fetchLivePositions() {
-    for (const m of reservedMatatus) {
-      try {
-        const res = await fetch(`/api/matatu/live/${m.matatuId}`)
-        if (!res.ok) continue
-        const liveData = await res.json()
+  function upsertLiveMarker(v: LiveVehicle): void {
+    if (!mapInstance || !mlRef) return
 
-        markers.update((list) => {
-          let marker = list.find((x) => x.id === m.matatuId)
-          if (!marker) {
-            const startPos = m.routePolyline[0] ?? {
-              lat: -1.2921,
-              lng: 36.8219,
-            }
-            const newMarker: FleetMarker = {
-              id: m.matatuId,
-              label: `${m.saccoName} (${m.routeNumber})`,
-              coords: { ...startPos },
-              iconUrl: "/icons/matatu.png",
-              currentIndex: 0,
-            }
-            list.push(newMarker)
-            animateAlongRoute(newMarker, m.routePolyline)
-          } else {
-            marker.coords = kalmanUpdate(liveData, marker.coords)
-          }
-          return list
-        })
-        flushMarkersToMap()
-      } catch (err) {
-        console.error(`Error fetching matatu ${m.matatuId} data`, err)
-      }
-    }
-  }
+    const color = markerColor(v)
 
-  // ── Map initialisation ───────────────────────────────────────────────────
-  onMount(async () => {
-    if (!mapContainer || reservedMatatus.length === 0) return
-
-    const mlModule = await import("maplibre-gl")
-    const maplibregl = mlModule.default
-
-    if (!document.getElementById("maplibre-css")) {
-      const link = document.createElement("link")
-      link.id = "maplibre-css"
-      link.rel = "stylesheet"
-      link.href = "https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css"
-      document.head.appendChild(link)
+    if (liveMarkers[v.vehicleId]) {
+      // Just move it and update dot colour
+      liveMarkers[v.vehicleId].setLngLat([v.lng, v.lat])
+      const dot = liveMarkers[v.vehicleId]
+        .getElement()
+        .querySelector(".live-dot") as HTMLElement | null
+      if (dot) dot.style.background = color
+      return
     }
 
-    const initialCenter = reservedMatatus[0]?.routePolyline[0] ?? {
-      lat: -1.2921,
-      lng: 36.8219,
-    }
+    // Build marker element
+    const el = document.createElement("div")
+    el.className = "live-marker-el"
+    el.style.cssText = `
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+      background: rgba(0,0,0,0.75); border: 2.5px solid ${color};
+      display: flex; align-items: center; justify-content: center;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px ${color}55, 0 4px 12px rgba(0,0,0,0.4);
+      backdrop-filter: blur(4px);
+      transition: transform 0.15s, box-shadow 0.15s;
+    `
+    el.innerHTML = `
+      <span class="live-dot" style="
+        width: 10px; height: 10px; border-radius: 50%;
+        background: ${color};
+        box-shadow: 0 0 6px ${color};
+      "></span>
+    `
 
-    mapInstance = new maplibregl.Map({
-      container: mapContainer,
-      style:
-        "https://api.protomaps.com/styles/v4/dark.json?key=REPLACE_WITH_KEY",
-      center: [initialCenter.lng, initialCenter.lat],
-      zoom: 15,
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "translate(-50%, -50%) scale(1.25)"
+      el.style.boxShadow = `0 0 18px ${color}88, 0 6px 20px rgba(0,0,0,0.5)`
+    })
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "translate(-50%, -50%)"
+      el.style.boxShadow = `0 0 10px ${color}55, 0 4px 12px rgba(0,0,0,0.4)`
     })
 
-    await new Promise<void>((res) => mapInstance.once("load", res))
+    const popup = new mlRef.Popup({
+      offset: [0, -18],
+      closeButton: false,
+      closeOnClick: false,
+      className: "mp-popup-dark",
+      maxWidth: "220px",
+    }).setHTML(buildPopupHTML(v))
 
-    // ── Fleet GeoJSON source + layers ─────────────────────────────────────
-    mapInstance.addSource(FLEET_SOURCE, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
+    const marker = new mlRef.Marker({ element: el, anchor: "center" })
+      .setLngLat([v.lng, v.lat])
+      .setPopup(popup)
+      .addTo(mapInstance)
+
+    el.addEventListener("mouseenter", () => popup.addTo(mapInstance))
+    el.addEventListener("mouseleave", () => {
+      setTimeout(() => {
+        if (!el.matches(":hover")) popup.remove()
+      }, 200)
     })
 
-    // Pulsing circle per vehicle
-    mapInstance.addLayer({
-      id: FLEET_LAYER,
-      type: "circle",
-      source: FLEET_SOURCE,
-      paint: {
-        "circle-radius": 10,
-        "circle-color": "#f26522",
-        "circle-opacity": 0.9,
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      },
-    })
-
-    // Sacco + route label
-    mapInstance.addLayer({
-      id: FLEET_LABELS,
-      type: "symbol",
-      source: FLEET_SOURCE,
-      layout: {
-        "text-field": ["get", "label"],
-        "text-size": 11,
-        "text-offset": [0, 1.6],
-        "text-anchor": "top",
-        "text-allow-overlap": false,
-      },
-      paint: {
-        "text-color": "#ffffff",
-        "text-halo-color": "#000000",
-        "text-halo-width": 1.5,
-      },
-    })
-
-    // ── Start polling ─────────────────────────────────────────────────────
-    fetchLivePositions()
-    interval = setInterval(fetchLivePositions, 5000)
-
-    // ── Reactive map re-centre when markers move ──────────────────────────
-    const unsubMarkers = markers.subscribe((mList) => {
-      if (!mList.length || !mapInstance) return
-      const lats = mList.map((m) => m.coords.lat)
-      const lngs = mList.map((m) => m.coords.lng)
-      const minLat = Math.min(...lats),
-        maxLat = Math.max(...lats)
-      const minLng = Math.min(...lngs),
-        maxLng = Math.max(...lngs)
-      const maxDiff = Math.max(maxLat - minLat, maxLng - minLng)
-      mapInstance.easeTo({
-        center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
-        zoom:
-          maxDiff < 0.001
-            ? 17
-            : maxDiff < 0.005
-              ? 16
-              : maxDiff < 0.01
-                ? 15
-                : maxDiff < 0.03
-                  ? 14
-                  : 13,
-        duration: 800,
-      })
-    })
-    ;(mapInstance as any)._unsubMarkers = unsubMarkers
-  })
-
-  // ── DuckDB H3 layer — wired in once MapCache fires onReady ───────────────
-  function handleDbReady() {
-    dbReady = true
-    if (!mapInstance || mapInstance.getSource(DUCKDB_SOURCE)) return
-
-    mapInstance.addSource(DUCKDB_SOURCE, {
-      type: "vector",
-      tiles: ["duckdb://nairobi?z={z}&x={x}&y={y}"],
-      scheme: "xyz",
-    })
-    mapInstance.addLayer(
-      {
-        id: DUCKDB_FILL,
-        type: "fill",
-        source: DUCKDB_SOURCE,
-        "source-layer": "default",
-        paint: { "fill-color": "#f26522", "fill-opacity": 0.18 },
-      },
-      FLEET_LAYER, // insert below fleet markers
-    )
-    mapInstance.addLayer(
-      {
-        id: DUCKDB_STROKE,
-        type: "line",
-        source: DUCKDB_SOURCE,
-        "source-layer": "default",
-        paint: {
-          "line-color": "#f26522",
-          "line-width": 1,
-          "line-opacity": 0.5,
-        },
-      },
-      FLEET_LAYER,
-    )
+    liveMarkers[v.vehicleId] = marker
   }
 
-  // ── Polling interval ─────────────────────────────────────────────────────
-  let interval: any
-
-  onDestroy(() => {
-    clearInterval(interval)
-    ;(mapInstance as any)?._unsubMarkers?.()
-    mapInstance?.remove()
-    stopRacingAnimation()
-  })
-
-  // ── Empty-state racing animation (unchanged) ─────────────────────────────
-  let raceContainer: HTMLElement
-  let busTweens: gsap.core.Tween[] = []
-  let ctaTween: gsap.core.Tween | null = null
-  let titleTween: gsap.core.Tween | null = null
-
-  function startRacingAnimation() {
-    stopRacingAnimation()
-    if (!raceContainer) return
-    gsap.fromTo(
-      raceContainer,
-      { opacity: 0, y: 40 },
-      { opacity: 1, y: 0, duration: 1.2, ease: "power3.out" },
-    )
-    gsap.fromTo(
-      raceContainer.querySelectorAll(".reveal-item"),
-      { opacity: 0, y: 24 },
-      {
-        opacity: 1,
-        y: 0,
-        duration: 0.8,
-        stagger: 0.14,
-        ease: "power3.out",
-        delay: 0.3,
-      },
-    )
-    const buses = raceContainer.querySelectorAll<HTMLElement>(".bus-racer")
-    const screenWidth = window.innerWidth
-    buses.forEach((bus, i) => {
-      gsap.set(bus, { x: -220, scaleX: 1, opacity: 0.7 + i * 0.07 })
-      busTweens.push(
-        gsap.to(bus, {
-          x: screenWidth + 220,
-          duration: 7 + i * 1.4,
-          ease: "none",
-          repeat: -1,
-          delay: i * 0.65,
-          onRepeat: () => {
-            gsap.set(bus, { x: -220 })
-            gsap.to(bus, {
-              y: `+=${(Math.random() - 0.5) * 6}`,
-              duration: 0.4,
-              ease: "sine.inOut",
-            })
-          },
-        }),
-        gsap.to(bus, {
-          scaleY: 0.94,
-          duration: 0.22 + i * 0.04,
-          repeat: -1,
-          yoyo: true,
-          ease: "sine.inOut",
-          delay: i * 0.1,
-        }),
-      )
-    })
-    const lanes = raceContainer.querySelectorAll<HTMLElement>(".road-lane")
-    lanes.forEach((lane, i) => {
-      busTweens.push(
-        gsap.fromTo(
-          lane,
-          { x: 0 },
-          { x: -200, duration: 1.4 + i * 0.15, ease: "none", repeat: -1 },
-        ),
-      )
-    })
-    ctaTween = gsap.to(".cta-button", {
-      boxShadow: "0 0 32px rgba(242,101,34,0.45), 0 8px 40px rgba(0,0,0,0.4)",
-      duration: 2.2,
-      repeat: -1,
-      yoyo: true,
-      ease: "sine.inOut",
-    })
-    titleTween = gsap.to(".title-shimmer", {
-      backgroundPositionX: "200%",
-      duration: 3.5,
-      repeat: -1,
-      ease: "none",
-    })
-  }
-  function stopRacingAnimation() {
-    busTweens.forEach((t) => t.kill())
-    busTweens = []
-    ctaTween?.kill()
-    ctaTween = null
-    titleTween?.kill()
-    titleTween = null
-  }
-
-  $: {
-    if (reservedMatatus.length === 0 && raceContainer) startRacingAnimation()
-    else stopRacingAnimation()
-  }
-</script>
-
-<svelte:head>
-  <title>Live Tracking — Matatu Pulse</title>
-</svelte:head>
-
-<!-- MapCache: registers the duckdb:// protocol; renders nothing -->
-{#if reservedMatatus.length > 0}
-  <DuckDBTileProvider
-    parquetUrl="https://data.example.com/nairobi_h3.parquet"
-    onReady={handleDbReady}
-    onError={(e) => console.error("[MapCache]", e)}
-  />
-{/if}
-
-<div class="page">
-  <div class="atm atm-1" aria-hidden="true"></div>
-  <div class="atm atm-2" aria-hidden="true"></div>
-
-  {#if reservedMatatus.length > 0}
-    <!-- ── Live tracking view ── -->
-    <div class="track-layout">
-      <div class="page-header">
-        <div class="eyebrow">
-          <span class="eyebrow-dot"></span>Real-Time Fleet
+  function buildPopupHTML(v: LiveVehicle): string {
+    const color = markerColor(v)
+    return `
+      <div style="font-family:var(--font-body,'DM Sans',sans-serif);min-width:160px">
+        <div style="font-size:.88rem;font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:6px">
+          ${v.plate || v.vehicleId}
         </div>
-        <h1 class="page-title">Live <em>Tracking</em></h1>
-        <p class="page-sub">
-          Your reserved matatus — watch them move in real time.
-        </p>
-      </div>
-
-      <!-- Fleet sidebar (unchanged) -->
-      <div class="sidebar">
-        <div class="panel">
-          <div class="panel-head">
-            <div class="panel-ey">On The Road</div>
-            <div class="panel-ti">
-              Your Fleet <span class="fleet-count"
-                >{reservedMatatus.length}</span
-              >
-            </div>
+        <div style="display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:rgba(255,255,255,.6)">
+          <div>Speed: <b style="color:#fff">${v.speed ?? 0} km/h</b></div>
+          <div>Satellites: <b style="color:#fff">${v.satellites ?? "—"}</b></div>
+          <div>GPS: <b style="color:#fff">${fixLabel(v.fixStatus)}</b></div>
+          <div>Rain: <b style="color:${v.rain ? "#3b82f6" : "#fff"}">${v.rain ? "Yes" : "No"}</b></div>
+          <div>Compliance:
+            <b style="color:${v.complianceIssue ? "#f87171" : "#00b09b"}">
+              ${v.complianceIssue ? "⚠ Issue" : "✓ OK"}
+            </b>
           </div>
-          <div class="fleet-list">
-            {#each reservedMatatus as m (m.matatuId)}
-              <div class="fleet-row">
-                <div class="fleet-icon">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect x="1" y="3" width="15" height="13" rx="2" />
-                    <path d="M16 8h4l3 5v3h-7V8z" />
-                    <circle cx="5.5" cy="18.5" r="2.5" />
-                    <circle cx="18.5" cy="18.5" r="2.5" />
-                  </svg>
-                </div>
-                <div class="fleet-info">
-                  <div class="fleet-name">{m.saccoName}</div>
-                  <div class="fleet-meta">
-                    <span class="route-pill">Route {m.routeNumber}</span>
-                    <span class="live-chip"
-                      ><span class="live-dot"></span>Live</span
-                    >
-                  </div>
+        </div>
+        <div style="
+          margin-top:8px;width:8px;height:8px;border-radius:50%;
+          background:${color};display:inline-block;
+          box-shadow:0 0 6px ${color};
+        "></div>
+      </div>
+    `
+  }
+
+  // ── Map init ──────────────────────────────────────────────────────────────
+
+  function initMap(): void {
+    if (!mapContainer || mapInstance || !browser) return
+
+    import("maplibre-gl").then((mod) => {
+      mlRef = mod.default
+      const maplibregl = mlRef
+
+      // Style — dark Protomaps + optional DuckDB vehicle layer
+      const sources: Record<string, unknown> = {}
+      const layers: unknown[] = []
+
+      if (data.parquetUrl) {
+        sources.vehicleTiles = {
+          type: "vector",
+          tiles: [`duckdb.${data.parquetUrl}?z={z}&x={x}&y={y}`],
+          minzoom: 0,
+          maxzoom: 14,
+        }
+        layers.push({
+          // Stage 0: circle points colour-coded by status (current)
+          // Stage 1: swap for H3 fill-extrusion heatmap once DuckDB
+          //          parquet exports include the h3_index column
+          id: "historical-vehicles",
+          type: "circle",
+          source: "vehicleTiles",
+          "source-layer": "default",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3, 14, 7],
+            "circle-color": [
+              "match",
+              ["get", "status"],
+              "EXPIRED",
+              "#ef4444",
+              "WARNING",
+              "#f59e0b",
+              "HIGH",
+              "#f97316",
+              "MEDIUM",
+              "#3b82f6",
+              "#00b09b",
+            ],
+            "circle-opacity": 0.6,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff",
+          },
+        })
+      }
+
+      mapInstance = new maplibregl.Map({
+        container: mapContainer,
+        style: {
+          version: 8,
+          glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+          sources: {
+            ...sources,
+            protomaps: {
+              type: "vector",
+              tiles: [
+                `https://api.protomaps.com/tiles/v4/{z}/{x}/{y}.mvt?key=${data.protomapsKey ?? ""}`,
+              ],
+              attribution: "© Protomaps © OpenStreetMap",
+            },
+          },
+          layers: [
+            {
+              id: "background",
+              type: "background",
+              paint: { "background-color": "#0a0a0c" },
+            },
+            ...layers,
+          ],
+        },
+        center: [36.8219, -1.2921],
+        zoom: 11,
+      })
+
+      // Attribution compact
+      mapInstance
+        .getContainer()
+        .querySelector(".maplibregl-ctrl-attrib")
+        ?.classList.add("maplibregl-compact")
+
+      // Historical layer — click popup
+      if (data.parquetUrl) {
+        mapInstance.on("click", "historical-vehicles", (e: any) => {
+          const f = e.features?.[0]
+          if (!f) return
+          const { name, status, type } = f.properties ?? {}
+          new maplibregl.Popup({
+            className: "mp-popup-dark",
+            maxWidth: "200px",
+          })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `
+              <div style="font-family:var(--font-body,'DM Sans',sans-serif)">
+                <div style="font-size:.88rem;font-weight:800;color:#fff;margin-bottom:5px">${name ?? "Vehicle"}</div>
+                <div style="font-size:.72rem;color:rgba(255,255,255,.6)">
+                  Status: <b style="color:#fff">${status ?? "—"}</b><br/>
+                  Type: <b style="color:#fff">${type ?? "—"}</b>
                 </div>
               </div>
-            {/each}
-          </div>
-        </div>
-      </div>
+            `,
+            )
+            .addTo(mapInstance)
+        })
+        mapInstance.on("mouseenter", "historical-vehicles", () => {
+          mapInstance.getCanvas().style.cursor = "pointer"
+        })
+        mapInstance.on("mouseleave", "historical-vehicles", () => {
+          mapInstance.getCanvas().style.cursor = ""
+        })
+      }
 
-      <!-- Raw MapLibre canvas — replaces <MapView> -->
-      <div class="map-area">
-        <div class="map-badge">
-          <span class="map-badge-dot"></span>
-          {$markers.length} vehicle{$markers.length !== 1 ? "s" : ""} tracked
-          {#if dbReady}
-            <span class="h3-badge">H3</span>
-          {/if}
-        </div>
-        <div bind:this={mapContainer} class="map-container"></div>
-      </div>
-    </div>
-  {:else}
-    <!-- ── Empty state: racing animation (unchanged) ── -->
-    <div bind:this={raceContainer} class="empty-page" aria-live="polite">
-      <div class="road" aria-hidden="true">
-        {#each Array(3) as _, i}
-          <div class="road-lane-row" style="top: {18 + i * 22}%">
-            {#each Array(14) as _}
-              <div class="road-lane"></div>
-            {/each}
-          </div>
-        {/each}
-        <div class="bus-racer" style="top: 15%" aria-hidden="true">
-          <div class="bus-body">
-            <span class="bus-emoji">🚌</span>
-            <div class="bus-exhaust"></div>
-          </div>
-        </div>
-        <div class="bus-racer" style="top: 35%" aria-hidden="true">
-          <div class="bus-body bus-body--alt">
-            <span class="bus-emoji">🚌</span>
-            <div class="bus-exhaust bus-exhaust--alt"></div>
-          </div>
-        </div>
-        <div class="bus-racer" style="top: 57%" aria-hidden="true">
-          <div class="bus-body">
-            <span class="bus-emoji">🚌</span>
-            <div class="bus-exhaust"></div>
-          </div>
-        </div>
-        <div class="bus-racer" style="top: 76%" aria-hidden="true">
-          <div class="bus-body bus-body--alt">
-            <span class="bus-emoji">🚌</span>
-            <div class="bus-exhaust bus-exhaust--alt"></div>
-          </div>
-        </div>
-      </div>
+      // Start live GPS subscription
+      startGpsChannel()
+    })
+  }
 
-      <div class="empty-content">
-        <div class="reveal-item eyebrow" style="justify-content:center">
-          <span class="eyebrow-dot"></span>Fleet Management
-        </div>
-        <h1 class="reveal-item page-title title-shimmer">
-          They're Leaving<br /><em>Without You</em>
-        </h1>
-        <p class="reveal-item empty-sub">
-          Reserve your seat now and join the ride.
-          <span class="accent">Watch your matatu live</span> as it comes for you.
-        </p>
-        <a href={`/feed/h3/${data.hex}?k=${K}`} class="reveal-item cta-button">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="10" r="3" />
-            <path
-              d="M12 21.7C17.3 17 20 13 20 10a8 8 0 10-16 0c0 3 2.7 6.9 8 11.7z"
-            />
-          </svg>
-          Reserve My Seat Now
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
-        </a>
+  // ── Supabase realtime GPS channel ─────────────────────────────────────────
+
+  function startGpsChannel(): void {
+    if (gpsChannel) return
+
+    gpsChannel = data.supabase
+      .channel(`fleet-map-gps-${data.orgId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "vehicle_locations",
+          filter: `organization_id=eq.${data.orgId}`,
+        },
+        (payload) => {
+          const pos = payload.new as Record<string, unknown>
+          if (!pos?.vehicle_id || pos.lat == null || pos.lng == null) return
+
+          const vehicle: LiveVehicle = {
+            vehicleId: String(pos.vehicle_id),
+            plate: String(pos.plate ?? pos.vehicle_id),
+            lat: Number(pos.lat),
+            lng: Number(pos.lng),
+            speed: pos.speed != null ? Number(pos.speed) : null,
+            satellites: pos.satellites != null ? Number(pos.satellites) : null,
+            fixStatus: pos.fix_status != null ? Number(pos.fix_status) : null,
+            rain: Boolean(pos.rain),
+            complianceIssue: data.nonCompliantIds.includes(
+              String(pos.vehicle_id),
+            ),
+          }
+
+          liveVehicles = { ...liveVehicles, [vehicle.vehicleId]: vehicle }
+          upsertLiveMarker(vehicle)
+        },
+      )
+      .subscribe()
+  }
+
+  // ── DuckDB callbacks ──────────────────────────────────────────────────────
+
+  function handleDuckDBReady(): void {
+    duckdbReady = true
+    initMap()
+  }
+
+  function handleDuckDBError(err: Error): void {
+    console.error("[fleet map] DuckDB init failed:", err)
+    // Still init map — live GPS overlay works without DuckDB
+    initMap()
+  }
+
+  // ── When no parquetUrl: init map directly on mount ───────────────────────
+  onMount(() => {
+    if (!data.parquetUrl) initMap()
+  })
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
+  onDestroy(() => {
+    if (gpsChannel) {
+      data.supabase.removeChannel(gpsChannel)
+      gpsChannel = null
+    }
+    Object.values(liveMarkers).forEach((m) => m?.remove())
+    liveMarkers = {}
+    mapInstance?.remove()
+    mapInstance = undefined
+  })
+</script>
+
+<svelte:head><title>Fleet Map — {data.orgName}</title></svelte:head>
+
+<div class="map-page">
+  <!-- Header -->
+  <div class="map-hd">
+    <div>
+      <div class="map-eyebrow">
+        <span class="live-dot {liveCount > 0 ? 'active' : ''}"></span>
+        {liveCount > 0
+          ? `${liveCount} vehicle${liveCount !== 1 ? "s" : ""} live`
+          : "Fleet Map"}
       </div>
+      <h1 class="map-title">Real-Time <em>Fleet</em></h1>
     </div>
-  {/if}
+
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#00b09b; box-shadow:0 0 5px #00b09b44"
+        ></span>
+        Normal
+      </div>
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#ef4444; box-shadow:0 0 5px #ef444444"
+        ></span>
+        Compliance issue
+      </div>
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#3b82f6; box-shadow:0 0 5px #3b82f644"
+        ></span>
+        Raining
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot" style="background:#6b7280"></span>
+        No GPS fix
+      </div>
+      {#if data.parquetUrl}
+        <div class="legend-divider"></div>
+        <div class="legend-item muted">
+          <span class="legend-dot-sq" style="background:#3b82f620"></span>
+          Historical (DuckDB)
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Stats strip -->
+  <div class="stat-strip">
+    <div class="stat">
+      <div class="stat-val teal">{liveCount}</div>
+      <div class="stat-lbl">Live Now</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{data.vehicleCount}</div>
+      <div class="stat-lbl">Total Fleet</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val {data.nonCompliantIds.length > 0 ? 'red' : ''}">
+        {data.nonCompliantIds.length}
+      </div>
+      <div class="stat-lbl">Non-Compliant</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">
+        {Object.values(liveVehicles).filter((v) => v.rain).length}
+      </div>
+      <div class="stat-lbl">In Rain</div>
+    </div>
+  </div>
+
+  <!-- Map container -->
+  <div class="map-wrap">
+    {#if data.parquetUrl}
+      <DuckDBTileProvider
+        parquetUrl={data.parquetUrl}
+        onReady={handleDuckDBReady}
+        onError={handleDuckDBError}
+      />
+    {/if}
+
+    <div bind:this={mapContainer} class="map-el"></div>
+
+    {#if !data.parquetUrl}
+      <div class="no-historical">
+        No historical data — live GPS overlay active
+      </div>
+    {/if}
+
+    {#if liveCount === 0}
+      <div class="no-live">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          opacity="0.3"
+        >
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        Waiting for live GPS updates…
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
-  /* ── All original styles preserved exactly ── */
-  .page {
+  .map-page {
+    flex: 1;
+    padding: 32px 40px;
+    font-family: var(--font-body);
     display: flex;
     flex-direction: column;
-    height: 100%;
-    background: var(--ink);
-    font-family: var(--font-body);
-    position: relative;
-    overflow: hidden;
+    gap: 16px;
   }
-  .atm {
-    position: fixed;
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 0;
-    filter: blur(70px);
+
+  /* ── Header ── */
+  .map-hd {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
   }
-  .atm-1 {
-    width: 520px;
-    height: 520px;
-    top: -120px;
-    right: -80px;
-    background: radial-gradient(
-      circle,
-      rgba(242, 101, 34, 0.07),
-      transparent 65%
-    );
-  }
-  .atm-2 {
-    width: 400px;
-    height: 400px;
-    bottom: -80px;
-    left: -80px;
-    background: radial-gradient(
-      circle,
-      rgba(0, 176, 155, 0.06),
-      transparent 65%
-    );
-  }
-  .eyebrow {
+  .map-eyebrow {
     font-size: 0.6rem;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--orange);
+    color: var(--teal, #00b09b);
     display: flex;
     align-items: center;
     gap: 7px;
-    margin-bottom: 7px;
-  }
-  .eyebrow-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--orange);
-    animation: pulse-o 2s ease-out infinite;
-    flex-shrink: 0;
-  }
-  @keyframes pulse-o {
-    0% {
-      box-shadow: 0 0 0 0 rgba(242, 101, 34, 0.5);
-    }
-    70% {
-      box-shadow: 0 0 0 5px rgba(242, 101, 34, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(242, 101, 34, 0);
-    }
-  }
-  .page-title {
-    font-family: var(--font-display);
-    font-size: clamp(1.5rem, 2.5vw, 2rem);
-    font-weight: 900;
-    letter-spacing: -0.05em;
-    line-height: 1.1;
-    color: var(--text-1);
-    margin-bottom: 4px;
-  }
-  .page-title em {
-    font-style: normal;
-    color: var(--orange);
-  }
-  .page-sub {
-    font-size: 0.875rem;
-    color: var(--text-3);
-    line-height: 1.6;
-  }
-  .panel {
-    background: rgba(255, 255, 255, 0.025);
-    border: 1px solid var(--rim);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-  .panel-head {
-    padding: 14px 16px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-  .panel-ey {
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-3);
-    margin-bottom: 3px;
-  }
-  .panel-ti {
-    font-family: var(--font-display);
-    font-size: 0.88rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: var(--text-1);
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .fleet-count {
-    font-family: var(--font-body);
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--text-3);
-  }
-  .track-layout {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    grid-template-rows: auto 1fr;
-    gap: 16px;
-    padding: 28px 32px 32px;
-    height: 100%;
-    position: relative;
-    z-index: 1;
-  }
-  .page-header {
-    grid-column: 1/-1;
-  }
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
-  }
-  .fleet-list {
-    padding: 10px 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .fleet-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    transition:
-      background 0.15s,
-      border-color 0.15s;
-  }
-  .fleet-row:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.1);
-  }
-  .fleet-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-    background: rgba(242, 101, 34, 0.1);
-    border: 1px solid rgba(242, 101, 34, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--orange);
-    flex-shrink: 0;
-  }
-  .fleet-info {
-    flex: 1;
-    min-width: 0;
-  }
-  .fleet-name {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--text-1);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .fleet-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 3px;
-  }
-  .route-pill {
-    padding: 1px 7px;
-    border-radius: 100px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 0.58rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-3);
-  }
-  .live-chip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 7px;
-    border-radius: 100px;
-    background: rgba(0, 176, 155, 0.1);
-    border: 1px solid rgba(0, 176, 155, 0.2);
-    font-size: 0.58rem;
-    font-weight: 700;
-    color: var(--teal);
+    margin-bottom: 6px;
   }
   .live-dot {
-    width: 5px;
-    height: 5px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: var(--teal);
-    animation: pulse-t 1.8s ease-out infinite;
+    background: var(--text-3);
   }
-  @keyframes pulse-t {
+  .live-dot.active {
+    background: var(--teal, #00b09b);
+    animation: dot-pulse 2s ease-out infinite;
+    box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.5);
+  }
+  @keyframes dot-pulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.6);
+      box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.5);
     }
     70% {
-      box-shadow: 0 0 0 4px rgba(0, 176, 155, 0);
+      box-shadow: 0 0 0 6px rgba(0, 176, 155, 0);
     }
     100% {
       box-shadow: 0 0 0 0 rgba(0, 176, 155, 0);
     }
   }
+  .map-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 2vw, 1.9rem);
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    color: var(--text-1);
+    line-height: 1.1;
+  }
+  .map-title em {
+    font-style: normal;
+    color: var(--teal, #00b09b);
+  }
 
-  /* Map area — raw canvas replaces MapView wrapper */
-  .map-area {
-    border-radius: 20px;
-    overflow: hidden;
-    position: relative;
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.07),
-      0 24px 64px rgba(0, 0, 0, 0.5);
+  /* Legend */
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
   }
-  .map-container {
-    width: 100%;
-    height: 100%;
-  }
-  .map-badge {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    z-index: 5;
+  .legend-item {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 5px 12px;
-    background: rgba(13, 13, 20, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 100px;
-    backdrop-filter: blur(12px);
     font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--text-2);
-    pointer-events: none;
+    color: var(--text-3);
   }
-  .map-badge-dot {
-    width: 6px;
-    height: 6px;
+  .legend-item.muted {
+    color: var(--text-3);
+    opacity: 0.6;
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--orange);
-    animation: pulse-o 2s ease-out infinite;
-  }
-  .h3-badge {
-    padding: 1px 6px;
-    border-radius: 100px;
-    background: rgba(0, 176, 155, 0.15);
-    border: 1px solid rgba(0, 176, 155, 0.25);
-    font-size: 0.6rem;
-    color: var(--teal);
-  }
-
-  /* Empty state — all original styles preserved */
-  .empty-page {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    z-index: 1;
-  }
-  .road {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  .road-lane-row {
-    position: absolute;
-    left: 0;
-    display: flex;
-    gap: 28px;
-    align-items: center;
-    width: 200%;
-    overflow: hidden;
-  }
-  .road-lane {
-    width: 48px;
-    height: 2px;
-    border-radius: 2px;
-    background: rgba(242, 101, 34, 0.1);
     flex-shrink: 0;
   }
-  .bus-racer {
-    position: absolute;
-    left: 0;
-    will-change: transform;
+  .legend-dot-sq {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
   }
-  .bus-body {
+  .legend-divider {
+    width: 1px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ── Stats strip ── */
+  .stat-strip {
     display: flex;
-    align-items: center;
-    gap: 4px;
-    filter: drop-shadow(0 3px 8px rgba(242, 101, 34, 0.25));
+    gap: 12px;
   }
-  .bus-body--alt {
-    filter: drop-shadow(0 3px 8px rgba(0, 176, 155, 0.2));
-    opacity: 0.85;
+  .stat {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--rim, rgba(255, 255, 255, 0.07));
+    border-radius: 13px;
+    padding: 12px 20px;
+    min-width: 90px;
   }
-  .bus-emoji {
-    font-size: 2.2rem;
-    display: block;
+  .stat-val {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    color: var(--text-1);
     line-height: 1;
+    margin-bottom: 3px;
   }
-  .bus-exhaust {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(242, 101, 34, 0.3);
-    animation: exhaust 0.5s ease-out infinite;
+  .stat-val.teal {
+    color: var(--teal, #00b09b);
   }
-  .bus-exhaust--alt {
-    background: rgba(0, 176, 155, 0.25);
-    animation-delay: 0.15s;
+  .stat-val.red {
+    color: #f87171;
   }
-  @keyframes exhaust {
-    0% {
-      transform: scale(1);
-      opacity: 0.5;
-    }
-    100% {
-      transform: scale(3) translateX(-8px);
-      opacity: 0;
-    }
-  }
-  .empty-content {
-    position: relative;
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 16px;
-    max-width: 560px;
-    padding: 48px 40px;
-    background: rgba(10, 14, 30, 0.72);
-    border-top: 1px solid rgba(242, 101, 34, 0.18);
-    border-left: 1px solid rgba(242, 101, 34, 0.12);
-    border-right: 1px solid rgba(8, 12, 28, 0.6);
-    border-bottom: 1px solid rgba(8, 12, 28, 0.6);
-    border-radius: 28px;
-    backdrop-filter: blur(32px) saturate(1.5);
-    box-shadow:
-      0 2px 0 rgba(242, 101, 34, 0.06) inset,
-      0 32px 80px rgba(0, 0, 0, 0.55),
-      0 0 60px rgba(242, 101, 34, 0.05);
-  }
-  .empty-content .page-title {
-    font-size: clamp(2rem, 5vw, 3.2rem);
-    line-height: 1.05;
-    margin-bottom: 0;
-  }
-  .title-shimmer {
-    background: linear-gradient(
-      105deg,
-      var(--text-1) 0%,
-      var(--text-1) 35%,
-      rgba(242, 101, 34, 0.9) 50%,
-      var(--text-1) 65%,
-      var(--text-1) 100%
-    );
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .empty-sub {
-    font-size: 0.95rem;
-    color: var(--text-3);
-    line-height: 1.7;
-    max-width: 380px;
-    margin-bottom: 4px;
-  }
-  .empty-sub .accent {
-    color: var(--orange);
-    font-weight: 600;
-  }
-  .cta-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 28px;
-    border-radius: 9999px;
-    background: rgba(242, 101, 34, 0.15);
-    border: 1px solid rgba(242, 101, 34, 0.35);
-    color: var(--orange);
-    font-family: var(--font-body);
-    font-size: 0.92rem;
+  .stat-lbl {
+    font-size: 0.58rem;
     font-weight: 700;
-    letter-spacing: 0.02em;
-    text-decoration: none;
-    cursor: pointer;
-    transition:
-      background 0.2s,
-      transform 0.15s,
-      border-color 0.2s;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-    margin-top: 4px;
-  }
-  .cta-button:hover {
-    background: rgba(242, 101, 34, 0.25);
-    border-color: rgba(242, 101, 34, 0.55);
-    transform: translateY(-2px);
-  }
-  .cta-button:active {
-    transform: scale(0.97);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
   }
 
-  @media (max-width: 1024px) {
-    .track-layout {
-      grid-template-columns: 1fr;
-      padding: 20px;
-    }
-    .page-header {
-      grid-column: 1;
-    }
-    .map-area {
-      min-height: 420px;
-    }
-    .sidebar {
-      flex-direction: row;
-      overflow-x: auto;
-    }
-    .panel {
-      min-width: 240px;
-    }
+  /* ── Map ── */
+  .map-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 560px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--ink-2, #0f0f16);
+    border: 1px solid var(--rim, rgba(255, 255, 255, 0.07));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   }
-  @media (max-width: 600px) {
-    .empty-content {
-      padding: 32px 24px;
-      margin: 20px;
-    }
+  .map-el {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .no-historical {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    z-index: 5;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    padding: 5px 10px;
+    pointer-events: none;
+  }
+  .no-live {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.25);
+    pointer-events: none;
   }
 
-  /* MapLibre GL overrides (dark theme — same as original MapView styles) */
+  /* ── MapLibre popup overrides ── */
+  :global(.mp-popup-dark .maplibregl-popup-content) {
+    background: rgba(13, 13, 20, 0.96) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(14px) !important;
+  }
+  :global(.mp-popup-dark .maplibregl-popup-tip) {
+    border-top-color: rgba(13, 13, 20, 0.96) !important;
+    border-bottom-color: rgba(13, 13, 20, 0.96) !important;
+  }
   :global(.maplibregl-ctrl-group) {
     background: rgba(15, 15, 22, 0.92) !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -1035,8 +689,8 @@
     border-bottom: none !important;
   }
   :global(.maplibregl-ctrl-group button:hover) {
-    background: rgba(242, 101, 34, 0.12) !important;
-    color: #f26522 !important;
+    background: rgba(0, 176, 155, 0.12) !important;
+    color: #00b09b !important;
   }
   :global(.maplibregl-ctrl-attrib) {
     background: rgba(0, 0, 0, 0.55) !important;
@@ -1044,15 +698,16 @@
     font-size: 9px !important;
     border-radius: 6px !important;
   }
-  :global(.maplibregl-popup-content) {
-    background: rgba(15, 15, 22, 0.95) !important;
-    color: rgba(255, 255, 255, 0.85) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 10px !important;
-    padding: 8px 14px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
-    backdrop-filter: blur(12px) !important;
+
+  @media (max-width: 1024px) {
+    .map-page {
+      padding: 20px 16px;
+    }
+    .stat-strip {
+      flex-wrap: wrap;
+    }
+    .map-wrap {
+      min-height: 420px;
+    }
   }
 </style>

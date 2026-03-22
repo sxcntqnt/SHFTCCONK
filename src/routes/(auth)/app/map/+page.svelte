@@ -1,405 +1,710 @@
+<!-- src/routes/(auth)/org/[orgId]/map/+page.svelte -->
+<!--
+  SEPARATION OF CONCERNS — what was removed and why:
+    reconciliationStore  → finance data has no place in a map view
+    getRevenueTrend()    → revenue charts belong on /finance, not map markers
+    Chart.js sparklines  → replaced with clean status-only popups
+    supabase direct import → server already passes supabase via locals;
+                             live GPS now uses Supabase realtime from page data
+    GlassCard            → replaced with design-system panel styling
+    Tailwind classes     → replaced with CSS matching the org layout aesthetic
+
+  WHAT STAYS:
+    DuckDBTileProvider   → historical aggregated vehicle layer (H3 / circles)
+    Live GPS overlay     → Supabase realtime channel on vehicle_locations
+    markerColor()        → rain / compliance / normal colour coding
+    Popup on historical  → name, status, type from parquet properties
+    Popup on live markers → plate, speed, satellites, rain, compliance
+
+  LIVE GPS:
+    Reads from vehicle_locations realtime channel (not vehicle_positions —
+    that table doesn't exist; vehicle_locations is what gps/ingest writes to).
+    Channel scoped to org via filter.
+-->
 <script lang="ts">
   import { onMount, onDestroy } from "svelte"
-  import DuckDBTileProvider from "$lib/components/DuckDBTileProvider.svelte"
-  import { reconciliationStore } from "$lib/features/finance/stores/finance"
-  import { getRevenueTrend } from "$lib/features/finance/reconciliation"
-  import { supabase } from "$lib/supabaseClient"
-  import GlassCard from "$lib/components/GlassCard.svelte"
+  import { browser } from "$app/environment"
+  import DuckDBTileProvider from "$lib/map/components/MapCache.svelte"
+  import type { PageData } from "./$types"
 
-  // ── Page data ────────────────────────────────────────────────────────
   interface Props {
-    data: {
-      orgId: string
-      parquetUrl: string | null
-      vehicleCount: number
-      nonCompliantIds: string[]
-    }
+    data: PageData
   }
-
   let { data }: Props = $props()
 
-  // ── Finance store (for popup revenue trend charts) ───────────────────
-  let allReconciliation = $state($reconciliationStore)
-  $effect(() => {
-    return reconciliationStore.subscribe((v) => (allReconciliation = v))
-  })
+  // ── Live GPS state ────────────────────────────────────────────────────────
 
-  // ── Live GPS state (Supabase realtime overlay) ───────────────────────
   interface LiveVehicle {
     vehicleId: string
+    plate: string
     lat: number
     lng: number
     speed: number | null
     satellites: number | null
+    fixStatus: number | null // 0=NO_FIX 2=2D 3=3D
     rain: boolean
     complianceIssue: boolean
   }
 
   let liveVehicles = $state<Record<string, LiveVehicle>>({})
   let liveCount = $derived(Object.keys(liveVehicles).length)
+  let duckdbReady = $state(false)
 
-  // ── MapLibre instance ────────────────────────────────────────────────
+  // ── MapLibre ──────────────────────────────────────────────────────────────
+
   let mapContainer: HTMLDivElement
-  let mapInstance: any
-  // Live markers are maplibregl.Marker instances (HTML-based, not tile layer)
-  // because they're a small dataset and need custom HTML (mini chart canvas).
+  let mapInstance: any = null
   let liveMarkers: Record<string, any> = {}
+  let gpsChannel: ReturnType<typeof data.supabase.channel> | null = null
+  let mlRef: any = null // maplibregl module reference
 
-  let gpsChannel: ReturnType<typeof supabase.channel> | null = null
+  // ── Colour coding ─────────────────────────────────────────────────────────
 
-  // ── Marker colour logic (mirrors original getMarkerColor) ───────────
   function markerColor(v: LiveVehicle): string {
     if (v.rain) return "#3b82f6" // blue  — raining
     if (v.complianceIssue) return "#ef4444" // red   — compliance flagged
-    return "#10b981" // green — normal
+    if (v.fixStatus === 0) return "#6b7280" // grey  — no GPS fix
+    return "#00b09b" // teal  — normal
   }
 
-  // ── Mini Chart.js spark line rendered into a canvas ──────────────────
-  // Kept from the original — Chart.js in a divIcon-equivalent custom element.
-  // Uses dynamic import so Chart.js only loads when the map is ready.
-  async function renderSparkline(canvasId: string, trend: number[]) {
-    const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null
-    if (!canvas || trend.length === 0) return
-
-    const { Chart, registerables } = await import("chart.js")
-    Chart.register(...registerables)
-
-    // Destroy any existing chart on this canvas before re-rendering
-    const existing = (Chart as any).getChart(canvas)
-    existing?.destroy()
-
-    new Chart(canvas, {
-      type: "line",
-      data: {
-        labels: trend.map((_, i) => i),
-        datasets: [
-          {
-            data: trend,
-            borderColor: "rgba(59,130,246,0.9)",
-            backgroundColor: "rgba(59,130,246,0.15)",
-            borderWidth: 1.5,
-            tension: 0.3,
-            pointRadius: 0,
-          },
-        ],
-      },
-      options: {
-        responsive: false,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: { x: { display: false }, y: { display: false } },
-      },
-    })
+  function fixLabel(fx: number | null): string {
+    if (fx === 0) return "No fix"
+    if (fx === 2) return "2D fix"
+    if (fx === 3) return "3D fix"
+    return "Unknown"
   }
 
-  // ── Build or update a live marker ───────────────────────────────────
-  function upsertLiveMarker(v: LiveVehicle, maplibregl: any) {
+  // ── Marker builder ────────────────────────────────────────────────────────
+
+  function upsertLiveMarker(v: LiveVehicle): void {
+    if (!mapInstance || !mlRef) return
+
     const color = markerColor(v)
-    const trend = getRevenueTrend(
-      allReconciliation
-        .filter((r) => r.vehicleId === v.vehicleId)
-        .map((r) => ({
-          vehicleId: r.vehicleId,
-          expectedAmount: r.expectedAmount,
-        })),
-    )
-    const canvasId = `spark-${v.vehicleId}`
-
-    // Custom HTML element (replaces Leaflet divIcon)
-    const el = document.createElement("div")
-    el.style.cssText = `
-      width: 64px; height: 44px; position: relative; cursor: pointer;
-    `
-    el.innerHTML = `
-      <canvas id="${canvasId}" width="64" height="44"
-        style="display:block;border-radius:6px;background:rgba(255,255,255,0.85);
-               box-shadow:0 1px 4px rgba(0,0,0,0.2);"></canvas>
-      <div style="
-        position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
-        width:10px;height:10px;border-radius:50%;
-        background:${color};border:2px solid white;
-        box-shadow:0 1px 3px rgba(0,0,0,0.3);
-      "></div>
-    `
 
     if (liveMarkers[v.vehicleId]) {
-      // Update position
+      // Just move it and update dot colour
       liveMarkers[v.vehicleId].setLngLat([v.lng, v.lat])
-      // Swap element content (re-renders canvas + dot colour)
-      const wrapper = liveMarkers[v.vehicleId].getElement()
-      wrapper.innerHTML = el.innerHTML
-    } else {
-      // Create new marker
-      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([v.lng, v.lat])
-        .setPopup(
-          new maplibregl.Popup({ offset: 20, maxWidth: "260px" }).setHTML(`
-            <div style="font-size:13px;line-height:1.5">
-              <strong>${v.vehicleId}</strong><br/>
-              Speed: ${v.speed ?? 0} km/h<br/>
-              Satellites: ${v.satellites ?? "N/A"}<br/>
-              Rain: ${v.rain ? "Yes" : "No"}<br/>
-              Compliance: ${v.complianceIssue ? "⚠️ Issue" : "✅ OK"}<br/>
-              <canvas id="popup-spark-${v.vehicleId}" width="220" height="70"
-                style="margin-top:6px;display:block;border-radius:4px;
-                       background:#f8fafc;"></canvas>
-            </div>
-          `),
-        )
-        .addTo(mapInstance)
-
-      // Re-render popup chart when popup opens
-      marker.getPopup().on("open", () => {
-        setTimeout(
-          () => renderSparkline(`popup-spark-${v.vehicleId}`, trend),
-          30,
-        )
-      })
-
-      liveMarkers[v.vehicleId] = marker
+      const dot = liveMarkers[v.vehicleId]
+        .getElement()
+        .querySelector(".live-dot") as HTMLElement | null
+      if (dot) dot.style.background = color
+      return
     }
 
-    // Always re-render the marker sparkline (position may have updated)
-    setTimeout(() => renderSparkline(canvasId, trend), 30)
+    // Build marker element
+    const el = document.createElement("div")
+    el.className = "live-marker-el"
+    el.style.cssText = `
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+      background: rgba(0,0,0,0.75); border: 2.5px solid ${color};
+      display: flex; align-items: center; justify-content: center;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px ${color}55, 0 4px 12px rgba(0,0,0,0.4);
+      backdrop-filter: blur(4px);
+      transition: transform 0.15s, box-shadow 0.15s;
+    `
+    el.innerHTML = `
+      <span class="live-dot" style="
+        width: 10px; height: 10px; border-radius: 50%;
+        background: ${color};
+        box-shadow: 0 0 6px ${color};
+      "></span>
+    `
+
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "translate(-50%, -50%) scale(1.25)"
+      el.style.boxShadow = `0 0 18px ${color}88, 0 6px 20px rgba(0,0,0,0.5)`
+    })
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "translate(-50%, -50%)"
+      el.style.boxShadow = `0 0 10px ${color}55, 0 4px 12px rgba(0,0,0,0.4)`
+    })
+
+    const popup = new mlRef.Popup({
+      offset: [0, -18],
+      closeButton: false,
+      closeOnClick: false,
+      className: "mp-popup-dark",
+      maxWidth: "220px",
+    }).setHTML(buildPopupHTML(v))
+
+    const marker = new mlRef.Marker({ element: el, anchor: "center" })
+      .setLngLat([v.lng, v.lat])
+      .setPopup(popup)
+      .addTo(mapInstance)
+
+    el.addEventListener("mouseenter", () => popup.addTo(mapInstance))
+    el.addEventListener("mouseleave", () => {
+      setTimeout(() => {
+        if (!el.matches(":hover")) popup.remove()
+      }, 200)
+    })
+
+    liveMarkers[v.vehicleId] = marker
   }
 
-  // ── Called by DuckDBTileProvider when WASM + protocol are ready ──────
-  function initMap() {
-    if (!mapContainer || mapInstance) return
+  function buildPopupHTML(v: LiveVehicle): string {
+    const color = markerColor(v)
+    return `
+      <div style="font-family:var(--font-body,'DM Sans',sans-serif);min-width:160px">
+        <div style="font-size:.88rem;font-weight:800;color:#fff;letter-spacing:-.02em;margin-bottom:6px">
+          ${v.plate || v.vehicleId}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:rgba(255,255,255,.6)">
+          <div>Speed: <b style="color:#fff">${v.speed ?? 0} km/h</b></div>
+          <div>Satellites: <b style="color:#fff">${v.satellites ?? "—"}</b></div>
+          <div>GPS: <b style="color:#fff">${fixLabel(v.fixStatus)}</b></div>
+          <div>Rain: <b style="color:${v.rain ? "#3b82f6" : "#fff"}">${v.rain ? "Yes" : "No"}</b></div>
+          <div>Compliance:
+            <b style="color:${v.complianceIssue ? "#f87171" : "#00b09b"}">
+              ${v.complianceIssue ? "⚠ Issue" : "✓ OK"}
+            </b>
+          </div>
+        </div>
+        <div style="
+          margin-top:8px;width:8px;height:8px;border-radius:50%;
+          background:${color};display:inline-block;
+          box-shadow:0 0 6px ${color};
+        "></div>
+      </div>
+    `
+  }
+
+  // ── Map init ──────────────────────────────────────────────────────────────
+
+  function initMap(): void {
+    if (!mapContainer || mapInstance || !browser) return
 
     import("maplibre-gl").then((mod) => {
-      const maplibregl = mod.default
+      mlRef = mod.default
+      const maplibregl = mlRef
+
+      // Style — dark Protomaps + optional DuckDB vehicle layer
+      const sources: Record<string, unknown> = {}
+      const layers: unknown[] = []
+
+      if (data.parquetUrl) {
+        sources.vehicleTiles = {
+          type: "vector",
+          tiles: [`duckdb.${data.parquetUrl}?z={z}&x={x}&y={y}`],
+          minzoom: 0,
+          maxzoom: 14,
+        }
+        layers.push({
+          id: "historical-vehicles",
+          type: "circle",
+          source: "vehicleTiles",
+          "source-layer": "default",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3, 14, 7],
+            "circle-color": [
+              "match",
+              ["get", "status"],
+              "EXPIRED",
+              "#ef4444",
+              "WARNING",
+              "#f59e0b",
+              "HIGH",
+              "#f97316",
+              "MEDIUM",
+              "#3b82f6",
+              "#00b09b",
+            ],
+            "circle-opacity": 0.6,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#ffffff",
+          },
+        })
+      }
 
       mapInstance = new maplibregl.Map({
         container: mapContainer,
         style: {
           version: 8,
-          sources: data.parquetUrl
-            ? {
-                vehicleTiles: {
-                  type: "vector",
-                  // duckdb. protocol registered by DuckDBTileProvider
-                  tiles: [`duckdb.${data.parquetUrl}?z={z}&x={x}&y={y}`],
-                  minzoom: 0,
-                  maxzoom: 14,
-                },
-              }
-            : {},
-          layers: data.parquetUrl
-            ? [
-                // ── Historical aggregated layer (from DuckDB parquet) ──
-                // Stage 1: this becomes an H3 fill-extrusion heatmap.
-                // Stage 0: circle points, colour-coded by status.
-                {
-                  id: "historical-vehicles",
-                  type: "circle",
-                  source: "vehicleTiles",
-                  "source-layer": "default",
-                  paint: {
-                    "circle-radius": [
-                      "interpolate",
-                      ["linear"],
-                      ["zoom"],
-                      8,
-                      3,
-                      14,
-                      7,
-                    ],
-                    "circle-color": [
-                      "match",
-                      ["get", "status"],
-                      "EXPIRED",
-                      "#ef4444",
-                      "WARNING",
-                      "#f59e0b",
-                      "HIGH",
-                      "#f97316",
-                      "MEDIUM",
-                      "#3b82f6",
-                      "#10b981",
-                    ],
-                    "circle-opacity": 0.6,
-                    "circle-stroke-width": 1,
-                    "circle-stroke-color": "#ffffff",
-                  },
-                },
-              ]
-            : [],
+          glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+          sources: {
+            ...sources,
+            protomaps: {
+              type: "vector",
+              tiles: [
+                `https://api.protomaps.com/tiles/v4/{z}/{x}/{y}.mvt?key=${data.protomapsKey ?? ""}`,
+              ],
+              attribution: "© Protomaps © OpenStreetMap",
+            },
+          },
+          layers: [
+            {
+              id: "background",
+              type: "background",
+              paint: { "background-color": "#0a0a0c" },
+            },
+            ...layers,
+          ],
         },
-        center: [36.8219, -1.2921], // Nairobi
+        center: [36.8219, -1.2921],
         zoom: 11,
       })
 
-      // ── Popup on click for historical layer ───────────────────────
-      mapInstance.on("click", "historical-vehicles", (e: any) => {
-        const f = e.features?.[0]
-        if (!f) return
-        const { name, status, type } = f.properties
-        new maplibregl.Popup()
-          .setLngLat(e.lngLat)
-          .setHTML(
-            `
-            <div style="font-size:13px">
-              <strong>${name}</strong><br/>
-              Status: <b>${status}</b><br/>
-              Type: ${type}
-            </div>
-          `,
-          )
-          .addTo(mapInstance)
-      })
+      // Attribution compact
+      mapInstance
+        .getContainer()
+        .querySelector(".maplibregl-ctrl-attrib")
+        ?.classList.add("maplibregl-compact")
 
-      mapInstance.on("mouseenter", "historical-vehicles", () => {
-        mapInstance.getCanvas().style.cursor = "pointer"
-      })
-      mapInstance.on("mouseleave", "historical-vehicles", () => {
-        mapInstance.getCanvas().style.cursor = ""
-      })
+      // Historical layer — click popup
+      if (data.parquetUrl) {
+        mapInstance.on("click", "historical-vehicles", (e: any) => {
+          const f = e.features?.[0]
+          if (!f) return
+          const { name, status, type } = f.properties ?? {}
+          new maplibregl.Popup({
+            className: "mp-popup-dark",
+            maxWidth: "200px",
+          })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `
+              <div style="font-family:var(--font-body,'DM Sans',sans-serif)">
+                <div style="font-size:.88rem;font-weight:800;color:#fff;margin-bottom:5px">${name ?? "Vehicle"}</div>
+                <div style="font-size:.72rem;color:rgba(255,255,255,.6)">
+                  Status: <b style="color:#fff">${status ?? "—"}</b><br/>
+                  Type: <b style="color:#fff">${type ?? "—"}</b>
+                </div>
+              </div>
+            `,
+            )
+            .addTo(mapInstance)
+        })
+        mapInstance.on("mouseenter", "historical-vehicles", () => {
+          mapInstance.getCanvas().style.cursor = "pointer"
+        })
+        mapInstance.on("mouseleave", "historical-vehicles", () => {
+          mapInstance.getCanvas().style.cursor = ""
+        })
+      }
 
-      // ── Supabase realtime live GPS overlay ────────────────────────
-      // Separate from DuckDB layer — small dataset, HTML markers,
-      // gets revenue trend mini-charts. Disconnect-safe.
-      gpsChannel = supabase
-        .channel(`realtime-fleet-gps-${data.orgId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "vehicle_positions",
-            filter: `organization_id=eq.${data.orgId}`,
-          },
-          (payload) => {
-            const pos = payload.new as any
-            if (!pos?.vehicleId || pos.gpsLat == null || pos.gpsLng == null)
-              return
-
-            const vehicle: LiveVehicle = {
-              vehicleId: pos.vehicleId,
-              lat: Number(pos.gpsLat),
-              lng: Number(pos.gpsLng),
-              speed: pos.speed ?? null,
-              satellites: pos.satellites ?? null,
-              rain: !!pos.rain,
-              complianceIssue: data.nonCompliantIds.includes(pos.vehicleId),
-            }
-
-            liveVehicles = { ...liveVehicles, [pos.vehicleId]: vehicle }
-            upsertLiveMarker(vehicle, maplibregl)
-          },
-        )
-        .subscribe()
+      // Start live GPS subscription
+      startGpsChannel()
     })
   }
 
-  function handleProviderError(err: Error) {
-    console.error("[fleet map] DuckDB init failed:", err)
+  // ── Supabase realtime GPS channel ─────────────────────────────────────────
+
+  function startGpsChannel(): void {
+    if (gpsChannel) return
+
+    gpsChannel = data.supabase
+      .channel(`fleet-map-gps-${data.orgId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "vehicle_locations",
+          filter: `organization_id=eq.${data.orgId}`,
+        },
+        (payload) => {
+          const pos = payload.new as Record<string, unknown>
+          if (!pos?.vehicle_id || pos.lat == null || pos.lng == null) return
+
+          const vehicle: LiveVehicle = {
+            vehicleId: String(pos.vehicle_id),
+            plate: String(pos.plate ?? pos.vehicle_id),
+            lat: Number(pos.lat),
+            lng: Number(pos.lng),
+            speed: pos.speed != null ? Number(pos.speed) : null,
+            satellites: pos.satellites != null ? Number(pos.satellites) : null,
+            fixStatus: pos.fix_status != null ? Number(pos.fix_status) : null,
+            rain: Boolean(pos.rain),
+            complianceIssue: data.nonCompliantIds.includes(
+              String(pos.vehicle_id),
+            ),
+          }
+
+          liveVehicles = { ...liveVehicles, [vehicle.vehicleId]: vehicle }
+          upsertLiveMarker(vehicle)
+        },
+      )
+      .subscribe()
   }
 
+  // ── DuckDB callbacks ──────────────────────────────────────────────────────
+
+  function handleDuckDBReady(): void {
+    duckdbReady = true
+    initMap()
+  }
+
+  function handleDuckDBError(err: Error): void {
+    console.error("[fleet map] DuckDB init failed:", err)
+    // Still init map — live GPS overlay works without DuckDB
+    initMap()
+  }
+
+  // ── When no parquetUrl: init map directly on mount ───────────────────────
+  onMount(() => {
+    if (!data.parquetUrl) initMap()
+  })
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
   onDestroy(() => {
     if (gpsChannel) {
-      supabase.removeChannel(gpsChannel)
+      data.supabase.removeChannel(gpsChannel)
       gpsChannel = null
     }
-    // Destroy Chart.js instances to prevent canvas memory leaks
-    import("chart.js").then(({ Chart }) => {
-      Object.keys(liveMarkers).forEach((id) => {
-        const c1 = document.getElementById(`spark-${id}`) as HTMLCanvasElement
-        const c2 = document.getElementById(
-          `popup-spark-${id}`,
-        ) as HTMLCanvasElement
-        ;(Chart as any).getChart(c1)?.destroy()
-        ;(Chart as any).getChart(c2)?.destroy()
-      })
-    })
+    Object.values(liveMarkers).forEach((m) => m?.remove())
+    liveMarkers = {}
     mapInstance?.remove()
     mapInstance = undefined
   })
 </script>
 
-<div class="mb-6 flex items-center justify-between">
-  <h2 class="text-3xl font-bold">Real-Time Fleet Map</h2>
-  {#if liveCount > 0}
-    <span class="text-sm text-green-600 font-medium">
-      {liveCount} vehicle{liveCount !== 1 ? "s" : ""} live
-    </span>
-  {/if}
-</div>
+<svelte:head><title>Fleet Map — {data.orgName}</title></svelte:head>
 
-<!-- Legend -->
-<div class="flex gap-4 mb-4 text-xs text-gray-500 flex-wrap">
-  <span class="flex items-center gap-1">
-    <span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span> Normal
-  </span>
-  <span class="flex items-center gap-1">
-    <span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> Compliance
-    issue
-  </span>
-  <span class="flex items-center gap-1">
-    <span class="w-3 h-3 rounded-full bg-blue-500 inline-block"></span> Raining
-  </span>
-  <span class="flex items-center gap-1">
-    <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> Warning
-  </span>
-  <span class="flex items-center gap-1 ml-4 text-gray-400">
-    Dim circles = historical (DuckDB) · Floating markers = live GPS
-  </span>
-</div>
+<div class="map-page">
+  <!-- Header -->
+  <div class="map-hd">
+    <div>
+      <div class="map-eyebrow">
+        <span class="live-dot {liveCount > 0 ? 'active' : ''}"></span>
+        {liveCount > 0
+          ? `${liveCount} vehicle${liveCount !== 1 ? "s" : ""} live`
+          : "Fleet Map"}
+      </div>
+      <h1 class="map-title">Real-Time <em>Fleet</em></h1>
+    </div>
 
-<!-- Map -->
-<GlassCard>
-  <div class="relative w-full h-[600px] rounded-2xl overflow-hidden">
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#00b09b; box-shadow:0 0 5px #00b09b44"
+        ></span>
+        Normal
+      </div>
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#ef4444; box-shadow:0 0 5px #ef444444"
+        ></span>
+        Compliance issue
+      </div>
+      <div class="legend-item">
+        <span
+          class="legend-dot"
+          style="background:#3b82f6; box-shadow:0 0 5px #3b82f644"
+        ></span>
+        Raining
+      </div>
+      <div class="legend-item">
+        <span class="legend-dot" style="background:#6b7280"></span>
+        No GPS fix
+      </div>
+      {#if data.parquetUrl}
+        <div class="legend-divider"></div>
+        <div class="legend-item muted">
+          <span class="legend-dot-sq" style="background:#3b82f620"></span>
+          Historical (DuckDB)
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Stats strip -->
+  <div class="stat-strip">
+    <div class="stat">
+      <div class="stat-val teal">{liveCount}</div>
+      <div class="stat-lbl">Live Now</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{data.vehicleCount}</div>
+      <div class="stat-lbl">Total Fleet</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val {data.nonCompliantIds.length > 0 ? 'red' : ''}">
+        {data.nonCompliantIds.length}
+      </div>
+      <div class="stat-lbl">Non-Compliant</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">
+        {Object.values(liveVehicles).filter((v) => v.rain).length}
+      </div>
+      <div class="stat-lbl">In Rain</div>
+    </div>
+  </div>
+
+  <!-- Map container -->
+  <div class="map-wrap">
     {#if data.parquetUrl}
-      <!--
-        DuckDBTileProvider:
-          - boots WASM, registers duckdb. protocol
-          - fires onReady → initMap() creates MapLibre + Supabase channel
-        Stage 1: swap circle layer for H3 heatmap in DuckDBTileProvider SQL
-        Stage 3: RealtimeOverlay already handled here via gpsChannel
-      -->
       <DuckDBTileProvider
         parquetUrl={data.parquetUrl}
-        onReady={initMap}
-        onError={handleProviderError}
+        onReady={handleDuckDBReady}
+        onError={handleDuckDBError}
       />
-    {:else}
-      <!-- No parquet — still init map for live GPS overlay -->
-      {#if !mapInstance}
-        <!-- Trigger map init without DuckDB -->
-        {@html ""}
-        <script>
-          // Fallback: initMap without waiting for DuckDB
-          // (no historical layer, live only)
-        </script>
-      {/if}
     {/if}
 
-    <div bind:this={mapContainer} class="absolute inset-0 w-full h-full" />
+    <div bind:this={mapContainer} class="map-el"></div>
 
     {#if !data.parquetUrl}
-      <div
-        class="absolute inset-0 flex items-center justify-center
-                  bg-gray-50/80 pointer-events-none"
-      >
-        <p class="text-gray-400 text-sm">
-          No historical data — live layer active
-        </p>
+      <div class="no-historical">
+        No historical data — live GPS overlay active
+      </div>
+    {/if}
+
+    {#if liveCount === 0}
+      <div class="no-live">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          opacity="0.3"
+        >
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        Waiting for live GPS updates…
       </div>
     {/if}
   </div>
-</GlassCard>
+</div>
 
 <style>
-  :global(.maplibregl-map) {
+  .map-page {
+    flex: 1;
+    padding: 32px 40px;
+    font-family: var(--font-body);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── Header ── */
+  .map-hd {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .map-eyebrow {
+    font-size: 0.6rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal, #00b09b);
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 6px;
+  }
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+  .live-dot.active {
+    background: var(--teal, #00b09b);
+    animation: dot-pulse 2s ease-out infinite;
+    box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.5);
+  }
+  @keyframes dot-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(0, 176, 155, 0.5);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgba(0, 176, 155, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(0, 176, 155, 0);
+    }
+  }
+  .map-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 2vw, 1.9rem);
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    color: var(--text-1);
+    line-height: 1.1;
+  }
+  .map-title em {
+    font-style: normal;
+    color: var(--teal, #00b09b);
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: var(--text-3);
+  }
+  .legend-item.muted {
+    color: var(--text-3);
+    opacity: 0.6;
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-dot-sq {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+  }
+  .legend-divider {
+    width: 1px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ── Stats strip ── */
+  .stat-strip {
+    display: flex;
+    gap: 12px;
+  }
+  .stat {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--rim, rgba(255, 255, 255, 0.07));
+    border-radius: 13px;
+    padding: 12px 20px;
+    min-width: 90px;
+  }
+  .stat-val {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    color: var(--text-1);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .stat-val.teal {
+    color: var(--teal, #00b09b);
+  }
+  .stat-val.red {
+    color: #f87171;
+  }
+  .stat-lbl {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* ── Map ── */
+  .map-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 560px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--ink-2, #0f0f16);
+    border: 1px solid var(--rim, rgba(255, 255, 255, 0.07));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+  .map-el {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
   }
-
-  :global(.maplibregl-popup-content) {
+  .no-historical {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    z-index: 5;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
-    font-size: 13px;
-    padding: 10px 12px;
+    padding: 5px 10px;
+    pointer-events: none;
+  }
+  .no-live {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.25);
+    pointer-events: none;
+  }
+
+  /* ── MapLibre popup overrides ── */
+  :global(.mp-popup-dark .maplibregl-popup-content) {
+    background: rgba(13, 13, 20, 0.96) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(14px) !important;
+  }
+  :global(.mp-popup-dark .maplibregl-popup-tip) {
+    border-top-color: rgba(13, 13, 20, 0.96) !important;
+    border-bottom-color: rgba(13, 13, 20, 0.96) !important;
+  }
+  :global(.maplibregl-ctrl-group) {
+    background: rgba(15, 15, 22, 0.92) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    backdrop-filter: blur(8px) !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+  }
+  :global(.maplibregl-ctrl-group button) {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    color: rgba(255, 255, 255, 0.65) !important;
+    transition:
+      background 0.15s,
+      color 0.15s !important;
+  }
+  :global(.maplibregl-ctrl-group button:last-child) {
+    border-bottom: none !important;
+  }
+  :global(.maplibregl-ctrl-group button:hover) {
+    background: rgba(0, 176, 155, 0.12) !important;
+    color: #00b09b !important;
+  }
+  :global(.maplibregl-ctrl-attrib) {
+    background: rgba(0, 0, 0, 0.55) !important;
+    color: rgba(255, 255, 255, 0.35) !important;
+    font-size: 9px !important;
+    border-radius: 6px !important;
+  }
+
+  @media (max-width: 1024px) {
+    .map-page {
+      padding: 20px 16px;
+    }
+    .stat-strip {
+      flex-wrap: wrap;
+    }
+    .map-wrap {
+      min-height: 420px;
+    }
   }
 </style>
