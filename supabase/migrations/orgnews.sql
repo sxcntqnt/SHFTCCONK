@@ -184,3 +184,109 @@ create policy "Service role only"
 
 alter table profiles
   add column if not exists phone text;
+
+
+
+
+  -- supabase/migrations/YYYYMMDDHHMMSS_mpesa_payout_tables.sql
+--
+-- M-Pesa B2C payout and B2B settlement tracking tables.
+-- These record outgoing payments initiated via Daraja API.
+-- Status is updated by the b2c-result and b2b-result webhook callbacks.
+
+-- ── M-Pesa B2C payouts (tips to drivers / conductors) ─────────────────────────
+create table mpesa_payouts (
+  id                  uuid primary key default gen_random_uuid(),
+
+  -- Daraja response identifiers
+  conversation_id     text not null unique,    -- ConversationID from Daraja
+  originator_id       text,                    -- OriginatorConversationID
+
+  -- Who is being paid
+  actor_id            uuid references actors(id) on delete set null,
+  phone               text not null,           -- +254 format
+  amount              numeric not null check (amount > 0),  -- KES
+
+  -- Context
+  role                text not null,           -- DRIVER | CONDUCTOR
+  trip_id             uuid,                    -- optional — links to a trip/booking
+  organization_id     uuid references organizations(id) on delete set null,
+  remarks             text,
+
+  -- Status lifecycle: processing → completed | failed
+  status              text not null default 'processing'
+                        check (status in ('processing', 'completed', 'failed')),
+
+  -- Daraja result callback fields (populated by b2c-result webhook)
+  result_code         integer,
+  result_description  text,
+  transaction_id      text,                    -- M-Pesa transaction code e.g. MPESA4G8K2L
+  completed_at        timestamptz,
+
+  created_at          timestamptz default now()
+);
+
+-- ── M-Pesa B2B settlements (SACCO → paybill/till revenue share) ───────────────
+create table mpesa_settlements (
+  id                  uuid primary key default gen_random_uuid(),
+
+  conversation_id     text not null unique,
+  originator_id       text,
+
+  -- Destination
+  shortcode           text not null,           -- Recipient paybill or till number
+  amount              numeric not null check (amount > 0),  -- KES
+  reference           text,                    -- e.g. invoice or batch reference
+
+  -- Context
+  organization_id     uuid references organizations(id) on delete set null,
+  initiated_by        uuid references actors(id) on delete set null,  -- who triggered it
+  remarks             text,
+
+  status              text not null default 'processing'
+                        check (status in ('processing', 'completed', 'failed')),
+
+  result_code         integer,
+  result_description  text,
+  transaction_id      text,
+  completed_at        timestamptz,
+
+  created_at          timestamptz default now()
+);
+
+-- ── Indexes ───────────────────────────────────────────────────────────────────
+create index on mpesa_payouts    (actor_id);
+create index on mpesa_payouts    (organization_id);
+create index on mpesa_payouts    (status);
+create index on mpesa_payouts    (created_at desc);
+create index on mpesa_settlements (organization_id);
+create index on mpesa_settlements (status);
+create index on mpesa_settlements (created_at desc);
+
+-- ── RLS ───────────────────────────────────────────────────────────────────────
+alter table mpesa_payouts    enable row level security;
+alter table mpesa_settlements enable row level security;
+
+-- Only platform admins and the org's members can view payouts for their org.
+-- Insertions happen only via service role (server-side API routes).
+create policy "org members can view their payouts"
+  on mpesa_payouts for select
+  using (
+    organization_id in (
+      select organization_id from organization_members
+      where actor_id in (
+        select id from actors where profile_id = auth.uid()
+      )
+    )
+  );
+
+create policy "org members can view their settlements"
+  on mpesa_settlements for select
+  using (
+    organization_id in (
+      select organization_id from organization_members
+      where actor_id in (
+        select id from actors where profile_id = auth.uid()
+      )
+    )
+  );

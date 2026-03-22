@@ -1,225 +1,319 @@
-// lib/stores/finance.store.ts
-import { writable, get } from 'svelte/store'
-import { SupabaseClient } from "@supabase/supabase-js"
-import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
+// src/lib/features/finance/finance.store.ts
+//
+// Finance store — ledger entries and reconciliation events.
+//
+// ARCHITECTURE:
+//   - Supabase client is passed in (not a global) — works with SSR + SvelteKit
+//   - Org scoping comes from orgCtx / orgChairCtx / operatorCtx (not authStore)
+//   - Realtime channels are keyed by orgId to prevent cross-org leakage
+//   - Tables used: reconciliation_events (exists in schema)
+//                  reconciliation_events has: organization_id, vehicle_id,
+//                  total_collected, expected_amount, variance, status, created_at
+//
+// NOTE: The schema has no `ledger_entries` table yet.
+// Ledger entries are computed client-side from reconciliation_events +
+// the LedgerEntry type from ledger.ts until a migration adds the table.
+//
+// USAGE:
+//   // In org dashboard +page.ts or +layout.ts
+//   import { initFinance, destroyFinance } from '$lib/features/finance/finance.store'
+//
+//   onMount(() => {
+//     initFinance(supabase, orgId)
+//     return () => destroyFinance(supabase)
+//   })
 
-/* ============================================================
-   LEDGER & RECONCILIATION MODELS
-============================================================ */
+import { writable, derived, get } from 'svelte/store'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { get as getCtx } from 'svelte/store'
+import { orgCtx, orgChairCtx, operatorCtx } from '$lib/features/auth/contexts'
+import type { LedgerEntry } from './ledger.store'
+import type { ReconciliationResult } from './reconciliation.store'
+import {
+  reconcilePayments,
+  summarizeReconciliation,
+  type ReconciliationSummary,
+  type MpesaTransaction,
+} from './reconciliation.store'
+import { totalCollected, aggregateLedger } from './ledger.store'
 
-export interface LedgerEntry {
-  id: string
-  vehicleId: string
-  driverId?: string
-  organizationId: string
-  type: string // PAYMENT, FEE, PENALTY, etc.
-  amount: number
-  reference?: string
-  created_at?: string
+// ── DB row shape (reconciliation_events table) ────────────────────────────────
+
+interface ReconciliationRow {
+  id:              string
+  organization_id: string
+  vehicle_id:      string
+  total_collected: number
+  expected_amount: number
+  variance:        number
+  status:          'MATCHED' | 'SHORTFALL' | 'OVERAGE' | string
+  created_at:      string
 }
 
-export type ReconciliationStatus = 'MATCHED' | 'SHORTFALL' | 'OVERAGE'
-
-export interface ReconciliationEvent {
-  id: string
-  vehicleId: string
-  organizationId: string
-  totalCollected: number
-  expectedAmount: number
-  variance: number
-  status: ReconciliationStatus
-  created_at?: string
-}
-
-/* ============================================================
-   DERIVED DAILY REVENUE
-============================================================ */
+// ── Store shapes ──────────────────────────────────────────────────────────────
 
 export interface DailyRevenue {
-  vehicle: string
-  collected: number
-  target: number
-  variance: number
+  vehicleId:       string
+  collected:       number  // KES
+  target:          number  // KES
+  variance:        number  // KES (positive = overage)
+  status:          string
+  mpesaAmount:     number
+  cashAmount:      number
 }
 
-/* ============================================================
-   STORES
-============================================================ */
+export interface FinanceState {
+  reconciliationRows:  ReconciliationRow[]
+  dailyRevenue:        DailyRevenue[]
+  summary:             ReconciliationSummary | null
+  loading:             boolean
+  error:               string | null
+  lastUpdated:         string | null
+}
 
-export const ledgerStore = writable<LedgerEntry[]>([])
-export const reconciliationStore = writable<ReconciliationEvent[]>([])
-export const dailyRevenueStore = writable<DailyRevenue[]>([])
+// ── Stores ────────────────────────────────────────────────────────────────────
 
-/* ============================================================
-   REALTIME CHANNELS
-============================================================ */
+export const financeStore = writable<FinanceState>({
+  reconciliationRows: [],
+  dailyRevenue:       [],
+  summary:            null,
+  loading:            false,
+  error:              null,
+  lastUpdated:        null,
+})
 
-let ledgerChannel: ReturnType<typeof supabase.channel> | null = null
-let reconciliationChannel: ReturnType<typeof supabase.channel> | null = null
+// Convenience derived stores for component consumption
+export const reconciliationRows  = derived(financeStore, ($s) => $s.reconciliationRows)
+export const dailyRevenue        = derived(financeStore, ($s) => $s.dailyRevenue)
+export const financeSummary      = derived(financeStore, ($s) => $s.summary)
+export const financeLoading      = derived(financeStore, ($s) => $s.loading)
+export const financeError        = derived(financeStore, ($s) => $s.error)
 
-/* ============================================================
-   INITIALIZATION
-============================================================ */
+/** KES total collected today across all vehicles in the org */
+export const orgTotalCollected = derived(
+  financeStore,
+  ($s) => $s.dailyRevenue.reduce((sum, r) => sum + r.collected, 0),
+)
 
-export async function initFinance(): Promise<void> {
-  const currentUser = get(authStore)
-  if (!currentUser.organizationId) throw new Error('User has no tenant context')
+/** Count of vehicles with shortfalls — for alert badge */
+export const shortfallCount = derived(
+  financeStore,
+  ($s) => $s.summary?.shortfallCount ?? 0,
+)
 
-  const orgId = currentUser.organizationId
+// ── Realtime channel handles ──────────────────────────────────────────────────
 
-  /* ----------------------------
-     Initial Ledger Fetch
-  ---------------------------- */
-  const { data: ledgerData, error: ledgerError } = await supabase
-    .from('ledger_entries')
-    .select('*')
-    .eq('organization_id', orgId)
+let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
+let activeOrgId: string | null = null
 
-  if (ledgerError) throw new Error(`Ledger fetch failed: ${ledgerError.message}`)
-  ledgerStore.set((ledgerData as LedgerEntry[]) ?? [])
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-  /* ----------------------------
-     Initial Reconciliation Fetch
-  ---------------------------- */
-  const { data: recData, error: recError } = await supabase
-    .from('reconciliation_events')
-    .select('*')
-    .eq('organization_id', orgId)
+/**
+ * Resolve the org ID from whichever context is currently active.
+ * Priority: orgChairCtx → orgCtx → operatorCtx (active org slot).
+ */
+function resolveOrgId(explicitOrgId?: string): string {
+  if (explicitOrgId) return explicitOrgId
 
-  if (recError) throw new Error(`Reconciliation fetch failed: ${recError.message}`)
-  reconciliationStore.set((recData as ReconciliationEvent[]) ?? [])
+  const chair    = getCtx(orgChairCtx)
+  const staff    = getCtx(orgCtx)
+  const operator = getCtx(operatorCtx)
 
-  /* ----------------------------
-     Compute Daily Revenue
-  ---------------------------- */
-  computeDailyRevenue()
+  const orgId = chair?.orgId ?? staff?.orgId ?? operator?.activeOrgId ?? null
 
-  /* ----------------------------
-     Realtime Subscriptions
-  ---------------------------- */
-  // Ledger
-  if (ledgerChannel) {
-    await supabase.removeChannel(ledgerChannel)
-    ledgerChannel = null
+  if (!orgId) throw new Error('[finance] No org context active — call initFinance with an explicit orgId')
+  return orgId
+}
+
+function rowToDailyRevenue(row: ReconciliationRow): DailyRevenue {
+  return {
+    vehicleId:   row.vehicle_id,
+    collected:   row.total_collected,
+    target:      row.expected_amount,
+    variance:    row.variance,
+    status:      row.status,
+    // M-Pesa vs cash split not in reconciliation_events yet —
+    // will be populated once a payment_transactions table is added.
+    // For now, treat all collected as M-Pesa (most common in field).
+    mpesaAmount: row.total_collected,
+    cashAmount:  0,
   }
-  ledgerChannel = supabase
-    .channel(`realtime-ledger-${orgId}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'ledger_entries', filter: `organization_id=eq.${orgId}` },
-      (payload) => {
-        const incoming = payload.new as LedgerEntry
-        enforceTenant(incoming.organizationId)
-        ledgerStore.update((current) => {
-          const index = current.findIndex(e => e.id === incoming.id)
-          if (payload.eventType === 'DELETE') return current.filter(e => e.id !== payload.old.id)
-          if (index >= 0) {
-            current[index] = incoming
-            return [...current]
+}
+
+function buildSummaryFromRows(rows: ReconciliationRow[]): ReconciliationSummary {
+  return {
+    totalExpected:   rows.reduce((s, r) => s + r.expected_amount, 0),
+    totalCollected:  rows.reduce((s, r) => s + r.total_collected, 0),
+    totalVariance:   rows.reduce((s, r) => s + r.variance, 0),
+    totalMpesa:      rows.reduce((s, r) => s + r.total_collected, 0), // stub
+    totalCash:       0,
+    matchedCount:    rows.filter((r) => r.status === 'MATCHED').length,
+    shortfallCount:  rows.filter((r) => r.status === 'SHORTFALL').length,
+    overageCount:    rows.filter((r) => r.status === 'OVERAGE').length,
+    totalShortfall:  rows.filter((r) => r.status === 'SHORTFALL')
+                        .reduce((s, r) => s + Math.abs(r.variance), 0),
+    totalExcess:     rows.filter((r) => r.status === 'OVERAGE')
+                        .reduce((s, r) => s + r.variance, 0),
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Initialise the finance store for an org.
+ * Fetches reconciliation data and sets up a realtime subscription.
+ *
+ * @param supabase  The Supabase client from event.locals or layout data
+ * @param orgId     Optional — resolves from active context if omitted
+ *
+ * @example
+ *   // In +page.svelte onMount
+ *   import { initFinance, destroyFinance } from '$lib/features/finance/finance.store'
+ *
+ *   onMount(() => {
+ *     initFinance(supabase, orgId)
+ *     return () => destroyFinance(supabase)
+ *   })
+ */
+export async function initFinance(
+  supabase:        SupabaseClient,
+  explicitOrgId?:  string,
+): Promise<void> {
+  const orgId = resolveOrgId(explicitOrgId)
+  activeOrgId = orgId
+
+  financeStore.update((s) => ({ ...s, loading: true, error: null }))
+
+  try {
+    // ── Fetch reconciliation events ──────────────────────────────────────────
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const { data: rows, error } = await supabase
+      .from('reconciliation_events')
+      .select('id, organization_id, vehicle_id, total_collected, expected_amount, variance, status, created_at')
+      .eq('organization_id', orgId)
+      .gte('created_at', today.toISOString())
+      .order('created_at', { ascending: false })
+
+    if (error) throw new Error(`Reconciliation fetch failed: ${error.message}`)
+
+    const reconciliationRows = (rows ?? []) as ReconciliationRow[]
+    const dailyRevenue       = reconciliationRows.map(rowToDailyRevenue)
+    const summary            = buildSummaryFromRows(reconciliationRows)
+
+    financeStore.set({
+      reconciliationRows,
+      dailyRevenue,
+      summary,
+      loading:     false,
+      error:       null,
+      lastUpdated: new Date().toISOString(),
+    })
+
+    // ── Realtime subscription ────────────────────────────────────────────────
+    await _teardownChannel(supabase)
+
+    realtimeChannel = supabase
+      .channel(`finance-${orgId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  '*',
+          schema: 'public',
+          table:  'reconciliation_events',
+          filter: `organization_id=eq.${orgId}`,
+        },
+        (payload) => {
+          // Guard against cross-org leakage (belt + suspenders)
+          const incoming = payload.new as ReconciliationRow
+          if (incoming?.organization_id && incoming.organization_id !== orgId) {
+            console.warn('[finance] Rejected cross-org realtime event')
+            return
           }
-          return [...current, incoming]
-        })
-        computeDailyRevenue()
-      }
-    )
-    .subscribe()
 
-  // Reconciliation
-  if (reconciliationChannel) {
-    await supabase.removeChannel(reconciliationChannel)
-    reconciliationChannel = null
+          financeStore.update((state) => {
+            let rows = [...state.reconciliationRows]
+
+            if (payload.eventType === 'DELETE') {
+              rows = rows.filter((r) => r.id !== (payload.old as ReconciliationRow).id)
+            } else if (payload.eventType === 'INSERT') {
+              rows = [incoming, ...rows]
+            } else {
+              // UPDATE
+              const idx = rows.findIndex((r) => r.id === incoming.id)
+              if (idx >= 0) rows[idx] = incoming
+              else rows = [incoming, ...rows]
+            }
+
+            const dailyRevenue = rows.map(rowToDailyRevenue)
+            const summary      = buildSummaryFromRows(rows)
+
+            return {
+              ...state,
+              reconciliationRows: rows,
+              dailyRevenue,
+              summary,
+              lastUpdated: new Date().toISOString(),
+            }
+          })
+        },
+      )
+      .subscribe()
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown finance error'
+    console.error('[finance]', message)
+    financeStore.update((s) => ({ ...s, loading: false, error: message }))
   }
-  reconciliationChannel = supabase
-    .channel(`realtime-reconciliation-${orgId}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'reconciliation_events', filter: `organization_id=eq.${orgId}` },
-      (payload) => {
-        const incoming = payload.new as ReconciliationEvent
-        enforceTenant(incoming.organizationId)
-        reconciliationStore.update((current) => {
-          const index = current.findIndex(e => e.id === incoming.id)
-          if (payload.eventType === 'DELETE') return current.filter(e => e.id !== payload.old.id)
-          if (index >= 0) {
-            current[index] = incoming
-            return [...current]
-          }
-          return [...current, incoming]
-        })
-        computeDailyRevenue()
-      }
-    )
-    .subscribe()
 }
 
-/* ============================================================
-   TEARDOWN
-============================================================ */
+// ── Teardown ──────────────────────────────────────────────────────────────────
 
-export async function destroyFinance(): Promise<void> {
-  if (ledgerChannel) {
-    await supabase.removeChannel(ledgerChannel)
-    ledgerChannel = null
+async function _teardownChannel(supabase: SupabaseClient): Promise<void> {
+  if (realtimeChannel) {
+    await supabase.removeChannel(realtimeChannel)
+    realtimeChannel = null
   }
-  if (reconciliationChannel) {
-    await supabase.removeChannel(reconciliationChannel)
-    reconciliationChannel = null
-  }
-  ledgerStore.set([])
-  reconciliationStore.set([])
-  dailyRevenueStore.set([])
 }
 
-/* ============================================================
-   DERIVED COMPUTATION
-============================================================ */
-
-function computeDailyRevenue(): void {
-  const ledgers = get(ledgerStore)
-  const recs = get(reconciliationStore)
-
-  // Aggregate by vehicle
-  const revenueMap: Record<string, DailyRevenue> = {}
-
-  recs.forEach((r) => {
-    revenueMap[r.vehicleId] = {
-      vehicle: r.vehicleId,
-      collected: r.totalCollected,
-      target: r.expectedAmount,
-      variance: r.variance,
-    }
+/**
+ * Tear down realtime subscriptions and clear the store.
+ * Call in onDestroy() of the layout that called initFinance().
+ */
+export async function destroyFinance(supabase: SupabaseClient): Promise<void> {
+  await _teardownChannel(supabase)
+  activeOrgId = null
+  financeStore.set({
+    reconciliationRows: [],
+    dailyRevenue:       [],
+    summary:            null,
+    loading:            false,
+    error:              null,
+    lastUpdated:        null,
   })
-
-  // Merge ledger sums for additional verification
-  ledgers.forEach((l) => {
-    if (!revenueMap[l.vehicleId]) {
-      revenueMap[l.vehicleId] = {
-        vehicle: l.vehicleId,
-        collected: l.amount,
-        target: 0,
-        variance: l.amount,
-      }
-    } else {
-      revenueMap[l.vehicleId].collected += l.amount
-      revenueMap[l.vehicleId].variance = revenueMap[l.vehicleId].collected - revenueMap[l.vehicleId].target
-    }
-  })
-
-  dailyRevenueStore.set(Object.values(revenueMap))
 }
 
-/* ============================================================
-   UTILITIES
-============================================================ */
+// ── Imperatives ───────────────────────────────────────────────────────────────
 
-export function getLedgerByVehicle(vehicleId: string): LedgerEntry[] {
-  return get(ledgerStore).filter(l => l.vehicleId === vehicleId)
+/** Filter daily revenue for a specific vehicle */
+export function getVehicleRevenue(vehicleId: string): DailyRevenue | null {
+  return get(financeStore).dailyRevenue.find((r) => r.vehicleId === vehicleId) ?? null
 }
 
-export function getReconciliationByVehicle(vehicleId: string): ReconciliationEvent[] {
-  return get(reconciliationStore).filter(r => r.vehicleId === vehicleId)
+/** Filter reconciliation rows for a specific vehicle */
+export function getReconciliationByVehicle(vehicleId: string): ReconciliationRow[] {
+  return get(financeStore).reconciliationRows.filter((r) => r.vehicle_id === vehicleId)
 }
 
-export function requireFinanceAccess(orgId: string): void {
-  enforceTenant(orgId)
+/**
+ * Check that the caller is operating within the active org scope.
+ * Use in event handlers before writing finance data.
+ *
+ * @throws if the orgId doesn't match the active context
+ */
+export function assertOrgScope(orgId: string): void {
+  if (activeOrgId && activeOrgId !== orgId) {
+    throw new Error(`[finance] Org scope violation: expected ${activeOrgId}, got ${orgId}`)
+  }
 }
