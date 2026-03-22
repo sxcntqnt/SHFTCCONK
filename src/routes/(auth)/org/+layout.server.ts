@@ -22,8 +22,8 @@
  * for /org/[orgId]/* scoped routes.
  */
 
-import type { LayoutServerLoad } from './$types'
-import { requireAuth }           from '$lib/guards/auth.guard'
+import type { LayoutServerLoad } from '$lib/types'
+import { requireAuth }           from '$lib/security/authGuard'
 
 export const load: LayoutServerLoad = async (event) => {
   // Throws redirect(303, '/login/sign_in') if no session.
