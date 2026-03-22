@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { gpsStore, GPSData } from '$lib/stores/gps.store';
+import { gpsStore, GPSData } from '$lib/features/vehicles/stores/gps.store';
 import { enforceTenant } from '$lib/stores/user';
 import { publishPosition } from '$lib/realtime/publisher';
 import { queueGPSForBatchInsert } from '$lib/queues/gpsQueue';
