@@ -12,12 +12,12 @@
 import {
   MPESA_CONSUMER_KEY,
   MPESA_CONSUMER_SECRET,
-  MPESA_SHORTCODE,
-  MPESA_PASSKEY,
+  MPESA_BUSINESS_SHORT_CODE,
+  MPESA_API_PASS_KEY,
   MPESA_INITIATOR_NAME,
   MPESA_INITIATOR_PASSWORD,
-  MPESA_B2C_SHORTCODE,
-  MPESA_B2B_SHORTCODE,
+  MPESA_B2C_SHORT_CODE,
+  MPESA_B2B_SHORT_CODE,
   MPESA_CALLBACK_URL,
 } from "$env/static/private"
 
@@ -59,7 +59,7 @@ function generateTimestamp(): string {
 }
 
 function generatePassword(timestamp: string): string {
-  return Buffer.from(`${MPESA_SHORTCODE}${MPESA_PASSKEY}${timestamp}`).toString("base64")
+  return Buffer.from(`${MPESA_BUSINESS_SHORT_CODE}${MPESA_API_PASS_KEY}${timestamp}`).toString("base64")
 }
 
 /**
@@ -124,13 +124,13 @@ export async function processMpesaPush(
   const password  = generatePassword(timestamp)
 
   const payload = {
-    BusinessShortCode: MPESA_SHORTCODE,
+    BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
     Password:          password,
     Timestamp:         timestamp,
     TransactionType:   "CustomerPayBillOnline",
     Amount:            Math.round(amount),
     PartyA:            formatPhone(phoneNumber),
-    PartyB:            MPESA_SHORTCODE,
+    PartyB:            MPESA_BUSINESS_SHORT_CODE,
     PhoneNumber:       formatPhone(phoneNumber),
     CallBackURL:       `${MPESA_CALLBACK_URL}/stk-callback`,
     AccountReference:  accountReference.slice(0, 12),
@@ -161,7 +161,7 @@ export async function queryStkStatus(checkoutRequestId: string): Promise<StkStat
   const password  = generatePassword(timestamp)
 
   const payload = {
-    BusinessShortCode: MPESA_SHORTCODE,
+    BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
     Password:          password,
     Timestamp:         timestamp,
     CheckoutRequestID: checkoutRequestId,
@@ -205,7 +205,7 @@ export async function sendB2CPayment({
     SecurityCredential: MPESA_INITIATOR_PASSWORD,
     CommandID:          "BusinessPayment",
     Amount:             Math.round(amount),
-    PartyA:             MPESA_B2C_SHORTCODE,
+    PartyA:             MPESA_B2C_SHORT_CODE,
     PartyB:             formatPhone(phoneNumber),
     Remarks:            (remarks  ?? "Tip payout").slice(0, 100),
     QueueTimeOutURL:    `${MPESA_CALLBACK_URL}/b2c-timeout`,
@@ -257,7 +257,7 @@ export async function sendB2BPayment({
     SenderIdentifierType:   "4",
     RecieverIdentifierType: "4",
     Amount:                 Math.round(amount),
-    PartyA:                 MPESA_B2B_SHORTCODE,
+    PartyA:                 MPESA_B2B_SHORT_CODE,
     PartyB:                 shortcode,
     AccountReference:       (accountReference ?? "SETTLEMENT").slice(0, 12),
     Remarks:                (remarks ?? "Revenue share settlement").slice(0, 100),
@@ -289,7 +289,7 @@ export async function queryTransactionStatus(transactionId: string): Promise<unk
     SecurityCredential: MPESA_INITIATOR_PASSWORD,
     CommandID:          "TransactionStatusQuery",
     TransactionID:      transactionId,
-    PartyA:             MPESA_SHORTCODE,
+    PartyA:             MPESA_BUSINESS_SHORT_CODE,
     IdentifierType:     "4",
     ResultURL:          `${MPESA_CALLBACK_URL}/status-callback`,
     QueueTimeOutURL:    `${MPESA_CALLBACK_URL}/status-timeout`,

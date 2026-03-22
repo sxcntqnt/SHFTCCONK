@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte"
-  import { T, useTask, useFrame } from "@threlte/core"
+  import { T, useTask } from "@threlte/core"
   import { Canvas } from "@threlte/core"
   import { OrbitControls } from "@threlte/extras"
   import * as THREE from "three"
@@ -73,7 +73,7 @@
   })
 
   // ── Game loop ─────────────────────────────────────────────────────────────
-  useFrame((delta) => {
+  useTask((delta) => {
     if (!$gameStarted || $gameCountdown > 0) return
 
     const meData = $me

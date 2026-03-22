@@ -1,16 +1,28 @@
 <script lang="ts">
   import { getContext } from "svelte"
   import type { Writable } from "svelte/store"
-  import SettingsModule from "../../../app/settings/settings_module.svelte"
-  import PricingModule from "../../../../(marketing)/pricing/pricing_module.svelte"
+  import SettingsModule from "../app/settings/settings_module.svelte"
+  import PricingModule from "../../(marketing)/pricing/pricing_module.svelte"
   import {
     pricingPlans,
     defaultPlanId,
     type PricingPlan,
-  } from "../../../../(marketing)/pricing/pricing_plans"
+  } from "../../(marketing)/pricing/pricing_plans"
   import {
-    paymentStatus,
-    subscribeToPayment,
+    paymentStore,
+    setStkPushPending,
+    setStkPushFailed,
+    confirmStkPayment,
+    resetStkStatus,
+    isStkPending,
+    isStkFailed,
+    isExpiringSoon,
+    daysRemaining,
+    mpesaPhone,
+    stkStatusMessage,
+    paymentCta,
+    planLabel,
+    type PlanId,
   } from "$lib/features/finance/payments.store"
 
   let adminSection: Writable<string> = getContext("adminSection")
@@ -22,47 +34,67 @@
   const currentPlan = pricingPlans.find((x) => x.id === data.currentPlanId)
   const currentPlanName = currentPlan?.name
 
-  // ── M-Pesa STK push state ────────────────────────────────────────────
-  let phone = $state("")
+  // ── Local UI state ───────────────────────────────────────────────────
+  // Phone pre-filled from store (user's last used M-Pesa number)
+  let phone = $state($mpesaPhone ?? "")
   let initiating = $state(false)
-  let checkoutRequestId = $state<string | null>(null)
   let initiateError = $state<string | null>(null)
   let selectedPlan = $state<PricingPlan | null>(null)
 
-  // paymentStatus is updated by subscribeToPayment() via Supabase realtime
-  let status = $state($paymentStatus)
-  $effect(() => paymentStatus.subscribe((v) => (status = v)))
-
-  let unsubscribeRealtime: (() => void) | null = null
-  $effect(() => () => unsubscribeRealtime?.())
-
-  // Reset status banner when user picks a different plan
+  // Reset banner when user picks a different plan
   $effect(() => {
     if (selectedPlan) {
-      checkoutRequestId = null
-      unsubscribeRealtime?.()
+      resetStkStatus()
+      initiateError = null
     }
   })
 
-  // ── Plan selection handler (passed to PricingModule) ─────────────────
+  // Poll for payment confirmation while STK push is pending
+  $effect(() => {
+    if (!$isStkPending) return
+
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/mpesa/status?id=${$paymentStore.checkoutRequestId}`,
+        )
+        const json = await res.json()
+
+        if (json.status === "completed") {
+          confirmStkPayment(
+            json.plan as PlanId,
+            json.mpesaRef,
+            json.planExpiresAt,
+          )
+          clearInterval(id)
+        } else if (json.status === "failed") {
+          setStkPushFailed()
+          clearInterval(id)
+        }
+      } catch {
+        // network hiccup — keep polling
+      }
+    }, 3_000)
+
+    return () => clearInterval(id)
+  })
+
+  // ── Plan selection handler ───────────────────────────────────────────
   async function initiatePurchase(planId: string) {
     const plan = pricingPlans.find((p) => p.id === planId)
     if (!plan) return
 
-    // Free plan — activate without payment
     if (plan.mpesaAmount === null && !plan.contactSales) {
       await activateFreePlan(planId)
       return
     }
 
-    // Enterprise — open contact link, no STK push
     if (plan.contactSales) {
       window.location.href =
         "mailto:sales@matatupulse.com?subject=Enterprise enquiry"
       return
     }
 
-    // Validate phone before showing any plan-specific errors
     if (!phone.match(/^(07|01|\+2547|\+2541)\d{8}$/)) {
       initiateError = "Enter a valid Safaricom number (e.g. 0712345678)"
       return
@@ -78,7 +110,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phoneNumber: phone,
-          amount: plan.mpesaAmount, // numeric KES — not the display string
+          amount: plan.mpesaAmount,
           planId,
         }),
       })
@@ -88,15 +120,14 @@
       if (json.ResponseCode !== "0") {
         initiateError =
           json.ResponseDescription ?? "M-Pesa request failed. Please try again."
-        initiating = false
+        setStkPushFailed()
         return
       }
 
-      checkoutRequestId = json.CheckoutRequestID
-      unsubscribeRealtime = subscribeToPayment(checkoutRequestId!)
+      setStkPushPending(json.CheckoutRequestID, phone)
     } catch {
-      initiateError =
-        "Network error — please check your connection and try again."
+      initiateError = "Network error — check your connection and try again."
+      setStkPushFailed()
     } finally {
       initiating = false
     }
@@ -110,7 +141,6 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId, amount: 0, phoneNumber: null }),
       })
-      // Reload to reflect updated subscription from server
       window.location.reload()
     } catch {
       initiateError = "Failed to activate free plan. Please try again."
@@ -119,20 +149,11 @@
     }
   }
 
-  // ── Status banner copy ───────────────────────────────────────────────
-  const statusMessages: Record<string, string> = {
-    pending: "Waiting for M-Pesa confirmation — check your phone…",
-    completed: "Payment confirmed! Your plan is now active.",
-    failed: "Payment was not completed. Please try again.",
-  }
-
-  function statusBannerClass(s: string) {
-    const map: Record<string, string> = {
-      pending: "bg-blue-50 border-blue-200 text-blue-700",
-      completed: "bg-green-50 border-green-200 text-green-700",
-      failed: "bg-red-50 border-red-200 text-red-700",
-    }
-    return map[s] ?? map.pending
+  // ── Status banner styling ────────────────────────────────────────────
+  function statusBannerClass() {
+    if ($isStkPending) return "bg-blue-50 border-blue-200 text-blue-700"
+    if ($isStkFailed) return "bg-red-50 border-red-200 text-red-700"
+    return "bg-green-50 border-green-200 text-green-700"
   }
 </script>
 
@@ -151,6 +172,19 @@
 
 <!-- ── Active subscriber ──────────────────────────────────────────────── -->
 {#if data.isActiveCustomer}
+  <!-- Expiry reminder -->
+  {#if $isExpiringSoon}
+    <div
+      class="mb-4 px-4 py-3 rounded-lg text-sm border bg-yellow-50 border-yellow-200 text-yellow-800"
+    >
+      Your <strong>{$planLabel}</strong> plan expires in
+      <strong>{$daysRemaining} days</strong>.
+      <button class="underline ml-1" onclick={() => resetStkStatus()}
+        >Renew now</button
+      >
+    </div>
+  {/if}
+
   <SettingsModule
     title="Subscription"
     editable={false}
@@ -168,10 +202,9 @@
           : "—",
       },
     ]}
-    editButtonTitle="Change Plan"
+    editButtonTitle={$paymentCta}
   />
 
-  <!-- Recent payments -->
   {#if data.recentPayments.length > 0}
     <div class="mt-8">
       <h2 class="text-lg font-semibold mb-3">Recent Payments</h2>
@@ -179,12 +212,12 @@
         {#each data.recentPayments as p}
           <div
             class="flex items-center justify-between bg-white border border-gray-100
-                   rounded-lg px-4 py-3 text-sm shadow-sm"
+                       rounded-lg px-4 py-3 text-sm shadow-sm"
           >
             <div>
-              <span class="font-mono text-gray-400 text-xs mr-3">
-                {p.transaction_id}
-              </span>
+              <span class="font-mono text-gray-400 text-xs mr-3"
+                >{p.transaction_id}</span
+              >
               <span>KES {p.amount?.toLocaleString("en-KE")}</span>
             </div>
             <div class="flex items-center gap-3">
@@ -211,7 +244,6 @@
 
   <!-- ── No active subscription ─────────────────────────────────────────── -->
 {:else}
-  <!-- Phone input — shown for paid plans, hidden for free/enterprise -->
   <div class="mb-6 max-w-sm">
     <label
       for="mpesa-phone"
@@ -227,31 +259,27 @@
       class="border rounded px-3 py-2 w-full text-sm
              focus:outline-none focus:ring-2 focus:ring-blue-500"
     />
-    <p class="text-xs text-gray-400 mt-1">
-      Required for Starter, Pro, and Business plans. Not needed for Free.
-    </p>
+    <p class="text-xs text-gray-400 mt-1">Required for paid plans.</p>
     {#if initiateError}
       <p class="text-red-600 text-xs mt-1">{initiateError}</p>
     {/if}
   </div>
 
-  <!-- STK status banner -->
-  {#if checkoutRequestId}
+  <!-- STK status banner — driven entirely by store -->
+  {#if $stkStatusMessage}
     <div
-      class="mb-6 px-4 py-3 rounded-lg text-sm font-medium border {statusBannerClass(
-        status,
-      )}"
+      class="mb-6 px-4 py-3 rounded-lg text-sm font-medium border {statusBannerClass()}"
     >
       {#if selectedPlan}
         <span class="font-semibold">{selectedPlan.name}:</span>
       {/if}
-      {statusMessages[status] ?? statusMessages.pending}
+      {$stkStatusMessage}
     </div>
   {/if}
 
   <PricingModule
     {currentPlanId}
-    callToAction={initiating ? "Sending request…" : "Get Started"}
+    callToAction={initiating ? "Sending request…" : $paymentCta}
     center={false}
     onPlanSelect={initiatePurchase}
   />

@@ -33,14 +33,14 @@
  *   AT_API_KEY     — Africa's Talking API key
  *   AT_USERNAME    — Africa's Talking username (sandbox = "sandbox")
  *   AT_SENDER_ID   — optional alphanumeric sender ID e.g. "SXCNTQNT"
- *   PUBLIC_APP_URL — your app base URL e.g. https://sxcntqnt.com
+ *   AT_PUBLIC_APP_URL — your app base URL e.g. https://sxcntqnt.com
  */
 
 import type { PageServerLoad, Actions } from './$types'
 import { fail, redirect }               from '@sveltejs/kit'
 import { createHash, randomBytes }       from 'crypto'
 import { AT_API_KEY, AT_USERNAME }       from '$env/static/private'
-import { PUBLIC_APP_URL }                from '$env/static/public'
+import { AT_PUBLIC_APP_URL }                from '$env/static/public'
 
 /* ============================================================
    LOAD
