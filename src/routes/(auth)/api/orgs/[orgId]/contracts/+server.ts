@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { contracts, requireContractAccess, getContractById } from '$lib/stores/contracts.store';
+import { contracts, requireContractAccess, getContractById } from '$lib/features/contracts/contracts';
 import { get } from 'svelte/store';
 
 export async function POST({ request }) {

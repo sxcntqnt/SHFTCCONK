@@ -1,6 +1,6 @@
 // src/routes/api/contact/+server.ts
 import type { RequestHandler } from '@sveltejs/kit';
-import { verifyTurnstile } from '$lib/features/security/verifyTurnstile';
+import { verifyTurnstile } from '$lib/security/verifyTurnstile';
 
 export const POST: RequestHandler = async ({ request, clientAddress, ip }) => {
   let token: string | null = null;
