@@ -9,9 +9,9 @@
     menuVisible,
     vrMode,
     mobile,
-  } from "$lib/stores"
-  import { getDatabase, firebaseRef } from "$lib/firebase"
-  import { CAR_POSITIONS } from "$lib/constants"
+  } from "./stores/stores"
+  import { getDatabase, firebaseRef } from "./firebase"
+  import { CAR_POSITIONS } from "./constants"
 
   let nameInput = ""
   let colorHue = Math.floor(Math.random() * 360)

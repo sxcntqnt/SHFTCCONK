@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { LAPS } from '$lib/constants';
+import { LAPS } from '../constants';
 
 // Game session
 export const gameCode = writable(null);

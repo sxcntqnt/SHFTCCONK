@@ -13,8 +13,8 @@
     contracts,
     assignVehicleToContract,
     type Contract,
-  } from "$lib/features/contracts/contracts.store"
-  import { fleetStore, type Vehicle } from "$lib/features/fleet/fleet.store"
+  } from "$lib/features/contracts/contracts"
+  import { fleetStore, type Vehicle } from "$lib/features/fleet/stores/fleet"
   import type { SupabaseClient } from "@supabase/supabase-js"
 
   let { supabase }: { supabase: SupabaseClient } = $props()

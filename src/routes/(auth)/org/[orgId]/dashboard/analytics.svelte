@@ -7,7 +7,7 @@
    *   - Export name: `analyticsStore` (was `analytics` in old file, now both exported)
    */
 
-  import { analyticsStore } from "$lib/features/analytics/analytics.store"
+  import { analyticsStore } from "$lib/features/analytics/analytics"
 
   let stats = $derived($analyticsStore ?? [])
   let sortedStats = $derived(

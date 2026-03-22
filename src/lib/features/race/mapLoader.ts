@@ -1,6 +1,6 @@
 //Src/lib/maploader
 import * as THREE from 'three';
-import { MAP_SCALE } from '$lib/constants';
+import { MAP_SCALE } from './constants';
 
 export function loadMap(trackCode) {
   const parts = trackCode.trim().split('|');

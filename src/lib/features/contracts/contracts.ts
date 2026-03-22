@@ -177,3 +177,9 @@ export function getContractById(id: string): Contract | undefined {
 export function getContractsByVehicle(vehicleId: string): Contract[] {
   return get(contracts).filter((c) => c.assignedVehicles.includes(vehicleId))
 }
+
+export function requireContractAccess(contract: Contract): void {
+  if (!_currentOrgId || contract.organizationId !== _currentOrgId) {
+    throw new Error('Unauthorized contract access');
+  }
+}
