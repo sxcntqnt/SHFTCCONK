@@ -7,7 +7,7 @@
    *   CRITICAL — Level option values now use "org" not "organization":
    *     Before: <option value="organization">Organization</option>
    *     After:  <option value="org">Organization</option>
-   *     The DB and auth.store.ts JURISDICTION_LEVELS use "org".
+   *     The DB and auth.ts JURISDICTION_LEVELS use "org".
    *     Storing "organization" silently broke all permission checks.
    *
    *   FIX — selectedLevel filter was declared but never used:
@@ -179,7 +179,7 @@
     }),
   )
 
-  // Level options — values MUST match JURISDICTION_LEVELS in auth.store.ts
+  // Level options — values MUST match JURISDICTION_LEVELS in auth.ts
   const levelOptions = [
     { value: "federal", label: "Federal" },
     { value: "org", label: "Organization" }, // ← "org" not "organization"

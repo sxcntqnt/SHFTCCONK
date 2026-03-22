@@ -290,3 +290,18 @@ create policy "org members can view their settlements"
       )
     )
   );
+
+
+  alter table geofences
+  add column if not exists scope      text not null default 'org'
+                                        check (scope in ('personal', 'org')),
+  add column if not exists profile_id uuid references profiles(id) on delete cascade,
+  add column if not exists org_id     uuid references organizations(id) on delete cascade,
+  add column if not exists vehicle_id uuid references vehicles(id) on delete set null;
+
+-- Personal geofences must have a vehicle; org geofences must have an org
+alter table geofences
+  add constraint geofence_personal_needs_vehicle
+    check (scope != 'personal' or vehicle_id is not null),
+  add constraint geofence_org_needs_org
+    check (scope != 'org' or org_id is not null);

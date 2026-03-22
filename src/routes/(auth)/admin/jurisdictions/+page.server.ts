@@ -24,7 +24,7 @@
  *
  *   CRITICAL DATA FIX — Level value "organization" vs "org":
  *     The form was inserting level = "organization" into the DB.
- *     auth.store.ts JURISDICTION_LEVELS defines:
+ *     auth.ts JURISDICTION_LEVELS defines:
  *       ORG: "org"   ← NOT "organization"
  *     If "organization" is stored, hasJurisdictionAt(), findActorForOrg(),
  *     and all derived permission checks silently break — the actor has
@@ -135,7 +135,7 @@ async function _requireAdmin(locals: App.Locals): Promise<boolean> {
   return !!(data?.length)
 }
 
-/** Valid level values — must match JURISDICTION_LEVELS in auth.store.ts */
+/** Valid level values — must match JURISDICTION_LEVELS in auth.ts */
 const VALID_LEVELS = ['federal', 'org', 'branch', 'department'] as const
 type Level = (typeof VALID_LEVELS)[number]
 

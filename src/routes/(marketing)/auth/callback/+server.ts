@@ -6,7 +6,7 @@
 //   - hooks.server.ts (supabase client from locals)
 //   - redeem_invite(invite_token uuid) actual signature
 //   - bootstrap_session() → BootstrapPayload shape
-//   - auth.store.ts initSession() / ROLES constants
+//   - auth.ts initSession() / ROLES constants
 //   - Optimized my_permissions (federal permissions now work)
 //
 // Flow:

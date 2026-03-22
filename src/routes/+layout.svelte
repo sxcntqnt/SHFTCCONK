@@ -15,7 +15,7 @@
       3. Either path: re-bootstraps store → UI re-renders with new permissions
 
   ALIGNED WITH:
-    - auth.store.ts: checkVersionAndRefresh(), clearSession(), sessionStore
+    - auth.ts: checkVersionAndRefresh(), clearSession(), sessionStore
     - hooks.server.ts: supabase client from locals
     - +layout.ts: provides { supabase, session } via data
 -->

@@ -7,7 +7,7 @@
 //   - hooks.server.ts (safeGetSession → locals.session + locals.user)
 //   - can_actor_perform() actual signature (actor_uuid, action_text, res_org)
 //   - Optimized my_permissions view (aggregated, deny-wins, federal-aware)
-//   - auth.store.ts patterns (canInOrg, canManageOrg)
+//   - auth.ts patterns (canInOrg, canManageOrg)
 //
 // Endpoints:
 //   POST   /api/invite          — create + send invitation

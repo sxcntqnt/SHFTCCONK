@@ -1,5 +1,5 @@
 /**
- * auth.store.ts — Federated Governance Edition (Optimized)
+ * auth.ts — Federated Governance Edition (Optimized)
  *
  * Changes from previous hardened version:
  *

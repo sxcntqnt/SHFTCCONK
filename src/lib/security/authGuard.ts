@@ -43,7 +43,7 @@
 
 import { redirect } from "@sveltejs/kit"
 import { get } from "svelte/store"
-import { isSessionCurrent } from "$lib/features/auth/stores/auth.store"
+import { isSessionCurrent } from "$lib/features/auth/stores/auth"
 import {
   activateSuperAdminContext,
   activateOrgChairContext,

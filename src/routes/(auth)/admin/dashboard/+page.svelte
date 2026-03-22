@@ -13,20 +13,20 @@
    *     and ?/reject_request server actions.
    *
    *   BUG 3 — Wrong store import path:
-   *     '$lib/features/auth/stores/auth' → '$lib/features/auth/stores/auth.store'
+   *     '$lib/features/auth/stores/auth.store' → '$lib/features/auth/stores/auth'
    *
    *   BUG 4 — authStore is @deprecated:
    *     Now uses sessionStore directly.
    *
    *   BUG 5 — Wrong product name:
-   *     'Matatu Pulse' / 'MatatuPL' → 'sxcntqnt'
+   *     'Matatu Pulse' / 'MatatuPL' → 'FLAME Platform' / 'sxcntqnt'
    */
 
   import { onMount } from "svelte"
   import { browser } from "$app/environment"
   import { page } from "$app/stores"
   import { enhance } from "$app/forms"
-  import { sessionStore } from "$lib/features/auth/stores/auth.store"
+  import { sessionStore } from "$lib/features/auth/stores/auth"
 
   // ── Props from load() ──────────────────────────────────────────
   type OrgSummary = {

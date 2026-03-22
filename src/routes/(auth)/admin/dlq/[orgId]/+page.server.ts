@@ -8,7 +8,7 @@
 //   DELETE /admin/dlq/[orgId]/[eventId]     → [eventId]/+server.ts
 
 import type { PageServerLoad } from "./$types"
-import { requireAdminAccess }  from "$lib/guards/auth.guard"
+import { requireAdminAccess }  from "$lib/security/authGuard"
 
 export interface DLQEvent {
   id:            string

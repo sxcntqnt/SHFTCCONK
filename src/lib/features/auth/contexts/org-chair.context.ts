@@ -17,10 +17,10 @@
  */
 
 import { writable, derived, get } from 'svelte/store'
-import { sessionStore } from '$lib/features/auth/stores/auth.store'
+import { sessionStore } from '$lib/features/auth/stores/auth'
 import { ROLES } from '$lib/features/auth/stores/roles'
-import { ACTIONS } from '$lib/features/auth/stores/permissions'
-import type { Actor, OrgMembership, EffectivePermission, Jurisdiction } from '$lib/features/auth/stores/auth.store'
+import { ACTIONS } from '$lib/features/auth/stores/permisions'
+import type { Actor, OrgMembership, EffectivePermission, Jurisdiction } from '$lib/features/auth/stores/auth'
 
 // ── Context shape ─────────────────────────────────────────────
 export interface OrgChairContext {

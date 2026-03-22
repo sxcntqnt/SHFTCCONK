@@ -23,20 +23,20 @@
    */
 
   import { onMount, onDestroy } from "svelte"
-  import { sessionStore, canInOrg } from "$lib/features/auth/stores/auth.store"
-  import { ACTIONS } from "$lib/features/auth/stores/permissions"
-  import { initFleet, destroyFleet } from "$lib/features/fleet/fleet.store"
+  import { sessionStore, canInOrg } from "$lib/features/auth/contexts"
+  import { ACTIONS } from "$lib/features/auth/stores/permisions"
+  import { initFleet, destroyFleet } from "$lib/features/fleet/stores/fleet"
   import {
     initContracts,
     destroyContracts,
-  } from "$lib/features/contracts/contracts.store"
+  } from "$lib/features/contracts/contracts"
   import {
     initAnalytics,
     destroyAnalytics,
-  } from "$lib/features/analytics/analytics.store"
-  import FleetMap from "../dashboard/components/fleet-map.svelte"
-  import Contracts from "../dashboard/components/contracts.svelte"
-  import Analytics from "../dashboard/components/analytics.svelte"
+  } from "$lib/features/analytics/analytics"
+  import FleetMap from "./fleet-map.svelte"
+  import Contracts from "./contracts.svelte"
+  import Analytics from "./analytics.svelte"
 
   // ── Props ─────────────────────────────────────────────────────
   type RevenueDay = { label: string; amount: number }

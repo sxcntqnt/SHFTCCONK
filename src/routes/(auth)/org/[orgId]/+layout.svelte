@@ -1,41 +1,56 @@
-<script lang="ts">
-  /**
-   * /org/[orgId]/+layout.svelte
-   *
-   * FIXES:
-   *
-   *   BUG 1 — Svelte 4 reactive syntax:
-   *     `$: navItems = [...]` is Svelte 4.
-   *     This file already uses $props(), $state(), $derived() (Svelte 5).
-   *     Mixed syntax causes unpredictable reactivity.
-   *     Fixed: `let navItems = $derived([...])`
-   *
-   *   BUG 2 — Overview href points to /org/[orgId]:
-   *     That route now redirects (303) to /org/[orgId]/dashboard.
-   *     Every click on Overview caused an unnecessary round-trip.
-   *     Fixed: href → `/org/${data.orgId}/dashboard`
-   *
-   *   BUG 3 — Breadcrumb root check used /org/[orgId]:
-   *     `{#if currentPath !== \`/org/${data.orgId}\`}` never matched
-   *     because the user is always on /org/[orgId]/dashboard or deeper.
-   *     Fixed: check against /org/[orgId]/dashboard
-   */
+<!-- src/routes/(auth)/org/[orgId]/+layout.svelte -->
+<!--
+  CONTEXT ARCHITECTURE:
+    Server (+layout.server.ts) validates DB access and returns contextType.
+    This component activates the correct context store in onMount.
 
+    Why onMount and not $effect?
+      Context activation writes to module-level Svelte stores.
+      $effect runs during SSR where stores are always empty — activating
+      there is a no-op and can cause hydration mismatches.
+      onMount is browser-only, which is exactly where we need the stores.
+
+    Why not +layout.ts (universal load)?
+      Universal loads run on the server too (SSR). activateOrgChairContext
+      and activateOrgContext write to Svelte stores — server-side writes
+      are silently dropped. The guard calls must happen client-side.
+
+  PERMISSION READS:
+    After activation, permission stores from both contexts are reactive.
+    Each nav item uses a $derived boolean combining chair + staff stores
+    so the nav renders correctly for either role.
+-->
+<script lang="ts">
+  import { onMount, onDestroy } from "svelte"
   import { page } from "$app/state"
   import { goto } from "$app/navigation"
-  import { onMount } from "svelte"
   import type { Snippet } from "svelte"
-  import { sessionStore, canInOrg } from "$lib/features/auth/stores/auth.store"
-  import { ACTIONS } from "$lib/features/auth/stores/permissions"
   import {
+    // ── Context activators ───────────────────────────────────────────────
+    orgChairCtx,
     activateOrgChairContext,
+    deactivateOrgChairContext,
+    orgCtx,
+    activateOrgContext,
+    deactivateOrgContext,
+    // ── Org chair permissions ────────────────────────────────────────────
     canApproveMembers,
-    canViewFinance,
+    canOrgChairViewFinance,
     canViewOrgReports,
     canChangeSettings,
-  } from "$lib/features/auth/contexts/org-chair.context"
+    canManageVehicles,
+    // ── Org staff permissions ────────────────────────────────────────────
+    orgCanListVehicles,
+    orgCanViewFinance,
+    orgCanViewReports,
+    orgCanChangeSettings,
+    orgCanApproveMembers,
+    orgCanViewMemberRequests,
+  } from "$lib/features/auth/contexts"
+  import { sessionStore } from "$lib/features/auth/stores/auth"
 
-  // ── Props ────────────────────────────────────────────────────
+  // ── Props ─────────────────────────────────────────────────────────────────
+
   let {
     children,
     data,
@@ -45,29 +60,80 @@
       orgId: string
       organization: { id: string; name: string; status: string } | null
       branches: { id: string; name: string }[]
-      members: any[]
       vehicleCount: number
       memberCount: number
       userOrgRole: string | null
+      contextType: "chair" | "staff"
     }
   } = $props()
 
-  // ── Activate org context ─────────────────────────────────────
+  // ── Activate context on mount ─────────────────────────────────────────────
+  // Deactivate on destroy to avoid stale state if user navigates away.
+
   onMount(() => {
-    activateOrgChairContext(data.orgId)
-    if (!$sessionStore.profile) goto("/login/sign_in")
+    if (!$sessionStore.profile) {
+      goto("/login/sign_in")
+      return
+    }
+
+    if (data.contextType === "chair") {
+      activateOrgChairContext(data.orgId)
+    } else {
+      activateOrgContext(data.orgId)
+    }
   })
 
-  // ── Reactive state ───────────────────────────────────────────
+  onDestroy(() => {
+    if (data.contextType === "chair") {
+      deactivateOrgChairContext()
+    } else {
+      deactivateOrgContext()
+    }
+  })
+
+  // ── Derived display values ────────────────────────────────────────────────
+
+  let activeOrgName = $derived(
+    $orgChairCtx?.orgName ??
+      $orgCtx?.orgName ??
+      data.organization?.name ??
+      "SACCO",
+  )
+
+  let activeRoleLabel = $derived(
+    (
+      $orgChairCtx?.actor.type ??
+      $orgCtx?.roleType ??
+      data.userOrgRole ??
+      "MEMBER"
+    ).replace(/_/g, " "),
+  )
+
+  // ── Combined permission booleans ──────────────────────────────────────────
+  // Each nav item's visibility is a $derived that works for either role.
+
+  let canSeeFleet = $derived($canManageVehicles || $orgCanListVehicles)
+  let canSeeMembers = $derived(
+    $canApproveMembers || $orgCanApproveMembers || $orgCanViewMemberRequests,
+  )
+  let canSeeFinance = $derived($canOrgChairViewFinance || $orgCanViewFinance)
+  let canSeeReports = $derived($canViewOrgReports || $orgCanViewReports)
+  let canSeeSettings = $derived($canChangeSettings || $orgCanChangeSettings)
+  // Compliance is safety-critical — visible to all authenticated org members
+  let canSeeCompliance = $derived($orgChairCtx !== null || $orgCtx !== null)
+
+  // ── UI state ──────────────────────────────────────────────────────────────
+
   let currentPath = $derived(page.url.pathname)
   let mobileOpen = $state(false)
   let profile = $derived($sessionStore.profile)
+  let dashboardHref = $derived(`/org/${data.orgId}/dashboard`)
 
   function isActive(href: string): boolean {
     return currentPath === href || currentPath.startsWith(href + "/")
   }
 
-  function initials(name: string | null): string {
+  function initials(name: string | null | undefined): string {
     if (!name) return "?"
     return name
       .split(" ")
@@ -77,14 +143,14 @@
       .toUpperCase()
   }
 
-  // FIX: was `$: navItems = [...]` (Svelte 4) → `$derived` (Svelte 5)
-  // FIX: Overview href was /org/${data.orgId} → /org/${data.orgId}/dashboard
+  // ── Nav items ─────────────────────────────────────────────────────────────
+
   let navItems = $derived([
     {
       label: "Dashboard",
-      href: `/org/${data.orgId}/dashboard`, // ← was /org/${data.orgId}
+      href: `/org/${data.orgId}/dashboard`,
       exact: true,
-      canCheck: () => true,
+      visible: true,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
         <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
@@ -95,7 +161,7 @@
       href: `/org/${data.orgId}/fleet`,
       badge: data.vehicleCount > 0 ? data.vehicleCount : undefined,
       exact: false,
-      canCheck: () => canInOrg(ACTIONS.VEHICLE_LIST, data.orgId),
+      visible: canSeeFleet,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <rect x="1" y="3" width="15" height="13" rx="2"/>
         <path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/>
@@ -106,8 +172,7 @@
       label: "Members",
       href: `/org/${data.orgId}/members`,
       exact: false,
-      canCheck: () =>
-        canInOrg(ACTIONS.MEMBER_REQUESTS, data.orgId) || $canApproveMembers,
+      visible: canSeeMembers,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
         <circle cx="9" cy="7" r="4"/>
@@ -119,8 +184,7 @@
       label: "Finance",
       href: `/org/${data.orgId}/finance`,
       exact: false,
-      canCheck: () =>
-        canInOrg(ACTIONS.FINANCE_LIST, data.orgId) || $canViewFinance,
+      visible: canSeeFinance,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <line x1="12" y1="1" x2="12" y2="23"/>
         <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
@@ -130,7 +194,7 @@
       label: "Routes",
       href: `/org/${data.orgId}/routes`,
       exact: false,
-      canCheck: () => canInOrg(ACTIONS.GEOFENCE_LIST, data.orgId),
+      visible: true,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
         <circle cx="12" cy="10" r="3"/>
@@ -140,7 +204,7 @@
       label: "Compliance",
       href: `/org/${data.orgId}/compliance`,
       exact: false,
-      canCheck: () => canInOrg(ACTIONS.REMINDER_LIST, data.orgId),
+      visible: canSeeCompliance,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
       </svg>`,
@@ -149,8 +213,7 @@
       label: "Reports",
       href: `/org/${data.orgId}/reports`,
       exact: false,
-      canCheck: () =>
-        canInOrg(ACTIONS.REPORTS_VIEW, data.orgId) || $canViewOrgReports,
+      visible: canSeeReports,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
@@ -162,8 +225,7 @@
       label: "Settings",
       href: `/org/${data.orgId}/settings`,
       exact: false,
-      canCheck: () =>
-        canInOrg(ACTIONS.SETTINGS_ALL, data.orgId) || $canChangeSettings,
+      visible: canSeeSettings,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -171,8 +233,7 @@
     },
   ])
 
-  // Dashboard href for breadcrumb root check
-  const dashboardHref = $derived(`/org/${data.orgId}/dashboard`)
+  let visibleNavItems = $derived(navItems.filter((i) => i.visible))
 </script>
 
 <!-- Mobile overlay -->
@@ -190,25 +251,23 @@
       onkeydown={() => {}}
     >
       <div class="mob-head">
-        <span class="org-name-text">{data.organization?.name ?? "SACCO"}</span>
+        <span class="org-name-text">{activeOrgName}</span>
         <button class="close-x" onclick={() => (mobileOpen = false)}>✕</button>
       </div>
       <nav class="sidebar-nav">
-        {#each navItems as item}
-          {#if item.canCheck()}
-            <a
-              href={item.href}
-              class="nav-link"
-              class:active={item.exact
-                ? currentPath === item.href
-                : isActive(item.href)}
-              onclick={() => (mobileOpen = false)}
-            >
-              {@html item.icon}
-              {item.label}
-              {#if item.badge}<span class="nav-badge">{item.badge}</span>{/if}
-            </a>
-          {/if}
+        {#each visibleNavItems as item}
+          <a
+            href={item.href}
+            class="nav-link"
+            class:active={item.exact
+              ? currentPath === item.href
+              : isActive(item.href)}
+            onclick={() => (mobileOpen = false)}
+          >
+            {@html item.icon}
+            {item.label}
+            {#if item.badge}<span class="nav-badge">{item.badge}</span>{/if}
+          </a>
         {/each}
       </nav>
     </div>
@@ -216,12 +275,11 @@
 {/if}
 
 <div class="shell">
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sb-header">
-      <div class="org-avatar">{initials(data.organization?.name ?? null)}</div>
+      <div class="org-avatar">{initials(activeOrgName)}</div>
       <div class="sb-org-info">
-        <span class="sb-org-name">{data.organization?.name ?? "SACCO"}</span>
+        <span class="sb-org-name">{activeOrgName}</span>
         <span
           class="sb-org-status"
           class:status-active={data.organization?.status === "active"}
@@ -232,20 +290,18 @@
     </div>
 
     <nav class="sidebar-nav">
-      {#each navItems as item}
-        {#if item.canCheck()}
-          <a
-            href={item.href}
-            class="nav-link"
-            class:active={item.exact
-              ? currentPath === item.href
-              : isActive(item.href)}
-          >
-            {@html item.icon}
-            {item.label}
-            {#if item.badge}<span class="nav-badge">{item.badge}</span>{/if}
-          </a>
-        {/if}
+      {#each visibleNavItems as item}
+        <a
+          href={item.href}
+          class="nav-link"
+          class:active={item.exact
+            ? currentPath === item.href
+            : isActive(item.href)}
+        >
+          {@html item.icon}
+          {item.label}
+          {#if item.badge}<span class="nav-badge">{item.badge}</span>{/if}
+        </a>
       {/each}
     </nav>
 
@@ -267,9 +323,7 @@
           <div class="user-av">{initials(profile.full_name)}</div>
           <div>
             <div class="user-name">{profile.full_name ?? "User"}</div>
-            <div class="user-role">
-              {data.userOrgRole?.replace(/_/g, " ") ?? "Member"}
-            </div>
+            <div class="user-role">{activeRoleLabel}</div>
           </div>
         </div>
       {/if}
@@ -291,7 +345,6 @@
     </div>
   </aside>
 
-  <!-- Main -->
   <div class="main">
     <div class="topbar">
       <div class="tb-left">
@@ -312,19 +365,19 @@
         <nav class="breadcrumb">
           <a href="/org/select">SACCOs</a>
           <span class="bc-sep">›</span>
-          <span class="bc-org">{data.organization?.name ?? ""}</span>
-          <!-- FIX: was /org/${data.orgId} → /org/${data.orgId}/dashboard -->
+          <span class="bc-org">{activeOrgName}</span>
           {#if currentPath !== dashboardHref}
             <span class="bc-sep">›</span>
             <span class="bc-cur">
-              {navItems.find((n) => !n.exact && isActive(n.href))?.label ?? ""}
+              {visibleNavItems.find((n) => !n.exact && isActive(n.href))
+                ?.label ?? ""}
             </span>
           {/if}
         </nav>
       </div>
       <div class="org-pill">
         <span class="org-pill-dot"></span>
-        {data.userOrgRole?.replace(/_/g, " ") ?? "Member"}
+        {activeRoleLabel}
       </div>
     </div>
 
@@ -339,14 +392,12 @@
     font-family: "DM Sans", system-ui, sans-serif;
     margin: 0;
   }
-
   .shell {
     display: flex;
     min-height: 100vh;
     background: #0a0a0c;
     color: #e2e4e9;
   }
-
   .sidebar {
     width: 240px;
     flex-shrink: 0;
@@ -363,7 +414,6 @@
   .sidebar::-webkit-scrollbar {
     display: none;
   }
-
   .sb-header {
     display: flex;
     align-items: center;
@@ -414,7 +464,6 @@
   .sb-org-status.status-active {
     color: #4ade80;
   }
-
   .sidebar-nav {
     padding: 0.75rem 0.65rem;
     flex: 1;
@@ -485,7 +534,6 @@
     justify-content: center;
     padding: 0 4px;
   }
-
   .sb-stats {
     display: flex;
     align-items: center;
@@ -518,7 +566,6 @@
     background: rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
   }
-
   .sb-footer {
     padding: 0.75rem 0.65rem;
     flex-shrink: 0;
@@ -573,7 +620,6 @@
     background: rgba(239, 68, 68, 0.08);
     color: #f87171;
   }
-
   .mob-overlay {
     position: fixed;
     inset: 0;
@@ -611,7 +657,6 @@
     cursor: pointer;
     font-size: 1rem;
   }
-
   .main {
     flex: 1;
     min-width: 0;
@@ -699,7 +744,6 @@
     flex: 1;
     padding: 2.25rem 2.5rem;
   }
-
   @media (max-width: 1024px) {
     .sidebar {
       display: none;
