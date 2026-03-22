@@ -23,7 +23,7 @@
    */
 
   import { onMount, onDestroy } from "svelte"
-  import { sessionStore, canInOrg } from "$lib/features/auth/contexts"
+  import { sessionStore, canInOrg } from "$lib/features/auth/stores/auth"
   import { ACTIONS } from "$lib/features/auth/stores/permisions"
   import { initFleet, destroyFleet } from "$lib/features/fleet/stores/fleet"
   import {

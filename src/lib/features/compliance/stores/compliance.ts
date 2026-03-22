@@ -1,7 +1,13 @@
 // lib/stores/compliance.store.ts
 import { writable, get } from 'svelte/store'
 import { SupabaseClient } from "@supabase/supabase-js"
-import { authStore, enforceTenant } from '$lib/features/auth/stores/auth'
+import { requireOrgAccess } from '$lib/features/auth/stores/auth'
+import {
+  getOrgContextOrgId,
+  isOrgContextActive,
+  getActiveOrgId,
+  isOrgChairActive,
+} from '$lib/features/auth/contexts'
 
 /* ============================================================
    COMPLIANCE MODELS
@@ -41,13 +47,32 @@ export const complianceAlertStore = writable<ComplianceAlert[]>([])
 let eventChannel: ReturnType<typeof SupabaseClient.channel> | null = null
 
 /* ============================================================
+   HELPERS
+============================================================ */
+
+/**
+ * Resolves the active org ID from whichever context is currently active.
+ * Tries org-chair first, falls back to general org staff context.
+ * Throws if neither context is active — compliance requires a tenant.
+ */
+function resolveOrgId(): string {
+  if (isOrgChairActive()) {
+    const id = getActiveOrgId()
+    if (id) return id
+  }
+  if (isOrgContextActive()) {
+    const id = getOrgContextOrgId()
+    if (id) return id
+  }
+  throw new Error('No active org context — cannot initialise compliance store')
+}
+
+/* ============================================================
    INITIALIZATION
 ============================================================ */
 
 export async function initCompliance(): Promise<void> {
-  const currentUser = get(authStore)
-  if (!currentUser.organizationId) throw new Error('User has no tenant context')
-  const orgId = currentUser.organizationId
+  const orgId = resolveOrgId()
 
   /* ----------------------------
      Fetch unresolved events
@@ -89,7 +114,7 @@ export async function initCompliance(): Promise<void> {
       filter: `organizationId=eq.${orgId}`
     }, payload => {
       const incoming = payload.new as ComplianceEvent
-      enforceTenant(incoming.organizationId)
+      requireOrgAccess(incoming.organizationId)
 
       complianceEventStore.update(current => {
         if (payload.eventType === 'DELETE') {
@@ -129,6 +154,3 @@ export function getVehicleAlerts(vehicleId: string): ComplianceAlert[] {
   return get(complianceAlertStore).filter(a => a.vehicleId === vehicleId)
 }
 
-export function requireComplianceAccess(orgId: string): void {
-  enforceTenant(orgId)
-}
