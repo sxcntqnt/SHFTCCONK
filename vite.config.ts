@@ -33,7 +33,7 @@ export default defineConfig({
     allowedHosts: ["sxcntcnqunts.com"],
   },
 ssr: {
-  noExternal: ["three"]
+  noExternal: ["three" ,"firebase", "@firebase/*"]
 },
 
   test: {

@@ -1,7 +1,9 @@
 <!-- src/routes/(auth)/app/create_profile/+page.svelte -->
 <script lang="ts">
+  import { page } from "$app/stores"
   import { applyAction, enhance } from "$app/forms"
   import type { SubmitFunction } from "@sveltejs/kit"
+  import type { Organization } from "./+page.server"
 
   interface User {
     email: string
@@ -21,21 +23,60 @@
     phone?: string
   }
   interface Props {
-    data: { user: User; profile: Profile }
+    data: {
+      user: User
+      profile: Profile | null
+      organizations: Organization[]
+      linkedOrgIds: string[]
+      role: string
+    }
     form: FormResult
   }
 
   let { data, form }: Props = $props()
-  let { user, profile } = data
+  let { user, profile, organizations, linkedOrgIds } = data
 
+  // Role forwarded from onboarding — live URL param takes priority
+  let role = $derived(
+    $page.url.searchParams.get("role") ?? data.role ?? "PASSENGER",
+  )
+
+  // Form fields — prefer form return values after a failed submit
   let loading = $state(false)
-  let fullName: string = profile?.full_name ?? ""
-  let companyName: string = profile?.company_name ?? ""
-  let website: string = profile?.website ?? ""
-  let phone: string = profile?.phone ?? ""
+  let fullName = $state(form?.fullName ?? profile?.full_name ?? "")
+  let phone = $state(form?.phone ?? profile?.phone ?? "")
+  let companyName = $state(form?.companyName ?? profile?.company_name ?? "")
+  let website = $state(form?.website ?? profile?.website ?? "")
 
-  const fieldError = (liveForm: FormResult, name: string) =>
-    (liveForm?.errorFields ?? []).includes(name)
+  // Org selector
+  let selectedOrgs = $state<Set<string>>(new Set(linkedOrgIds))
+  let orgSearch = $state("")
+
+  let filteredOrgs = $derived(
+    organizations.filter(
+      (o) =>
+        o.name.toLowerCase().includes(orgSearch.toLowerCase()) ||
+        (o.county ?? "").toLowerCase().includes(orgSearch.toLowerCase()),
+    ),
+  )
+
+  let groupedOrgs = $derived(() => {
+    const map = new Map<string, Organization[]>()
+    for (const org of filteredOrgs) {
+      const key = org.county ?? "Other"
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(org)
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+  })
+
+  function toggleOrg(id: string) {
+    const next = new Set(selectedOrgs)
+    next.has(id) ? next.delete(id) : next.add(id)
+    selectedOrgs = next
+  }
+
+  const fieldError = (name: string) => (form?.errorFields ?? []).includes(name)
 
   const handleSubmit: SubmitFunction = () => {
     loading = true
@@ -48,12 +89,11 @@
 </script>
 
 <svelte:head>
-  <title>Create Profile</title>
+  <title>Create Profile — Matatu Pulse</title>
 </svelte:head>
 
 <div class="page">
   <div class="card">
-    <!-- Header -->
     <div class="card-header">
       <div class="logo-mark">
         <svg
@@ -74,129 +114,225 @@
       </p>
     </div>
 
-    <!-- Form -->
-    <form
-      method="POST"
-      action="/app/api?/updateProfile"
-      use:enhance={handleSubmit}
-    >
-      <!-- Full name -->
-      <div class="field">
-        <label class="field-label" for="fullName">Full Name</label>
-        <input
-          id="fullName"
-          name="fullName"
-          type="text"
-          placeholder="e.g. Amina Odhiambo"
-          class="field-input {fieldError(form, 'fullName') ? 'err' : ''}"
-          value={form?.fullName ?? fullName}
-          maxlength="50"
-          required
-        />
-        {#if fieldError(form, "fullName")}
-          <span class="field-err">Full name is required</span>
-        {/if}
-      </div>
+    <form method="POST" action="?/updateProfile" use:enhance={handleSubmit}>
+      <!-- Role forwarded from onboarding -->
+      <input type="hidden" name="role" value={role} />
 
-      <!-- Phone number -->
-      <div class="field">
-        <label class="field-label" for="phone">Phone Number</label>
-        <div class="phone-wrap">
-          <span class="phone-prefix">+254</span>
+      <!-- One hidden input per selected org -->
+      {#each [...selectedOrgs] as orgId}
+        <input type="hidden" name="org_ids" value={orgId} />
+      {/each}
+
+      <div class="form-body">
+        <!-- Full name -->
+        <div class="field">
+          <label class="field-label" for="fullName">Full Name</label>
           <input
-            id="phone"
-            name="phone"
-            type="tel"
-            placeholder="712 345 678"
-            class="field-input phone-input {fieldError(form, 'phone')
-              ? 'err'
-              : ''}"
-            value={form?.phone ?? phone}
-            maxlength="20"
+            id="fullName"
+            name="fullName"
+            type="text"
+            placeholder="e.g. Amina Odhiambo"
+            class="field-input {fieldError('fullName') ? 'err' : ''}"
+            bind:value={fullName}
+            maxlength="50"
             required
           />
+          {#if fieldError("fullName")}
+            <span class="field-err">Full name is required</span>
+          {/if}
         </div>
-        {#if fieldError(form, "phone")}
-          <span class="field-err">A valid phone number is required</span>
-        {/if}
-      </div>
 
-      <!-- Company name (optional) -->
-      <div class="field">
-        <label class="field-label" for="companyName">
-          Company Name
-          <span class="optional">optional</span>
-        </label>
-        <input
-          id="companyName"
-          name="companyName"
-          type="text"
-          placeholder="e.g. Citi Hoppa SACCO"
-          class="field-input {fieldError(form, 'companyName') ? 'err' : ''}"
-          value={form?.companyName ?? companyName}
-          maxlength="50"
-        />
-      </div>
-
-      <!-- Website (optional) -->
-      <div class="field">
-        <label class="field-label" for="website">
-          Website
-          <span class="optional">optional</span>
-        </label>
-        <input
-          id="website"
-          name="website"
-          type="url"
-          placeholder="https://example.co.ke"
-          class="field-input {fieldError(form, 'website') ? 'err' : ''}"
-          value={form?.website ?? website}
-          maxlength="100"
-        />
-      </div>
-
-      <!-- Error message -->
-      {#if form?.errorMessage}
-        <div class="error-banner">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path
-              d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+        <!-- Phone -->
+        <div class="field">
+          <label class="field-label" for="phone">Phone Number</label>
+          <div class="phone-wrap {fieldError('phone') ? 'err' : ''}">
+            <span class="phone-prefix">+254</span>
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              placeholder="712 345 678"
+              class="phone-input"
+              bind:value={phone}
+              maxlength="15"
+              required
             />
-            <line x1="12" y1="9" x2="12" y2="13" />
-            <line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
-          {form.errorMessage}
+          </div>
+          {#if fieldError("phone")}
+            <span class="field-err">A valid phone number is required</span>
+          {/if}
         </div>
-      {/if}
 
-      <!-- Submit -->
-      <button type="submit" class="submit-btn" disabled={loading}>
-        {#if loading}
-          <span class="spinner"></span>Saving…
-        {:else}
-          Continue
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-          >
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
+        <!-- Company name -->
+        <div class="field">
+          <label class="field-label" for="companyName">
+            Company Name <span class="optional">optional</span>
+          </label>
+          <input
+            id="companyName"
+            name="companyName"
+            type="text"
+            placeholder="e.g. Citi Hoppa SACCO"
+            class="field-input"
+            bind:value={companyName}
+            maxlength="50"
+          />
+        </div>
+
+        <!-- Website -->
+        <div class="field">
+          <label class="field-label" for="website">
+            Website <span class="optional">optional</span>
+          </label>
+          <input
+            id="website"
+            name="website"
+            type="url"
+            placeholder="https://example.co.ke"
+            class="field-input"
+            bind:value={website}
+            maxlength="100"
+          />
+        </div>
+
+        <!-- Organisations -->
+        <div class="field">
+          <div class="field-label">
+            Organisations <span class="optional">select all that apply</span>
+          </div>
+
+          {#if organizations.length === 0}
+            <div class="org-empty">No organisations found.</div>
+          {:else}
+            <div class="org-search-wrap">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by name or county…"
+                class="org-search"
+                bind:value={orgSearch}
+              />
+              {#if orgSearch}
+                <button
+                  type="button"
+                  class="org-clear"
+                  onclick={() => (orgSearch = "")}
+                  aria-label="Clear search"
+                >
+                  ✕
+                </button>
+              {/if}
+            </div>
+
+            {#if selectedOrgs.size > 0}
+              <div class="selected-pill">
+                <span class="selected-dot"></span>
+                {selectedOrgs.size} organisation{selectedOrgs.size !== 1
+                  ? "s"
+                  : ""} selected
+                <button
+                  type="button"
+                  class="clear-all"
+                  onclick={() => (selectedOrgs = new Set())}
+                >
+                  Clear all
+                </button>
+              </div>
+            {/if}
+
+            <div class="org-list">
+              {#each groupedOrgs() as [county, orgs]}
+                <div class="org-group">
+                  <div class="org-group-label">{county}</div>
+                  {#each orgs as org}
+                    {@const checked = selectedOrgs.has(org.id)}
+                    <button
+                      type="button"
+                      class="org-row {checked ? 'selected' : ''}"
+                      onclick={() => toggleOrg(org.id)}
+                    >
+                      <div class="org-check {checked ? 'checked' : ''}">
+                        {#if checked}
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                          >
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        {/if}
+                      </div>
+                      <div class="org-info">
+                        <div class="org-name">{org.name}</div>
+                        {#if org.type}<div class="org-type">
+                            {org.type}
+                          </div>{/if}
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              {/each}
+
+              {#if filteredOrgs.length === 0}
+                <div class="org-empty">No results for "{orgSearch}"</div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        {#if form?.errorMessage}
+          <div class="error-banner">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+              />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            {form.errorMessage}
+          </div>
         {/if}
-      </button>
+
+        <button type="submit" class="submit-btn" disabled={loading}>
+          {#if loading}
+            <span class="spinner"></span>Saving…
+          {:else}
+            Continue
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          {/if}
+        </button>
+      </div>
     </form>
 
-    <!-- Footer -->
     <div class="card-footer">
       Signed in as <strong>{user?.email}</strong> ·
       <a href="/account/sign_out">Sign out</a>
@@ -209,15 +345,15 @@
     min-height: 100vh;
     background: var(--ink);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: 24px 16px;
+    padding: 40px 16px;
     font-family: var(--font-body);
   }
 
   .card {
     width: 100%;
-    max-width: 420px;
+    max-width: 480px;
     background: var(--ink-2);
     border: 1px solid var(--rim);
     border-radius: 20px;
@@ -225,7 +361,7 @@
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
   }
 
-  /* Header */
+  /* ── Header ── */
   .card-header {
     padding: 32px 32px 24px;
     border-bottom: 1px solid var(--rim);
@@ -251,10 +387,9 @@
       transparent
     );
   }
-
   .logo-mark {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: 12px;
     background: linear-gradient(135deg, var(--teal), #005c52);
     display: flex;
@@ -263,7 +398,6 @@
     margin: 0 auto 14px;
     box-shadow: 0 4px 14px rgba(0, 176, 155, 0.3);
   }
-
   .title {
     font-family: var(--font-display);
     font-size: 1.45rem;
@@ -272,25 +406,25 @@
     color: var(--text-1);
     margin-bottom: 6px;
   }
-
   .subtitle {
     font-size: 0.82rem;
     color: var(--text-3);
     line-height: 1.5;
   }
 
-  /* Form body */
-  form {
+  /* ── Form body ── */
+  .form-body {
     padding: 24px 32px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
   }
 
+  /* ── Fields ── */
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
   }
 
   .field-label {
@@ -301,14 +435,14 @@
     color: var(--text-3);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
   }
 
   .optional {
-    font-size: 0.6rem;
+    font-size: 0.58rem;
     font-weight: 600;
-    letter-spacing: 0.06em;
     text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-3);
     opacity: 0.5;
     padding: 1px 5px;
@@ -344,21 +478,29 @@
     border-color: rgba(248, 113, 113, 0.5);
   }
 
-  /* Phone row */
+  .field-err {
+    font-size: 0.66rem;
+    color: #f87171;
+  }
+
+  /* ── Phone ── */
   .phone-wrap {
     display: flex;
     align-items: stretch;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
     transition:
       border-color 0.15s,
       box-shadow 0.15s;
-    background: rgba(255, 255, 255, 0.04);
   }
   .phone-wrap:focus-within {
     border-color: rgba(0, 176, 155, 0.45);
     box-shadow: 0 0 0 3px rgba(0, 176, 155, 0.08);
+  }
+  .phone-wrap.err {
+    border-color: rgba(248, 113, 113, 0.5);
   }
   .phone-prefix {
     padding: 10px 12px;
@@ -373,25 +515,183 @@
     user-select: none;
   }
   .phone-input {
-    border: none !important;
-    border-radius: 0 !important;
-    background: transparent !important;
     flex: 1;
-    box-shadow: none !important;
-  }
-  .phone-input:focus {
+    padding: 10px 13px;
+    background: transparent;
+    border: none;
     outline: none;
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    color: var(--text-1);
+    min-width: 0;
+  }
+  .phone-input::placeholder {
+    color: var(--text-3);
+    opacity: 0.6;
   }
 
-  .field-err {
-    font-size: 0.66rem;
-    color: #f87171;
+  /* ── Org selector ── */
+  .org-search-wrap {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .org-search-wrap svg {
+    opacity: 0.4;
+    flex-shrink: 0;
+  }
+  .org-search {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    color: var(--text-1);
+  }
+  .org-search::placeholder {
+    color: var(--text-3);
+    opacity: 0.6;
+  }
+  .org-clear {
+    background: none;
+    border: none;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0 2px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .org-clear:hover {
+    opacity: 1;
   }
 
-  /* Error banner */
+  .selected-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: rgba(0, 176, 155, 0.09);
+    border: 1px solid rgba(0, 176, 155, 0.2);
+    border-radius: 100px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--teal);
+    margin-bottom: 8px;
+  }
+  .selected-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--teal);
+  }
+  .clear-all {
+    background: none;
+    border: none;
+    font-family: var(--font-body);
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: var(--text-3);
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 0;
+    text-decoration: underline;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+  }
+  .clear-all:hover {
+    opacity: 1;
+  }
+
+  .org-list {
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+  .org-group-label {
+    padding: 8px 13px 4px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .org-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 13px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-body);
+    transition: background 0.12s;
+  }
+  .org-row:last-child {
+    border-bottom: none;
+  }
+  .org-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .org-row.selected {
+    background: rgba(0, 176, 155, 0.06);
+  }
+  .org-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 5px;
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.12s;
+  }
+  .org-check.checked {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+  }
+  .org-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .org-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-1);
+  }
+  .org-type {
+    font-size: 0.62rem;
+    color: var(--text-3);
+    margin-top: 1px;
+    text-transform: capitalize;
+  }
+  .org-empty {
+    padding: 20px;
+    text-align: center;
+    font-size: 0.78rem;
+    color: var(--text-3);
+  }
+
+  /* ── Error banner ── */
   .error-banner {
     display: flex;
     align-items: center;
@@ -404,7 +704,7 @@
     color: #f87171;
   }
 
-  /* Submit */
+  /* ── Submit ── */
   .submit-btn {
     display: flex;
     align-items: center;
@@ -412,7 +712,6 @@
     gap: 8px;
     width: 100%;
     padding: 12px;
-    margin-top: 4px;
     background: var(--teal);
     border: none;
     border-radius: 12px;
@@ -451,7 +750,7 @@
     }
   }
 
-  /* Footer */
+  /* ── Footer ── */
   .card-footer {
     padding: 14px 32px 20px;
     text-align: center;

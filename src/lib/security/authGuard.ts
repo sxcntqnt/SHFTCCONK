@@ -1,46 +1,61 @@
 // src/lib/guards/auth.guard.ts
 //
-// Route guards for federated governance.
-// Use in +page.ts or +layout.ts load functions to protect pages.
+// Route guards using context activation as the access gate.
 //
-// These are UI guards — they prevent bad UX (blank pages, cryptic
-// RLS errors) but are NOT security boundaries. Real authorization:
-//   - hooks.server.ts authGuardHandle (server-side redirect/401)
-//   - RLS policies on every table (deny by default)
-//   - can_actor_perform() / my_permissions (DB-side double-gate)
+// ARCHITECTURE SHIFT:
+//   Old pattern: guard reads sessionStore directly → layout calls activate()
+//   New pattern: guard calls activate() → layout reads the context store
 //
-// CHANGES from previous version:
-//   - Fixed /dashboard phantom route → /app/dashboard
-//   - Fixed /unauthorized phantom route → /app/dashboard?denied=...
-//   - requireOrgScope renamed to requireOrgAccess, now auto-switches actor
-//   - requireActorType now auto-switches to matching actor if available
-//   - NEW: requireFederal (admin routes — checks permissions not just type)
-//   - NEW: requireOrgPermission (org-scoped permission check)
-//   - NEW: requireCrewAccess, requireOperatorAccess, requireAdminAccess,
-//          requireAuditAccess (route-specific shorthands)
-//   - Original requireOrgScope preserved as @deprecated alias
+//   This means each context is bootstrapped ONCE per navigation, not twice.
+//   The guard IS the activation step. Layout.ts just reads the result.
 //
-// Usage:
-//   import { requireAuth, requireOrgAccess } from "$lib/guards/auth.guard"
+// INCREMENTAL BOOTSTRAP:
+//   Only the context needed by the current route is activated.
+//   A DRIVER visiting /crew/* gets CrewContext only.
+//   A user visiting /admin/* gets SuperAdminContext only.
+//   No context is loaded eagerly — all start null.
+//
+// SECURITY REMINDER:
+//   These are UI guards only. Real authorization:
+//     - hooks.server.ts (server-side session check)
+//     - RLS on every table (deny by default)
+//     - can_actor_perform() DB function (double-gate)
+//
+// ROUTE → GUARD → CONTEXT:
+//   /admin/*            requireAdminAccess      → superAdminCtx
+//   /org/[orgId]/*      requireOrgMemberAccess  → orgChairCtx | orgCtx
+//   /crew/*             requireCrewAccess       → crewCtx
+//   /operator/*         requireOperatorAccess   → operatorCtx
+//   /stage/[orgId]/*    requireStageAccess      → orgCtx (STAGE_OPERATOR)
+//   /app/*              requirePassengerAccess  → passengerCtx
+//
+// LAYOUT USAGE:
+//   // /crew/+layout.ts
+//   import { requireCrewAccess } from '$lib/guards/auth.guard'
+//   import { crewCtx } from '$lib/features/auth/contexts'
+//   import { get } from 'svelte/store'
 //
 //   export const load: LayoutLoad = async (event) => {
-//     await requireAuth(event)
-//     await requireOrgAccess(event, event.params.orgId)
-//     return {}
+//     await requireCrewAccess(event)          // activates crewCtx
+//     const crew = get(crewCtx)!              // already populated — no second activate()
+//     return { plate: crew.activeVehiclePlate }
 //   }
 
 import { redirect } from "@sveltejs/kit"
 import { get } from "svelte/store"
+import { isSessionCurrent } from "$lib/features/auth/stores/auth.store"
 import {
-  sessionStore,
-  can,
-  canInOrg,
-  isSessionCurrent,
-  findActorForOrg,
-  switchActor,
-} from "$lib/features/auth/stores/auth"
-import { ROLES } from "$lib/features/auth/stores/roles"
-
+  activateSuperAdminContext,
+  activateOrgChairContext,
+  activateOrgContext,
+  activateCrewContext,
+  activateOperatorContext,
+  activatePassengerContext,
+  superAdminCtx,
+  orgChairCtx,
+  orgCtx,
+  operatorCtx,
+} from "$lib/features/auth/contexts"
 
 /* ============================================================
    SHARED TYPES
@@ -55,14 +70,11 @@ interface LoadEvent {
 }
 
 /* ============================================================
-   requireAuth — base guard for all protected routes
+   requireAuth — base guard, call first in every protected layout.
 
-   Checks:
-     1. Session exists (redirect to login if not)
-     2. Store is bootstrapped
-     3. Permission version is current (re-bootstrap if stale)
-
-   Returns the session + bootstrapped flag for downstream use.
+   Only checks session existence and permission version freshness.
+   Does NOT activate any context — that is the job of the
+   route-specific guards below.
 ============================================================ */
 export async function requireAuth(event: LoadEvent) {
   const { session, bootstrapped } = await event.parent()
@@ -72,200 +84,203 @@ export async function requireAuth(event: LoadEvent) {
     redirect(303, `/login/sign_in?next=${encodeURIComponent(returnTo)}`)
   }
 
-  // Version check: if permissions changed since bootstrap,
-  // force re-bootstrap via redirect. The 60s polling in
-  // layout.svelte handles background detection, but this
-  // catches stale sessions at navigation time.
+  // Stale permission version — force re-bootstrap.
+  // Background polling handles idle detection; this catches navigation-time staleness.
   if (bootstrapped && !isSessionCurrent()) {
     const current = event.url.pathname + event.url.search
-    const separator = current.includes("?") ? "&" : "?"
-    redirect(303, `${current}${separator}rebootstrap=1`)
+    const sep = current.includes("?") ? "&" : "?"
+    redirect(303, `${current}${sep}rebootstrap=1`)
   }
 
   return { session, bootstrapped }
 }
 
 /* ============================================================
-   requirePermission — active actor must have permission(s)
+   requirePassengerAccess — /app/*
 
-   Checks if the ACTIVE actor has at least one of the given
-   actions (unscoped). For org-scoped checks, use requireOrgPermission().
+   Activates passengerCtx. Returns false only if no profile exists.
+   GUEST users get a context — isVerified in the UI gates booking.
+   Layout reads passengerCtx after this returns.
 ============================================================ */
-export async function requirePermission(
+export async function requirePassengerAccess(event: LoadEvent) {
+  await requireAuth(event)
+
+  const activated = activatePassengerContext()
+  if (!activated) {
+    redirect(303, "/app/onboarding")
+  }
+}
+
+/* ============================================================
+   requireCrewAccess — /crew/*
+
+   Activates crewCtx with the best DRIVER or CONDUCTOR actor.
+   Auto-switches active actor if needed (handled inside activateCrewContext).
+   Layout reads crewCtx after this returns.
+============================================================ */
+export async function requireCrewAccess(event: LoadEvent) {
+  await requireAuth(event)
+
+  const activated = activateCrewContext()
+  if (!activated) {
+    redirect(303, "/app/dashboard?denied=requires_crew")
+  }
+}
+
+/* ============================================================
+   requireOperatorAccess — /operator/*
+
+   Activates operatorCtx. Two-stage check:
+     1. Must have an active OPERATOR actor
+     2. Must have at least one approved org jurisdiction
+        (ORG_CHAIR has granted them a fleet allocation)
+
+   Without stage 2, an operator approved at platform level but with
+   no org grants would see an empty fleet with no explanation.
+   Layout reads operatorCtx after this returns.
+============================================================ */
+export async function requireOperatorAccess(event: LoadEvent) {
+  await requireAuth(event)
+
+  const activated = activateOperatorContext()
+  if (!activated) {
+    redirect(303, "/app/dashboard?denied=requires_operator")
+  }
+
+  // activateOperatorContext returns false if orgSlots is empty,
+  // but we check the store explicitly for the pending-approval redirect
+  const ctx = get(operatorCtx)
+  if (!ctx || ctx.orgSlots.length === 0) {
+    redirect(303, "/operator/pending?reason=no_org_approved")
+  }
+}
+
+/* ============================================================
+   requireAdminAccess — /admin/*
+
+   Activates superAdminCtx. Checks for ADMIN or SUPER_ADMIN actor.
+   Layout reads superAdminCtx after this returns.
+============================================================ */
+export async function requireAdminAccess(event: LoadEvent) {
+  await requireAuth(event)
+
+  const activated = activateSuperAdminContext()
+  if (!activated) {
+    redirect(303, "/app/dashboard?denied=requires_admin")
+  }
+}
+
+/* ============================================================
+   requireAuditAccess — /admin/audit_logs/*
+
+   Subset of admin — additionally checks audit.view permission.
+   Assumes requireAdminAccess has already run in the parent layout.
+============================================================ */
+export async function requireAuditAccess(event: LoadEvent) {
+  await requireAdminAccess(event)
+
+  const ctx = get(superAdminCtx)
+  const canAudit = ctx?.permissions.some(
+    (p) => p.action === "audit.view" && p.effect === "allow",
+  ) ?? false
+
+  if (!canAudit) {
+    redirect(303, "/admin/dashboard?denied=audit.view")
+  }
+}
+
+/* ============================================================
+   requireOrgMemberAccess — /org/[orgId]/*
+
+   Tries ORG_CHAIR context first, falls through to general org staff.
+   Returns which context was activated so layout.ts can branch.
+
+   Layout pattern:
+     const role = await requireOrgMemberAccess(event, params.orgId)
+     const ctx  = role === 'chair' ? get(orgChairCtx) : get(orgCtx)
+============================================================ */
+export async function requireOrgMemberAccess(
   event: LoadEvent,
-  ...actions: string[]
-) {
+  orgId: string,
+): Promise<"chair" | "staff"> {
   await requireAuth(event)
 
-  const s = get(sessionStore)
-  if (!s.initialized) return // store not ready; RLS catches it
+  const isChair = activateOrgChairContext(orgId)
+  if (isChair) return "chair"
 
-  const hasAny = actions.some((action) => can(action))
-  if (!hasAny) {
-    redirect(303, `/app/dashboard?denied=${actions[0]}`)
-  }
+  const isStaff = activateOrgContext(orgId)
+  if (isStaff) return "staff"
+
+  redirect(303, "/org/select?reason=no_access")
 }
 
 /* ============================================================
-   requireFederal — federal-level permission required
+   requireOrgPermission — /org/[orgId]/* with a specific permission
 
-   For admin routes that need platform-wide access.
-   Checks actual permissions, not just actor type — an ADMIN actor
-   with revoked admin.full permission will be blocked.
-
-   Usage:
-     await requireFederal(event, "admin.full", "admin.users")
-     await requireFederal(event, "audit.view")
-============================================================ */
-export async function requireFederal(
-  event: LoadEvent,
-  ...actions: string[]
-) {
-  await requireAuth(event)
-
-  const s = get(sessionStore)
-  if (!s.initialized) return
-
-  const hasFederal = actions.some((action) =>
-    can(action, { level: "federal", scopeId: null }),
-  )
-
-  if (!hasFederal) {
-    redirect(303, `/app/dashboard?denied=federal_required`)
-  }
-}
-
-/* ============================================================
-   requireOrgAccess — jurisdiction over a specific org + auto-switch
-
-   For org-scoped pages like /org/[orgId]/dashboard.
-
-   1. Finds the best actor for the given org (prefers federal, then org-level)
-   2. Auto-switches to that actor if it's not currently active
-   3. Redirects to /org/select if no actor has access
-
-   This eliminates the "I have access but see a blank page" problem
-   when a multi-actor user navigates to an org route while their
-   active actor is a different persona.
-
-   Usage:
-     await requireOrgAccess(event, event.params.orgId)
-============================================================ */
-export async function requireOrgAccess(event: LoadEvent, orgId: string) {
-  await requireAuth(event)
-
-  const s = get(sessionStore)
-  if (!s.initialized) return
-
-  const bestActor = findActorForOrg(orgId)
-
-  if (!bestActor) {
-    redirect(303, "/org/select?reason=no_access")
-  }
-
-  // Auto-switch to the actor that has access to this org
-  if (s.activeActorId !== bestActor) {
-    switchActor(bestActor)
-  }
-}
-
-/* ============================================================
-   requireOrgPermission — org-scoped permission check
-
-   Combines org access (with auto-switch) + specific permission.
-   Uses canInOrg() which checks the permission scoped to the org.
-
-   Usage:
-     await requireOrgPermission(event, orgId, "org.manage")
-     await requireOrgPermission(event, orgId, "vehicle.view")
+   Activates the correct org context then checks for a permission.
+   Use for sub-routes that need more than basic org membership.
 ============================================================ */
 export async function requireOrgPermission(
   event: LoadEvent,
   orgId: string,
   ...actions: string[]
 ) {
-  await requireOrgAccess(event, orgId)
+  const contextType = await requireOrgMemberAccess(event, orgId)
 
-  const s = get(sessionStore)
-  if (!s.initialized) return
+  const permissions =
+    contextType === "chair"
+      ? (get(orgChairCtx)?.permissions ?? [])
+      : (get(orgCtx)?.permissions ?? [])
 
-  const hasAny = actions.some((action) => canInOrg(action, orgId))
+  const hasAny = actions.some((action) =>
+    permissions.some(
+      (p) =>
+        p.action === action &&
+        p.effect === "allow" &&
+        (p.scope_id === orgId || p.level === "federal"),
+    ),
+  )
+
   if (!hasAny) {
     redirect(303, `/org/${orgId}/dashboard?denied=${actions[0]}`)
   }
 }
 
 /* ============================================================
-   requireActorType — active actor must be a specific type
+   requireStageAccess — /stage/[orgId]/*
 
-   Checks IDENTITY (role type), not permissions.
-   If the active actor doesn't match but another active actor does,
-   auto-switches to it instead of denying access.
+   STAGE_OPERATOR is an org-scoped staff role (queue/dispatch at a
+   physical stage). Uses orgCtx — not a separate context — since
+   STAGE_OPERATOR permissions are a subset of org staff permissions.
 
-   Usage:
-     await requireActorType(event, "DRIVER", "CONDUCTOR")
+   This is distinct from requireOperatorAccess (cross-org OPERATOR).
 ============================================================ */
-export async function requireActorType(
-  event: LoadEvent,
-  ...types: string[]
-) {
-  await requireAuth(event)
+export async function requireStageAccess(event: LoadEvent, orgId: string) {
+  await requireOrgMemberAccess(event, orgId)
 
-  const s = get(sessionStore)
-  if (!s.initialized) return
+  const ctx = get(orgCtx)
+  const canStage = ctx?.permissions.some(
+    (p) =>
+      (p.action === "tracking.live" || p.action === "booking.list") &&
+      p.effect === "allow" &&
+      (p.scope_id === orgId || p.level === "federal"),
+  ) ?? false
 
-  const activeActor = s.actors.find((a) => a.id === s.activeActorId)
-
-  // Active actor already matches
-  if (activeActor && types.includes(activeActor.type)) return
-
-  // Try to auto-switch to a matching active actor
-  const alternate = s.actors.find(
-    (a) => types.includes(a.type) && a.status === "active",
-  )
-
-  if (alternate) {
-    switchActor(alternate.id)
-    return
+  if (!canStage) {
+    redirect(303, `/org/${orgId}/dashboard?denied=stage_access`)
   }
-
-  // No matching actor at all
-  redirect(303, `/app/dashboard?denied=requires_${types[0].toLowerCase()}`)
-}
-
-/* ============================================================
-   ROUTE-SPECIFIC SHORTHANDS
-   These call the generic guards with the right parameters
-   for each route group. Use in +layout.ts for the route group.
-============================================================ */
-
-/** /admin/* — requires admin.full or admin.users at federal level */
-export async function requireAdminAccess(event: LoadEvent) {
-  await requireFederal(event, "admin.full", "admin.users")
-}
-
-/** /admin/audit_logs/* — requires audit.view at federal level */
-export async function requireAuditAccess(event: LoadEvent) {
-  await requireFederal(event, "audit.view")
-}
-
-/** /crew/* — requires DRIVER or CONDUCTOR actor */
-export async function requireCrewAccess(event: LoadEvent) {
-  await requireActorType(event, ROLES.DRIVER, ROLES.CONDUCTOR)
-}
-
-/** /operator/* — requires STAGE_OPERATOR actor */
-export async function requireOperatorAccess(event: LoadEvent) {
-  await requireActorType(event, ROLES.STAGE_OPERATOR)
 }
 
 /* ============================================================
    BACKWARD COMPATIBILITY
 ============================================================ */
 
-/**
- * @deprecated Use requireOrgAccess() instead — it auto-switches the actor.
- */
+/** @deprecated Use requireOrgMemberAccess() */
 export async function requireOrgScope(event: LoadEvent, orgId: string) {
-  await requireOrgAccess(event, orgId)
+  await requireOrgMemberAccess(event, orgId)
+}
+
+/** @deprecated Use requireOrgMemberAccess() */
+export async function requireOrgAccess(event: LoadEvent, orgId: string) {
+  await requireOrgMemberAccess(event, orgId)
 }
