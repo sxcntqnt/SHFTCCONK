@@ -13,7 +13,7 @@
 //   - `supabase` destructured but never used — removed
 //   - Redundant `if (!session || !user)` after requireAuth — removed
 //     requireAuth already throws redirect if no session; the check was dead code
-//   - Import path fixed: was '$lib/security/authGuard', now '$lib/guards/auth.guard'
+//   - Import path fixed: was '$lib/security/authGuard', now '$lib/guards/authGuard'
 
 import type { LayoutServerLoad } from "$lib/types"
 import { requireAuth }           from "$lib/security/authGuard"

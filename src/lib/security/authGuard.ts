@@ -1,4 +1,4 @@
-// src/lib/guards/auth.guard.ts
+// src/lib/security/authGuard.ts
 //
 // Route guards using context activation as the access gate.
 //
@@ -31,7 +31,7 @@
 //
 // LAYOUT USAGE:
 //   // /crew/+layout.ts
-//   import { requireCrewAccess } from '$lib/guards/auth.guard'
+//   import { requireCrewAccess } from '$lib/security/authGuard'
 //   import { crewCtx } from '$lib/features/auth/contexts'
 //   import { get } from 'svelte/store'
 //
