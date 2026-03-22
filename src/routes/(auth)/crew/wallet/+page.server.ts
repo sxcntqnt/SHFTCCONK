@@ -14,12 +14,12 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { requireCrewAccess } from "$lib/guards/auth.guard"
+import { requireCrewAccess } from "$lib/security/authGuard"
 import { get } from "svelte/store"
 import { crewCtx } from "$lib/features/auth/contexts"
 import { processMpesaPush } from "$lib/server/mpesa-provider"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
-import type { WalletTransaction, WalletSummary } from "$lib/features/finance/wallet.types"
+import type { WalletTransaction, WalletSummary } from "$lib/features/wallet/wallet.types"
 
 export const load: PageServerLoad = async (event) => {
   // requireCrewAccess activates crewCtx — no second activate needed

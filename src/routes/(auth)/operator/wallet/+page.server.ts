@@ -17,11 +17,11 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { requireOperatorAccess } from "$lib/guards/auth.guard"
+import { requireOperatorAccess } from "$lib/security/authGuard"
 import { get } from "svelte/store"
 import { operatorCtx } from "$lib/features/auth/contexts"
 import { processMpesaPush, sendB2BPayment } from "$lib/server/mpesa-provider"
-import type { WalletTransaction, WalletSummary } from "$lib/features/finance/wallet.types"
+import type { WalletTransaction, WalletSummary } from "$lib/features/wallet/wallet.types"
 
 export const load: PageServerLoad = async (event) => {
   await requireOperatorAccess(event)

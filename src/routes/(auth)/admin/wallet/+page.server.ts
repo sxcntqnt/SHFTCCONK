@@ -17,9 +17,9 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { PageServerLoad } from "./$types"
-import { requireAdminAccess } from "$lib/guards/auth.guard"
+import { requireAdminAccess } from "$lib/security/authGuard"
 import { DEFAULT_REVENUE_CONFIG, calculateReservationSplit, calculateTipSplit } from "$lib/server/revenue-config"
-import type { WalletTransaction, WalletSummary } from "$lib/features/finance/wallet.types"
+import type { WalletTransaction, WalletSummary } from "$lib/features/wallet/wallet.types"
 
 export const load: PageServerLoad = async (event) => {
   await requireAdminAccess(event)

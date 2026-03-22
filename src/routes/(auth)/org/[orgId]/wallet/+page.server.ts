@@ -14,12 +14,12 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { requireOrgMemberAccess, requireOrgPermission } from "$lib/guards/auth.guard"
+import { requireOrgMemberAccess, requireOrgPermission } from "$lib/security/authGuard"
 import { get } from "svelte/store"
 import { orgChairCtx, orgCtx } from "$lib/features/auth/contexts"
 import { sendB2BPayment } from "$lib/server/mpesa-provider"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
-import type { WalletTransaction, WalletSummary } from "$lib/features/finance/wallet.types"
+import type { WalletTransaction, WalletSummary } from "$lib/features/wallet/wallet.types"
 
 export const load: PageServerLoad = async (event) => {
   const { params } = event

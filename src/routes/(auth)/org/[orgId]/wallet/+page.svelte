@@ -1,7 +1,7 @@
 <!-- src/routes/(auth)/org/[orgId]/wallet/+page.svelte -->
 <script lang="ts">
-  import WalletView from "$lib/features/finance/WalletView.svelte"
-  import { WALLET_CONFIGS, fmtKes } from "$lib/features/finance/wallet.types"
+  import WalletView from "$lib/components/WalletView.svelte"
+  import { WALLET_CONFIGS, fmtKes } from "$lib/features/wallet/wallet.types"
 
   let { data, form } = $props()
   const { transactions, summary, orgName, todayLevy, vehicleCount, levyRate } =
