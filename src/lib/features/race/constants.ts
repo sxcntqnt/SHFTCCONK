@@ -15,3 +15,23 @@ export const SERVER_LIST = [
   // ... (add all servers from original array)
 ];
 
+export const CAR_POSITIONS = [
+  { x:  0, y:   0 },
+  { x:  2, y:   0 },
+  { x: -2, y:   0 },
+  { x:  0, y:  -3 },
+  { x: -2, y:  -3 },
+  { x:  2, y:  -3 },
+  { x:  0, y:  -6 },
+  { x:  2, y:  -6 },
+  { x: -2, y:  -6 },
+  { x:  0, y:  -9 },
+  { x:  2, y:  -9 },
+  { x: -2, y:  -9 },
+  { x:  0, y: -12 },
+  { x: -2, y: -12 },
+  { x:  2, y: -12 },
+  { x:  0, y: -15 },
+  { x:  2, y: -15 },
+  { x: -2, y: -15 },
+]

@@ -38,6 +38,19 @@ export default defineConfig({
 ssr: {
   noExternal: ["three" ,"firebase", "@firebase/*","layerchart"]
 },
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        'three':    ['three', 'three-stdlib', '@threlte/core', '@threlte/extras'],
+        'firebase': ['firebase'],
+        'supabase': ['@supabase/supabase-js', '@supabase/ssr'],
+        'maps':     ['maplibre-gl', 'maplibre-gl-draw'],
+        'charts':   ['chart.js', 'layerchart'],
+      }
+    }
+  }
+},
 
   test: {
     include: ["src/**/*.{test,spec}.{js,ts}"],

@@ -14,11 +14,6 @@
   import {
     operatorCtx,
     operatorOrgSlots,
-    operatorOrgCount,
-    activeOrgName,
-    inProgressTrips,
-    pendingDispatches,
-    opsSummary,
     operatorActiveOrgId,
   } from "$lib/features/auth/contexts"
   import { sessionStore } from "$lib/features/auth/stores/auth"
