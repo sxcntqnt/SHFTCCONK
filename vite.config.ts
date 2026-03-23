@@ -43,10 +43,7 @@ build: {
     output: {
       manualChunks: {
         'three':    ['three', '@threlte/core', '@threlte/extras'],
-        'firebase': ['firebase/app', 'firebase/database', 'firebase/auth'],
-        'supabase': ['@supabase/supabase-js', '@supabase/ssr'],
-        'maps':     ['maplibre-gl', 'maplibre-gl-draw'],
-        'charts':   ['chart.js', 'layerchart'],
+        'charts':   ['layerchart'],
       }
     }
   }

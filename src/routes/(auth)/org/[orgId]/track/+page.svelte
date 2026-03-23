@@ -23,7 +23,7 @@
   import {
     initGpsClient,
     destroyGpsClient,
-  } from "$lib/features/fleet/gps.client"
+  } from "$lib/features/fleet/services/gps/gps.client"
   import type { PageData } from "./$types"
 
   interface Props {
