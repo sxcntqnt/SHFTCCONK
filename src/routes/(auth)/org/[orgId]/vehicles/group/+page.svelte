@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enhance } from "$app/forms"
   import {
     PageShell,
     Card,
@@ -7,23 +8,32 @@
     Table,
   } from "$lib/features/vehicles/VehicleMngr"
 
-  // ── State ──────────────────────────────────────────────────────────
+  interface Group {
+    id: string
+    name: string
+    description: string
+    vehicles: number
+  }
+  interface Props {
+    data: { orgId: string; groups: Group[] }
+    form: { success?: boolean; message?: string } | null
+  }
+
+  let { data, form }: Props = $props()
+
   let showModal = $state(false)
   let newName = $state("")
   let newDesc = $state("")
   let saving = $state(false)
 
-  interface Group {
-    id: number
-    name: string
-    vehicles: number
-  }
-
-  let groups = $state<Group[]>([
-    { id: 1, name: "Buru 58", vehicles: 12 },
-    { id: 2, name: "Ronga", vehicles: 8 },
-    { id: 3, name: "Ngong 46", vehicles: 5 },
-  ])
+  // Close modal on successful form action
+  $effect(() => {
+    if (form?.success) {
+      showModal = false
+      newName = ""
+      newDesc = ""
+    }
+  })
 
   function openModal() {
     showModal = true
@@ -32,22 +42,6 @@
     showModal = false
     newName = ""
     newDesc = ""
-  }
-
-  async function saveGroup() {
-    if (!newName.trim()) return
-    saving = true
-    await new Promise((r) => setTimeout(r, 500)) // replace with real API call
-    groups = [
-      ...groups,
-      { id: groups.length + 1, name: newName.trim(), vehicles: 0 },
-    ]
-    saving = false
-    closeModal()
-  }
-
-  function deleteGroup(id: number) {
-    groups = groups.filter((g) => g.id !== id)
   }
 </script>
 
@@ -69,103 +63,136 @@
     </button>
   {/snippet}
 
+  {#if form?.message}
+    <div class="error-banner">{form.message}</div>
+  {/if}
+
   <Card>
-    <Table headers={["#", "Group Name", "Vehicles", "Actions"]}>
-      {#each groups as g}
-        <tr>
-          <td>{g.id}</td>
-          <td style="color:var(--text-1);font-weight:600;">{g.name}</td>
-          <td>
-            <span class="count-badge">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <rect x="1" y="3" width="15" height="13" /><path
-                  d="M16 8h4l3 3v5h-7z"
-                />
-              </svg>
-              {g.vehicles}
-            </span>
-          </td>
-          <td>
-            <div class="row-actions">
-              <button class="row-btn" title="View group">
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </svg>
-              </button>
-              <button
-                class="row-btn danger"
-                title="Delete group"
-                onclick={() => deleteGroup(g.id)}
-              >
-                <svg
-                  width="13"
-                  height="13"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14H6L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                  <path d="M9 6V4h6v2" />
-                </svg>
-              </button>
-            </div>
-          </td>
+    <Table headers={["#", "Group Name", "Description", "Vehicles", "Actions"]}>
+      {#if data.groups.length === 0}
+        <tr class="empty-row">
+          <td colspan="5">No vehicle groups yet. Add one to get started.</td>
         </tr>
-      {/each}
+      {:else}
+        {#each data.groups as g, i}
+          <tr>
+            <td>{i + 1}</td>
+            <td style="color:var(--text-1);font-weight:600;">{g.name}</td>
+            <td style="color:var(--text-3);font-size:0.8rem;"
+              >{g.description || "—"}</td
+            >
+            <td>
+              <span class="count-badge">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <rect x="1" y="3" width="15" height="13" />
+                  <path d="M16 8h4l3 3v5h-7z" />
+                </svg>
+                {g.vehicles}
+              </span>
+            </td>
+            <td>
+              <div class="row-actions">
+                <button class="row-btn" title="View group" onclick={() => {}}>
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+
+                <!-- Delete via form action -->
+                <form method="POST" action="?/delete" use:enhance>
+                  <input type="hidden" name="id" value={g.id} />
+                  <button
+                    type="submit"
+                    class="row-btn danger"
+                    title="Delete group"
+                  >
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4h6v2" />
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {/each}
+      {/if}
     </Table>
   </Card>
 </PageShell>
 
+<!-- Create group modal — uses form action -->
 <Modal open={showModal} title="Add Vehicle Group" close={closeModal}>
-  <div class="modal-form">
-    <Input
-      label="Group Name"
-      placeholder="e.g. Buru 58"
-      bind:value={newName}
-      required
-    />
-    <Input
-      label="Description"
-      placeholder="Optional description"
-      bind:value={newDesc}
-    />
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick={closeModal}>Cancel</button>
-      <button
-        class="btn-save"
-        onclick={saveGroup}
-        disabled={saving || !newName.trim()}
-      >
-        {#if saving}
-          <span class="btn-spinner"></span>Saving…
-        {:else}
-          Save Group
-        {/if}
-      </button>
+  <form
+    method="POST"
+    action="?/create"
+    use:enhance={() => {
+      saving = true
+      return async ({ update }) => {
+        saving = false
+        await update()
+      }
+    }}
+  >
+    <div class="modal-form">
+      <Input
+        label="Group Name"
+        name="name"
+        placeholder="e.g. Buru 58"
+        bind:value={newName}
+        required
+      />
+      <Input
+        label="Description"
+        name="description"
+        placeholder="Optional description"
+        bind:value={newDesc}
+      />
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick={closeModal}
+          >Cancel</button
+        >
+        <button
+          type="submit"
+          class="btn-save"
+          disabled={saving || !newName.trim()}
+        >
+          {#if saving}
+            <span class="btn-spinner"></span>Saving…
+          {:else}
+            Save Group
+          {/if}
+        </button>
+      </div>
     </div>
-  </div>
+  </form>
 </Modal>
 
 <style>
-  /* ── Action button ── */
   .add-btn {
     display: inline-flex;
     align-items: center;
@@ -190,8 +217,15 @@
     box-shadow: 0 8px 28px rgba(242, 101, 34, 0.38);
     transform: translateY(-1px);
   }
-
-  /* ── Table row actions ── */
+  .error-banner {
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    color: #f87171;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    margin-bottom: 16px;
+  }
   .row-actions {
     display: flex;
     align-items: center;
@@ -223,8 +257,6 @@
     border-color: rgba(248, 113, 113, 0.25);
     color: #f87171;
   }
-
-  /* Vehicle count badge */
   .count-badge {
     display: inline-flex;
     align-items: center;
@@ -236,8 +268,6 @@
   .count-badge svg {
     color: var(--orange);
   }
-
-  /* ── Modal form ── */
   .modal-form {
     display: flex;
     flex-direction: column;
@@ -280,12 +310,10 @@
     color: #fff;
     cursor: pointer;
     box-shadow: 0 4px 14px rgba(242, 101, 34, 0.25);
-    transition:
-      background 0.15s,
-      box-shadow 0.15s;
     display: flex;
     align-items: center;
     gap: 7px;
+    transition: background 0.15s;
   }
   .btn-save:hover {
     background: #d95618;
@@ -303,6 +331,12 @@
     border-top-color: #fff;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
+  }
+  .empty-row td {
+    padding: 48px 20px !important;
+    text-align: center;
+    color: var(--text-3) !important;
+    font-size: 0.875rem !important;
   }
   @keyframes spin {
     to {

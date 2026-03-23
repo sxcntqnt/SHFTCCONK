@@ -2,7 +2,6 @@
   import { PageShell, Card, Table } from "$lib/features/vehicles/VehicleMngr"
   import { goto } from "$app/navigation"
 
-  // ── Types ──────────────────────────────────────────────────────────
   type VehicleStatus = "Active" | "Idle" | "Maintenance" | "Off Route"
 
   interface Vehicle {
@@ -15,52 +14,14 @@
     status: VehicleStatus
   }
 
-  // ── State ──────────────────────────────────────────────────────────
-  let search = $state("")
+  let { data }: { data: { orgId: string; vehicles: Vehicle[] } } = $props()
 
-  let vehicles = $state<Vehicle[]>([
-    {
-      id: "v1",
-      name: "Mamba",
-      reg: "KDA 787D",
-      model: "Pimped",
-      chassis: "8730920213",
-      group: "Buru 58",
-      status: "Active",
-    },
-    {
-      id: "v2",
-      name: "Thunder",
-      reg: "KBZ 441C",
-      model: "NQR",
-      chassis: "7410293011",
-      group: "Ronga",
-      status: "Idle",
-    },
-    {
-      id: "v3",
-      name: "Falcon",
-      reg: "KCE 887A",
-      model: "Rosa",
-      chassis: "6281047392",
-      group: "Ngong 46",
-      status: "Maintenance",
-    },
-    {
-      id: "v4",
-      name: "Striker",
-      reg: "KDA 302F",
-      model: "Coaster",
-      chassis: "9920384710",
-      group: "Buru 58",
-      status: "Off Route",
-    },
-  ])
+  let search = $state("")
 
   let filtered = $derived(
     search.trim() === ""
-      ? vehicles
-      : vehicles.filter((v) =>
+      ? data.vehicles
+      : data.vehicles.filter((v) =>
           [v.name, v.reg, v.model, v.chassis, v.group]
             .join(" ")
             .toLowerCase()
@@ -68,7 +29,6 @@
         ),
   )
 
-  // ── Status config ──────────────────────────────────────────────────
   const STATUS: Record<
     VehicleStatus,
     { color: string; bg: string; border: string }
@@ -98,7 +58,7 @@
 
 <PageShell title="Vehicle Management">
   {#snippet actions()}
-    <a href="/operator/fleet/add" class="add-btn">
+    <a href="/org/{data.orgId}/vehicles/add" class="add-btn">
       <svg
         width="13"
         height="13"
@@ -115,7 +75,6 @@
   {/snippet}
 
   <Card>
-    <!-- Search + count -->
     <div class="search-wrap">
       <div class="search-field-wrap">
         <span class="search-icon">
@@ -138,13 +97,13 @@
         />
       </div>
       <span class="result-count">
-        {filtered.length} of {vehicles.length} vehicle{vehicles.length !== 1
+        {filtered.length} of {data.vehicles.length} vehicle{data.vehicles
+          .length !== 1
           ? "s"
           : ""}
       </span>
     </div>
 
-    <!-- Table -->
     <Table
       headers={[
         "#",
@@ -159,16 +118,20 @@
     >
       {#if filtered.length === 0}
         <tr class="empty-row">
-          <td colspan="8">No vehicles match your search</td>
+          <td colspan="8">
+            {data.vehicles.length === 0
+              ? "No vehicles added yet."
+              : "No vehicles match your search."}
+          </td>
         </tr>
       {:else}
         {#each filtered as v, i}
-          {@const s = STATUS[v.status]}
+          {@const s = STATUS[v.status as VehicleStatus] ?? STATUS.Idle}
           <tr>
             <td>{i + 1}</td>
             <td style="color:var(--text-1);font-weight:700;">{v.name}</td>
             <td><span class="reg-cell">{v.reg}</span></td>
-            <td>{v.model}</td>
+            <td>{v.model || "—"}</td>
             <td style="font-family:monospace;font-size:0.75rem;">{v.chassis}</td
             >
             <td><span class="group-badge">{v.group}</span></td>
@@ -186,7 +149,7 @@
                 <button
                   class="row-btn"
                   title="View vehicle"
-                  onclick={() => goto(`/operator/fleet/${v.id}`)}
+                  onclick={() => goto(`/org/${data.orgId}/vehicles/${v.id}`)}
                 >
                   <svg
                     width="13"
@@ -203,7 +166,8 @@
                 <button
                   class="row-btn edit"
                   title="Edit vehicle"
-                  onclick={() => goto(`/operator/fleet/${v.id}/edit`)}
+                  onclick={() =>
+                    goto(`/org/${data.orgId}/vehicles/${v.id}/edit`)}
                 >
                   <svg
                     width="13"
@@ -231,7 +195,6 @@
 </PageShell>
 
 <style>
-  /* ── Search bar ── */
   .search-wrap {
     display: flex;
     align-items: center;
@@ -274,16 +237,12 @@
     background: rgba(255, 255, 255, 0.06);
     box-shadow: 0 0 0 3px rgba(242, 101, 34, 0.1);
   }
-
-  /* Result count */
   .result-count {
     font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-3);
     white-space: nowrap;
   }
-
-  /* ── Add button ── */
   .add-btn {
     display: inline-flex;
     align-items: center;
@@ -309,8 +268,6 @@
     box-shadow: 0 8px 28px rgba(242, 101, 34, 0.38);
     transform: translateY(-1px);
   }
-
-  /* ── Status pill ── */
   .status-pill {
     display: inline-flex;
     align-items: center;
@@ -329,8 +286,6 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-
-  /* ── Registration monospace ── */
   .reg-cell {
     font-family: "Courier New", monospace;
     font-size: 0.78rem;
@@ -339,8 +294,6 @@
     color: var(--text-1);
     text-transform: uppercase;
   }
-
-  /* ── Row action buttons ── */
   .row-actions {
     display: flex;
     align-items: center;
@@ -372,8 +325,6 @@
     border-color: rgba(96, 165, 250, 0.25);
     color: #60a5fa;
   }
-
-  /* ── Empty state ── */
   .empty-row td {
     padding: 48px 20px !important;
     text-align: center;
@@ -381,8 +332,6 @@
     font-size: 0.875rem !important;
     font-weight: 400 !important;
   }
-
-  /* ── Group badge ── */
   .group-badge {
     font-size: 0.68rem;
     font-weight: 700;

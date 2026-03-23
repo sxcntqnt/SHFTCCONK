@@ -1,13 +1,34 @@
 <script lang="ts">
+  import { enhance } from "$app/forms"
   import {
     PageShell,
     Card,
     Input,
     Select,
   } from "$lib/features/vehicles/VehicleMngr"
-  import { goto } from "$app/navigation"
 
-  // ── Form state ─────────────────────────────────────────────────────
+  interface Device {
+    id: string
+    identifier: string
+    api_url: string
+  }
+  interface Group {
+    id: string
+    name: string
+  }
+
+  interface Props {
+    data: {
+      orgId: string
+      groups: Group[]
+      availableDevices: Device[]
+    }
+    form: { message?: string } | null
+  }
+
+  let { data, form }: Props = $props()
+
+  // ── Form state ───────────────────────────────────────────────────────
   let reg = $state("")
   let name = $state("")
   let model = $state("")
@@ -17,212 +38,284 @@
   let vType = $state("")
   let color = $state("")
   let regExpiry = $state("")
-  let group = $state("")
+  let groupId = $state("")
 
+  // Device linking — pick existing OR enter raw credentials
+  let deviceMode = $state<"existing" | "new" | "none">("none")
+  let deviceId = $state("")
   let apiUrl = $state("")
   let apiUsername = $state("")
   let apiPassword = $state("")
 
   let saving = $state(false)
-  let saved = $state(false)
 
-  // Required fields for submit gating
   let canSubmit = $derived(
     reg.trim() !== "" &&
       name.trim() !== "" &&
       chassis.trim() !== "" &&
       vType !== "" &&
-      group !== "",
+      groupId !== "",
   )
 
-  async function submit() {
-    if (!canSubmit) return
-    saving = true
-    await new Promise((r) => setTimeout(r, 700)) // replace with real API call
-    saving = false
-    saved = true
-    setTimeout(() => goto("/operator/fleet"), 900)
-  }
+  const groupOptions = $derived(
+    data.groups.map((g) => ({ value: g.id, label: g.name })),
+  )
+  const deviceOptions = $derived(
+    data.availableDevices.map((d) => ({
+      value: d.id,
+      label: `${d.identifier} — ${d.api_url}`,
+    })),
+  )
 </script>
 
 <PageShell title="Add Vehicle">
-  <Card>
-    <!-- ── Vehicle Details ── -->
-    <div class="section-divider" style="margin-top:0;">
-      <div class="section-label">
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <rect x="1" y="3" width="15" height="13" /><path
-            d="M16 8h4l3 3v5h-7z"
-          />
-          <circle cx="5.5" cy="18.5" r="2.5" /><circle
-            cx="18.5"
-            cy="18.5"
-            r="2.5"
-          />
-        </svg>
-        Vehicle Details
-      </div>
-      <div class="section-divider-line"></div>
-    </div>
+  <form
+    method="POST"
+    use:enhance={() => {
+      saving = true
+      return async ({ update }) => {
+        saving = false
+        await update()
+      }
+    }}
+  >
+    {#if form?.message}
+      <div class="error-banner">{form.message}</div>
+    {/if}
 
-    <div class="field-grid">
-      <Input
-        label="Registration Number"
-        placeholder="e.g. KDA 787D"
-        bind:value={reg}
-        required
-      />
-      <Input
-        label="Vehicle Name"
-        placeholder="e.g. Mamba"
-        bind:value={name}
-        required
-      />
-      <Input label="Model" placeholder="e.g. NQR" bind:value={model} />
-      <Input
-        label="Chassis No"
-        placeholder="Enter chassis number"
-        bind:value={chassis}
-        required
-      />
-      <Input
-        label="Engine No"
-        placeholder="Enter engine number"
-        bind:value={engine}
-      />
-      <Input
-        label="Manufactured By"
-        placeholder="e.g. Isuzu"
-        bind:value={mfgBy}
-      />
-      <Select
-        label="Vehicle Type"
-        options={["Bus", "Van", "Matatu", "Shuttle", "Minibus"]}
-        bind:value={vType}
-        required
-      />
-      <Input
-        label="Vehicle Colour"
-        placeholder="e.g. White / Yellow"
-        bind:value={color}
-      />
-      <Input label="Registration Expiry" type="date" bind:value={regExpiry} />
-      <Select
-        label="Vehicle Group"
-        options={["Buru 58", "Ronga", "Ngong 46"]}
-        bind:value={group}
-        required
-      />
-    </div>
-
-    <!-- ── GPS / API Details ── -->
-    <div class="section-divider">
-      <div class="section-label">
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="2" y1="12" x2="22" y2="12" />
-          <path
-            d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"
-          />
-        </svg>
-        GPS API Details
-      </div>
-      <div class="section-divider-line"></div>
-    </div>
-
-    <div class="field-grid">
-      <Input
-        label="API URL"
-        placeholder="https://track.example.com/api"
-        bind:value={apiUrl}
-        hint="Base endpoint for GPS data feed"
-      />
-      <Input
-        label="API Username"
-        placeholder="Enter username"
-        bind:value={apiUsername}
-      />
-      <Input
-        label="API Password"
-        type="password"
-        placeholder="Enter password"
-        bind:value={apiPassword}
-      />
-    </div>
-
-    <!-- ── Form Actions ── -->
-    <div class="form-actions">
-      <div class="required-hint">
-        <span></span> Required fields
-      </div>
-      <a href="/operator/fleet" class="btn-cancel">
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-        >
-          <path d="M19 12H5M12 5l-7 7 7 7" />
-        </svg>
-        Cancel
-      </a>
-      <button
-        class="btn-submit {saved ? 'saved' : ''}"
-        onclick={submit}
-        disabled={!canSubmit || saving || saved}
-      >
-        {#if saved}
+    <Card>
+      <!-- ── Vehicle Details ─────────────────────────────────────────── -->
+      <div class="section-divider" style="margin-top:0;">
+        <div class="section-label">
           <svg
             width="13"
             height="13"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.5"
+            stroke-width="2"
           >
-            <polyline points="20 6 9 17 4 12" />
+            <rect x="1" y="3" width="15" height="13" />
+            <path d="M16 8h4l3 3v5h-7z" />
+            <circle cx="5.5" cy="18.5" r="2.5" />
+            <circle cx="18.5" cy="18.5" r="2.5" />
           </svg>
-          Saved — Redirecting…
-        {:else if saving}
-          <span class="btn-spinner"></span>
-          Saving…
-        {:else}
+          Vehicle Details
+        </div>
+        <div class="section-divider-line"></div>
+      </div>
+
+      <div class="field-grid">
+        <Input
+          label="Registration Number"
+          name="registration"
+          placeholder="e.g. KDA 787D"
+          bind:value={reg}
+          required
+        />
+        <Input
+          label="Vehicle Name"
+          name="name"
+          placeholder="e.g. Mamba"
+          bind:value={name}
+          required
+        />
+        <Input
+          label="Model"
+          name="model"
+          placeholder="e.g. NQR"
+          bind:value={model}
+        />
+        <Input
+          label="Chassis No"
+          name="chassis"
+          placeholder="Enter chassis number"
+          bind:value={chassis}
+          required
+        />
+        <Input
+          label="Engine No"
+          name="engine"
+          placeholder="Enter engine number"
+          bind:value={engine}
+        />
+        <Input
+          label="Manufactured By"
+          name="manufactured_by"
+          placeholder="e.g. Isuzu"
+          bind:value={mfgBy}
+        />
+        <Select
+          label="Vehicle Type"
+          name="vehicle_type"
+          options={["Bus", "Van", "Matatu", "Shuttle", "Minibus"]}
+          bind:value={vType}
+          required
+        />
+        <Input
+          label="Vehicle Colour"
+          name="color"
+          placeholder="e.g. White / Yellow"
+          bind:value={color}
+        />
+        <Input
+          label="Registration Expiry"
+          name="registration_expiry"
+          type="date"
+          bind:value={regExpiry}
+        />
+        <Select
+          label="Vehicle Group"
+          name="group_id"
+          options={groupOptions.map((g) => g.label)}
+          values={groupOptions.map((g) => g.value)}
+          bind:value={groupId}
+          required
+        />
+      </div>
+
+      <!-- ── GPS / Device Linking ────────────────────────────────────── -->
+      <div class="section-divider">
+        <div class="section-label">
           <svg
             width="13"
             height="13"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.5"
+            stroke-width="2"
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path
+              d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"
+            />
           </svg>
-          Add Vehicle
+          GPS Device
+        </div>
+        <div class="section-divider-line"></div>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="device-mode-tabs">
+        <button
+          type="button"
+          class="mode-tab"
+          class:active={deviceMode === "none"}
+          onclick={() => (deviceMode = "none")}
+        >
+          No Device
+        </button>
+        {#if data.availableDevices.length > 0}
+          <button
+            type="button"
+            class="mode-tab"
+            class:active={deviceMode === "existing"}
+            onclick={() => (deviceMode = "existing")}
+          >
+            Link Existing Device
+          </button>
         {/if}
-      </button>
-    </div>
-  </Card>
+        <button
+          type="button"
+          class="mode-tab"
+          class:active={deviceMode === "new"}
+          onclick={() => (deviceMode = "new")}
+        >
+          Add New Device
+        </button>
+      </div>
+
+      {#if deviceMode === "existing"}
+        <div class="field-grid" style="margin-top:16px;">
+          <Select
+            label="Select Device"
+            name="device_id"
+            options={deviceOptions.map((d) => d.label)}
+            values={deviceOptions.map((d) => d.value)}
+            bind:value={deviceId}
+          />
+        </div>
+      {:else if deviceMode === "new"}
+        <div class="field-grid" style="margin-top:16px;">
+          <Input
+            label="API URL"
+            name="api_url"
+            placeholder="https://track.example.com/api"
+            bind:value={apiUrl}
+            hint="Base endpoint for GPS data feed"
+          />
+          <Input
+            label="API Username"
+            name="api_username"
+            placeholder="Enter username"
+            bind:value={apiUsername}
+          />
+          <Input
+            label="API Password"
+            name="api_password"
+            type="password"
+            placeholder="Enter password"
+            bind:value={apiPassword}
+          />
+        </div>
+      {/if}
+
+      <!-- ── Form Actions ─────────────────────────────────────────────── -->
+      <div class="form-actions">
+        <div class="required-hint">
+          <span></span> Required fields
+        </div>
+        <a href="/org/{data.orgId}/vehicles" class="btn-cancel">
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
+            <path d="M19 12H5M12 5l-7 7 7 7" />
+          </svg>
+          Cancel
+        </a>
+        <button
+          type="submit"
+          class="btn-submit"
+          disabled={!canSubmit || saving}
+        >
+          {#if saving}
+            <span class="btn-spinner"></span>Saving…
+          {:else}
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Vehicle
+          {/if}
+        </button>
+      </div>
+    </Card>
+  </form>
 </PageShell>
 
 <style>
-  /* ── Section header ── */
+  .error-banner {
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    color: #f87171;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    margin-bottom: 16px;
+  }
   .section-divider {
     display: flex;
     align-items: center;
@@ -248,15 +341,39 @@
   .section-label svg {
     color: var(--orange);
   }
-
-  /* ── Field grid ── */
   .field-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 16px 18px;
   }
-
-  /* ── Form actions ── */
+  /* Device mode tabs */
+  .device-mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .mode-tab {
+    padding: 7px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    background: rgba(255, 255, 255, 0.03);
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-3);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .mode-tab:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-2);
+  }
+  .mode-tab.active {
+    background: rgba(242, 101, 34, 0.12);
+    border-color: rgba(242, 101, 34, 0.3);
+    color: var(--orange);
+  }
+  /* Form actions */
   .form-actions {
     display: flex;
     align-items: center;
@@ -266,7 +383,21 @@
     padding-top: 24px;
     border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
-
+  .required-hint {
+    font-size: 0.68rem;
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: auto;
+  }
+  .required-hint span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--orange);
+    flex-shrink: 0;
+  }
   .btn-cancel {
     padding: 10px 20px;
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -289,7 +420,6 @@
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(255, 255, 255, 0.18);
   }
-
   .btn-submit {
     padding: 10px 24px;
     background: var(--orange);
@@ -319,13 +449,7 @@
     color: var(--text-3);
     box-shadow: none;
     cursor: not-allowed;
-    transform: none;
   }
-  .btn-submit.saved {
-    background: var(--teal);
-    box-shadow: 0 4px 16px rgba(0, 176, 155, 0.3);
-  }
-
   .btn-spinner {
     width: 13px;
     height: 13px;
@@ -339,25 +463,6 @@
       transform: rotate(360deg);
     }
   }
-
-  /* Required hint */
-  .required-hint {
-    font-size: 0.68rem;
-    color: var(--text-3);
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-right: auto;
-  }
-  .required-hint span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--orange);
-    flex-shrink: 0;
-  }
-
-  /* ── Responsive ── */
   @media (max-width: 900px) {
     .field-grid {
       grid-template-columns: repeat(2, 1fr);
