@@ -17,7 +17,7 @@
 //   server-side load functions that need fleet data without the reactive store.
 
 import { json }               from "@sveltejs/kit"
-import type { RequestHandler }  from "$lib/types"
+import type { RequestHandler }  from "./$types"
 import {
   type Vehicle,
   type VehicleStatus,

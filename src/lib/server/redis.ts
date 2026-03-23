@@ -14,8 +14,8 @@
 //                  Proximity      NEARBY fleet POINT lat lng radius
 //
 // Both are singletons — one connection reused across all server requests.
-// Import the pre-built exports directly; do NOT call getStreamClient()
-// or getGeoClient() inside request handlers.
+// Connections are LAZY — created on first access, not at import time.
+// This prevents build-time crashes when env vars are not yet available.
 //
 // USAGE:
 //   import { streamClient, geoClient } from '$lib/server/redis'
@@ -33,22 +33,14 @@
 //   await geoClient.call('WITHIN', 'fleet', 'GET', 'geofences', fenceId)
 //
 // ENV REQUIRED:
-//   REDIS_URL        redis://localhost:6379   (or rediss:// for TLS)
-//   REDIS_PASSWORD   (optional)
-//   TILE38_HOST      localhost
-//   TILE38_PORT      9851
-//   TILE38_PASSWORD  (optional)
-//   TILE38_TLS       false | true
+//   UPSTASH_REDIS_REST_URL    redis://localhost:6379   (or rediss:// for TLS)
+//   UPSTASH_REDIS_REST_TOKEN  (optional)
+//   TILE38_HOST               localhost
+//   TILE38_PORT               9851
+//   TILE38_PASSWORD           (optional)
+//   TILE38_TLS                false | true
 
 import Redis from "ioredis"
-import {
-  UPSTASH_REDIS_REST_URL,
-  UPSTASH_REDIS_REST_TOKEN,
-  TILE38_HOST,
-  TILE38_PORT,
-  TILE38_PASSWORD,
-  TILE38_TLS,
-} from "$env/static/private"
 
 // ── Global type augmentation ──────────────────────────────────────────────────
 // Prevents HMR in development from spawning a new connection on every
@@ -63,15 +55,26 @@ declare global {
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
+// Called lazily — env vars are read inside the function, not at module scope.
+// This means the module can be imported during build/SSR analysis without
+// crashing even if UPSTASH_REDIS_REST_URL etc. are not set.
 
 function createStreamClient(): Redis {
-  const client = new Redis(REDIS_URL ?? "redis://localhost:6379", {
-    password:             REDIS_PASSWORD || undefined,
-    // 3 retries then throw — GPS consumer's in-memory buffer handles failures
+  // Read env inside the function — not at module load time
+  const {
+    UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN,
+  } = process.env
+
+  if (!UPSTASH_REDIS_REST_URL) {
+    throw new Error('[stream] UPSTASH_REDIS_REST_URL is not defined')
+  }
+
+  const client = new Redis(UPSTASH_REDIS_REST_URL, {
+    password:             UPSTASH_REDIS_REST_TOKEN || undefined,
     maxRetriesPerRequest: 3,
     enableReadyCheck:     true,
     lazyConnect:          false,
-    // Exponential backoff: 500ms → 1s → 1.5s … max 30s
     retryStrategy: (times) => Math.min(times * 500, 30_000),
   })
 
@@ -85,19 +88,25 @@ function createStreamClient(): Redis {
 }
 
 function createGeoClient(): Redis {
+  const {
+    TILE38_HOST,
+    TILE38_PORT,
+    TILE38_PASSWORD,
+    TILE38_TLS,
+  } = process.env
+
+  if (!TILE38_HOST) {
+    throw new Error('[geo] TILE38_HOST is not defined')
+  }
+
   const client = new Redis({
-    host:     TILE38_HOST     ?? "localhost",
+    host:     TILE38_HOST,
     port:     Number(TILE38_PORT ?? 9851),
     password: TILE38_PASSWORD || undefined,
     tls:      TILE38_TLS === "true" ? {} : undefined,
-
-    // null = unlimited retries — geofence evaluation has no fallback.
-    // A finite count would cause silent drops of safety-critical events.
     maxRetriesPerRequest: null,
     enableReadyCheck:     true,
     lazyConnect:          false,
-    // Fast reconnect: geofence queries are latency-sensitive
-    // 200ms → 400ms → 600ms … max 2s
     retryStrategy: (times) => Math.min(times * 200, 2_000),
   })
 
@@ -122,14 +131,33 @@ export function getGeoClient(): Redis {
   return global._geoClient
 }
 
-// ── Pre-built singletons ──────────────────────────────────────────────────────
-// Prefer these over the accessor functions in most code.
+// ── Lazy singleton exports ────────────────────────────────────────────────────
+// These look like plain object properties but actually create the connection
+// on first access via a getter. The module can be imported freely without
+// triggering a connection — the connection is deferred until first use.
 
-/** GPS streams, vehicle state cache, DLQ, metadata cache */
-export const streamClient = getStreamClient()
+export const clients = {
+  get stream(): Redis { return getStreamClient() },
+  get geo():    Redis { return getGeoClient()    },
+}
 
-/** Geofences, proximity queries, fleet position tracking (Tile38) */
-export const geoClient = getGeoClient()
+// Convenience destructurable aliases — still lazy.
+// Usage: import { streamClient, geoClient } from '$lib/server/redis'
+//
+// The Proxy ensures `streamClient.xadd(...)` calls are forwarded to the
+// underlying ioredis instance without eagerly constructing it.
+
+export const streamClient = new Proxy({} as Redis, {
+  get(_target, prop) {
+    return (getStreamClient() as any)[prop]
+  },
+})
+
+export const geoClient = new Proxy({} as Redis, {
+  get(_target, prop) {
+    return (getGeoClient() as any)[prop]
+  },
+})
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 
@@ -145,8 +173,8 @@ export async function checkConnectionHealth(): Promise<{
   geo:     boolean
 }> {
   const [streamsResult, geoResult] = await Promise.allSettled([
-    streamClient.ping(),
-    geoClient.ping(),
+    getStreamClient().ping(),
+    getGeoClient().ping(),
   ])
 
   return {
@@ -167,8 +195,8 @@ export async function checkConnectionHealth(): Promise<{
  */
 export async function disconnectAll(): Promise<void> {
   await Promise.allSettled([
-    streamClient.quit(),
-    geoClient.quit(),
+    global._streamClient?.quit(),
+    global._geoClient?.quit(),
   ])
   global._streamClient = undefined
   global._geoClient    = undefined
