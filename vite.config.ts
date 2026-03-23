@@ -36,14 +36,14 @@ export default defineConfig({
     exclude: ["layerchart"],         
   },
 ssr: {
-  noExternal: ["three" ,"firebase", "@firebase/*","layerchart"]
+  noExternal: ["three" ,'firebase/app', 'firebase/database', 'firebase/auth',"layerchart"]
 },
 build: {
   rollupOptions: {
     output: {
       manualChunks: {
         'three':    ['three', '@threlte/core', '@threlte/extras'],
-        'firebase': ['firebase'],
+        'firebase': ['firebase/app', 'firebase/database', 'firebase/auth'],
         'supabase': ['@supabase/supabase-js', '@supabase/ssr'],
         'maps':     ['maplibre-gl', 'maplibre-gl-draw'],
         'charts':   ['chart.js', 'layerchart'],
