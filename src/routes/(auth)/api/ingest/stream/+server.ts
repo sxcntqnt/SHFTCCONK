@@ -5,7 +5,7 @@
 // as an SSE message.
 //
 // USAGE (client):
-//   const source = new EventSource(`/api/gps/stream?orgId=${orgId}`)
+//   const source = new EventSource(`/api/ingest/stream?orgId=${orgId}`)
 //   source.onmessage = (e) => updateVehicle(JSON.parse(e.data))
 //
 // REDIS STREAM KEY: gps:realtime:{orgId}
