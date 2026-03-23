@@ -9,6 +9,20 @@ import {
 
 export type { Organization }
 
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+function hasFullProfile(
+  profile: { full_name?: string | null; phone?: string | null } | null | undefined,
+): boolean {
+  if (!profile) return false
+  const name = profile.full_name?.trim() ?? ''
+  if (!name || name.toLowerCase() === 'user') return false
+  if (!profile.phone?.trim()) return false
+  return true
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+
 export const load: PageServerLoad = async ({ locals }) => {
   const { session } = await locals.safeGetSession()
   if (!session) redirect(303, '/login/sign_in')
@@ -18,6 +32,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     session.user.id,
   )
 
+  // Redirect server-side — no need to ship this logic to the browser
+  if (hasFullProfile(profile)) redirect(303, '/app/select_plan')
+
   return {
     profile,
     organizations,
@@ -25,6 +42,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     user: { email: session.user.email ?? '' },
   }
 }
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 
 export const actions: Actions = {
   updateProfile: async ({ request, locals }) => {
