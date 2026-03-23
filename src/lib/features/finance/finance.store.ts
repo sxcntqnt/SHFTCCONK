@@ -317,3 +317,22 @@ export function assertOrgScope(orgId: string): void {
     throw new Error(`[finance] Org scope violation: expected ${activeOrgId}, got ${orgId}`)
   }
 }
+// Re-export as reconciliationStore so the finance page has one import source
+export const reconciliationStore = reconciliationRows
+
+// Re-export pure helpers from reconciliation.ts
+export {
+  reconcilePayments,
+  summarizeReconciliation,
+  getRevenueTrend,
+  groupByStatus,
+  type ReconciliationEvent,
+  type ReconciliationResult,
+  type ReconciliationSummary,
+  type MpesaTransaction,
+  type CashTransaction,
+  type PaymentTransaction,
+} from './reconciliation.store'
+
+export const dailyRevenueStore = dailyRevenue
+export const ledgerStore = reconciliationRows

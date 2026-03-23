@@ -8,10 +8,7 @@
     dailyRevenueStore,
   } from "$lib/features/finance/finance.store"
   import { getRevenueTrend } from "$lib/features/finance/reconciliation.store"
-  import {
-    paymentStatus,
-    subscribeToPayment,
-  } from "$lib/features/finance/payments.store"
+
   import GlassCard from "$lib/components/GlassCard.svelte"
   import Chart from "$lib/components/Chart.svelte"
 
@@ -85,18 +82,6 @@
     return () => {
       u1()
       u2()
-    }
-  })
-
-  // ── Live payment status (in-flight STK pushes) ───────────────────────
-  let liveStatus = $state($paymentStatus)
-  let unsubRealtime: (() => void) | null = null
-
-  $effect(() => {
-    const u = paymentStatus.subscribe((v) => (liveStatus = v))
-    return () => {
-      u()
-      unsubRealtime?.()
     }
   })
 
@@ -191,8 +176,6 @@
   function varianceLabel(n: number) {
     return `${n >= 0 ? "+" : ""}${formatKES(n)}`
   }
-
-  onDestroy(() => unsubRealtime?.())
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════

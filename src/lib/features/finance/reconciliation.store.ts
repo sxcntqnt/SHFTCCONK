@@ -1,44 +1,33 @@
 // src/lib/features/finance/reconciliation.ts
-//
-// Reconciliation logic for daily vehicle collections.
-// Payments are M-Pesa STK Push transactions or cash entries logged by conductors.
-// All amounts in KES.
-//
-// RECONCILIATION STATUSES (align with reconciliation_events.status in DB):
-//   MATCHED   — collected === expected (within KES 1 tolerance for rounding)
-//   SHORTFALL — collected < expected
-//   OVERAGE   — collected > expected (driver exceeded target — calculate incentive)
+
+import { writable, get } from 'svelte/store'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  getOrgContextOrgId,
+  isOrgContextActive,
+  getActiveOrgId,
+  isOrgChairActive,
+} from '$lib/features/auth/contexts'
 
 // ── M-Pesa payment transaction ────────────────────────────────────────────────
 
 export interface MpesaTransaction {
-  /** M-Pesa transaction code e.g. "MPESA4G8K2L" */
   reference:  string
-
-  /** Amount in KES */
   amount:     number
-
-  /** M-Pesa phone in +254 format */
   phone:      string
-
-  /** ISO timestamp from Daraja callback */
   timestamp:  string
-
-  /** Vehicle this payment is attributed to (set by conductor at boarding) */
   vehicleId?: string
-
-  /** Passenger actor ID if the booking was pre-booked */
   bookingId?: string
 }
 
 // ── Cash transaction ──────────────────────────────────────────────────────────
 
 export interface CashTransaction {
-  reference:  string  // internal UUID
-  amount:     number  // KES
+  reference:  string
+  amount:     number
   timestamp:  string
   vehicleId?: string
-  loggedBy:   string  // conductor actor ID
+  loggedBy:   string
 }
 
 export type PaymentTransaction = MpesaTransaction | CashTransaction
@@ -50,9 +39,9 @@ export function isMpesa(t: PaymentTransaction): t is MpesaTransaction {
 // ── Remittance target ─────────────────────────────────────────────────────────
 
 export interface RemittanceRecord {
-  vehicleId:      string
-  expectedAmount: number  // KES — daily target set by SACCO
-  saccoPercentage: number // 0–1
+  vehicleId:       string
+  expectedAmount:  number
+  saccoPercentage: number
 }
 
 // ── Reconciliation result ─────────────────────────────────────────────────────
@@ -62,13 +51,13 @@ export type ReconciliationStatus = 'MATCHED' | 'SHORTFALL' | 'OVERAGE'
 export interface ReconciliationResult {
   vehicleId:        string
   status:           ReconciliationStatus
-  expectedAmount:   number  // KES
-  collectedAmount:  number  // KES
-  variance:         number  // positive = overage, negative = shortfall
-  mpesaAmount:      number  // KES collected via M-Pesa
-  cashAmount:       number  // KES collected in cash
+  expectedAmount:   number
+  collectedAmount:  number
+  variance:         number
+  mpesaAmount:      number
+  cashAmount:       number
   transactionRefs:  string[]
-  mpesaPhones:      string[] // unique phones that paid (for audit trail)
+  mpesaPhones:      string[]
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -82,53 +71,116 @@ export interface ReconciliationSummary {
   matchedCount:    number
   shortfallCount:  number
   overageCount:    number
-  /** KES shortfall needing follow-up */
   totalShortfall:  number
-  /** KES excess to distribute as driver incentives */
   totalExcess:     number
 }
 
-// ── Core reconciliation ───────────────────────────────────────────────────────
+// ── DB event shape (from reconciliation_events table) ────────────────────────
 
-/**
- * Reconcile M-Pesa and cash payments against expected daily targets per vehicle.
- *
- * Supports:
- *   - Exact matches (MATCHED)
- *   - Underpayment (SHORTFALL)
- *   - Overpayment / exceeded target (OVERAGE)
- *   - Mixed M-Pesa + cash collections per vehicle
- *   - Multiple payments per vehicle
- *
- * @example
- *   reconcilePayments(todaysPayments, dailyTargets)
- */
+export interface ReconciliationEvent {
+  id:              string
+  organization_id: string
+  reference:       string
+  amount:          number
+  status:          'PENDING' | 'COMPLETED' | 'FAILED'
+  timestamp:       string
+  metadata?:       Record<string, any>
+}
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+
+export const reconciliationStore  = writable<ReconciliationEvent[]>([])
+export const loadingReconciliation = writable(true)
+
+// ── Internal state ────────────────────────────────────────────────────────────
+
+let realtimeChannel: ReturnType<SupabaseClient['channel']> | null = null
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function resolveOrgId(): string {
+  if (isOrgChairActive()) {
+    const id = getActiveOrgId()
+    if (id) return id
+  }
+  if (isOrgContextActive()) {
+    const id = getOrgContextOrgId()
+    if (id) return id
+  }
+  throw new Error('No active org context — cannot initialise reconciliation store')
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+export async function initReconciliation(supabase: SupabaseClient): Promise<void> {
+    const orgId = resolveOrgId()
+
+  loadingReconciliation.set(true)
+
+  const { data, error } = await supabase
+    .from<ReconciliationEvent>('reconciliation_events')
+    .select('*')
+    .eq('organization_id', orgId)
+    .order('timestamp', { ascending: false })
+
+  if (error) throw new Error(`Failed to fetch reconciliation events: ${error.message}`)
+
+  reconciliationStore.set(data ?? [])
+  loadingReconciliation.set(false)
+
+  // Tear down any existing channel before subscribing
+  if (realtimeChannel) {
+    await supabase.removeChannel(realtimeChannel)
+    realtimeChannel = null
+  }
+
+  realtimeChannel = supabase
+    .channel(`realtime-reconciliation-${orgId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'reconciliation_events',
+      filter: `organization_id=eq.${orgId}`,
+    }, (payload) => {
+      const incoming = payload.new as ReconciliationEvent
+      reconciliationStore.update((events) => [incoming, ...events])
+    })
+    .subscribe()
+}
+
+// ── Teardown ──────────────────────────────────────────────────────────────────
+
+export async function destroyReconciliation(supabase: SupabaseClient): Promise<void> {
+  if (realtimeChannel) {
+    await supabase.removeChannel(realtimeChannel)
+    realtimeChannel = null
+  }
+  reconciliationStore.set([])
+  loadingReconciliation.set(false)
+}
+
+// ── Pure reconciliation logic ─────────────────────────────────────────────────
+
 export function reconcilePayments(
   payments:    PaymentTransaction[],
   remittances: RemittanceRecord[],
 ): ReconciliationResult[] {
-  const MATCH_TOLERANCE = 1 // KES — rounding tolerance
+  const MATCH_TOLERANCE = 1
 
   return remittances.map((remit) => {
     const vehiclePayments = payments.filter((p) => p.vehicleId === remit.vehicleId)
-
-    const mpesaPayments = vehiclePayments.filter(isMpesa)
-    const cashPayments  = vehiclePayments.filter((p) => !isMpesa(p))
+    const mpesaPayments   = vehiclePayments.filter(isMpesa)
+    const cashPayments    = vehiclePayments.filter((p) => !isMpesa(p))
 
     const mpesaAmount     = mpesaPayments.reduce((sum, p) => sum + p.amount, 0)
-    const cashAmount      = cashPayments.reduce((sum, p) => sum + p.amount, 0)
+    const cashAmount      = cashPayments.reduce((sum, p)  => sum + p.amount, 0)
     const collectedAmount = mpesaAmount + cashAmount
-
-    const variance = collectedAmount - remit.expectedAmount
+    const variance        = collectedAmount - remit.expectedAmount
 
     let status: ReconciliationStatus
-    if (Math.abs(variance) <= MATCH_TOLERANCE) {
-      status = 'MATCHED'
-    } else if (variance > 0) {
-      status = 'OVERAGE'
-    } else {
-      status = 'SHORTFALL'
-    }
+    if (Math.abs(variance) <= MATCH_TOLERANCE) status = 'MATCHED'
+    else if (variance > 0)                      status = 'OVERAGE'
+    else                                         status = 'SHORTFALL'
 
     const mpesaPhones = [
       ...new Set(mpesaPayments.map((p) => (p as MpesaTransaction).phone)),
@@ -148,11 +200,6 @@ export function reconcilePayments(
   })
 }
 
-// ── Summary aggregation ───────────────────────────────────────────────────────
-
-/**
- * Summarise a full set of reconciliation results for an org dashboard.
- */
 export function summarizeReconciliation(
   results: ReconciliationResult[],
 ): ReconciliationSummary {
@@ -165,48 +212,24 @@ export function summarizeReconciliation(
       acc.totalCash      += r.cashAmount
 
       if (r.status === 'MATCHED')   acc.matchedCount++
-      if (r.status === 'SHORTFALL') {
-        acc.shortfallCount++
-        acc.totalShortfall += Math.abs(r.variance)
-      }
-      if (r.status === 'OVERAGE') {
-        acc.overageCount++
-        acc.totalExcess += r.variance
-      }
+      if (r.status === 'SHORTFALL') { acc.shortfallCount++; acc.totalShortfall += Math.abs(r.variance) }
+      if (r.status === 'OVERAGE')   { acc.overageCount++;   acc.totalExcess    += r.variance }
 
       return acc
     },
     {
-      totalExpected:  0,
-      totalCollected: 0,
-      totalVariance:  0,
-      totalMpesa:     0,
-      totalCash:      0,
-      matchedCount:   0,
-      shortfallCount: 0,
-      overageCount:   0,
-      totalShortfall: 0,
-      totalExcess:    0,
+      totalExpected: 0, totalCollected: 0, totalVariance: 0,
+      totalMpesa: 0,    totalCash: 0,
+      matchedCount: 0,  shortfallCount: 0, overageCount: 0,
+      totalShortfall: 0, totalExcess: 0,
     } as ReconciliationSummary,
   )
 }
 
-// ── Revenue trend ─────────────────────────────────────────────────────────────
-
-/**
- * Generate a simple daily revenue trend array for charting.
- * Returns [collected, collected, ...] ordered by remittance input.
- *
- * For a real trend, pass remittances ordered by date and the
- * consumer maps index → date label.
- */
 export function getRevenueTrend(results: ReconciliationResult[]): number[] {
   return results.map((r) => r.collectedAmount)
 }
 
-/**
- * Group results by status for a summary pie/bar chart.
- */
 export function groupByStatus(
   results: ReconciliationResult[],
 ): Record<ReconciliationStatus, ReconciliationResult[]> {
