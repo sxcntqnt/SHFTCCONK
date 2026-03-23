@@ -25,6 +25,10 @@
   import { onMount, onDestroy } from "svelte"
   import { browser } from "$app/environment"
   import DuckDBTileProvider from "$lib/map/components/MapCache.svelte"
+  import {
+    initGpsClient,
+    destroyGpsClient,
+  } from "$lib/features/fleet/services/gps/gps.client"
   import type { PageData } from "./$types"
 
   interface Props {
@@ -347,6 +351,30 @@
   // ── When no parquetUrl: init map directly on mount ───────────────────────
   onMount(() => {
     if (!data.parquetUrl) initMap()
+
+    initGpsClient(data.orgId, (update) => {
+      const vehicle: LiveVehicle = {
+        vehicleId: update.vehicleId,
+        plate: String(update.metadata?.plate ?? update.vehicleId),
+        lat: update.lat,
+        lng: update.lng,
+        speed: update.speed ?? null,
+        satellites:
+          update.metadata?.satellites != null
+            ? Number(update.metadata.satellites)
+            : null,
+        fixStatus:
+          update.metadata?.fix_status != null
+            ? Number(update.metadata.fix_status)
+            : null,
+        rain: Boolean(update.metadata?.rain),
+        complianceIssue: data.nonCompliantIds.includes(update.vehicleId),
+      }
+      liveVehicles = { ...liveVehicles, [vehicle.vehicleId]: vehicle }
+      upsertLiveMarker(vehicle)
+    })
+
+    return () => destroyGpsClient()
   })
 
   // ── Cleanup ───────────────────────────────────────────────────────────────

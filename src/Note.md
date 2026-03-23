@@ -231,3 +231,28 @@ Service Worker
         │
         ▼
 Server API
+
+
+
+function connectStream(orgId: string) {
+  const source = new EventSource(`/api/gps/stream?orgId=${orgId}`)
+
+  source.onmessage = async (event) => {
+    const data = JSON.parse(event.data)
+    updateVehicle(data)
+    await cacheLocation(data)
+    await sendGPSUpdate(data) // your outbox logic
+  }
+
+  source.onerror = () => {
+    // EventSource reconnects automatically — no setTimeout needed
+    console.warn('SSE disconnected, browser will reconnect...')
+  }
+}
+
+
+// ❌ CDN import won't work in your bundled SvelteKit app
+import { openDB } from "https://unpkg.com/idb?module"
+
+// ✅ Use the package you already have installed
+import { openDB } from "idb"

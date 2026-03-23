@@ -1,288 +1,135 @@
-// ======================================================
-// MATATU LIVE SERVICE WORKER
-// Handles:
-// - Map asset caching
-// - Offline map datasets
-// - Background GPS sync
-// - Smart fetch strategies
-// ======================================================
+// src/service-worker.ts
+/// <reference types="@sveltejs/kit" />
+/// <reference no-default-lib="true"/>
+/// <reference lib="esnext" />
+/// <reference lib="webworker" />
 
-import { openDB } from "https://unpkg.com/idb?module";
+import { openDB } from 'idb'
 
-const CACHE_NAME = "nairobi-transport-v3";
+declare const self: ServiceWorkerGlobalScope
 
-const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/maps/nairobi_h3.parquet"
-];
+const CACHE_NAME   = 'matatu-duckdb-v1'
+const DB_NAME      = 'matatu-gps-db'
+const STORE_OUTBOX = 'gps-outbox'
 
-const DB_NAME = "matatu-gps-db";
-const STORE_OUTBOX = "gps-outbox";
+// Only cache heavy DuckDB/parquet datasets — not app assets
+const DUCKDB_ASSETS = [
+  '/maps/nairobi_h3.parquet',
+  '/maps/routes.parquet',
+]
 
-// ======================================================
-// INSTALL
-// ======================================================
+// ── Install — cache parquet files ─────────────────────────────────────────────
 
-self.addEventListener("install", (event) => {
-
+self.addEventListener('install', (event) => {
   event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(DUCKDB_ASSETS))
+  )
+  self.skipWaiting()
+})
 
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_ASSETS))
+// ── Activate — clean old parquet caches ───────────────────────────────────────
 
-  );
-
-  self.skipWaiting();
-});
-
-
-// ======================================================
-// ACTIVATE
-// ======================================================
-
-self.addEventListener("activate", (event) => {
-
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-
-    caches.keys().then(keys =>
+    caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
       )
     )
+  )
+  self.clients.claim()
+})
 
-  );
+// ── Fetch — only intercept parquet and tile requests ─────────────────────────
 
-  self.clients.claim();
-});
+self.addEventListener('fetch', (event) => {
+  const req = event.request
+  if (req.method !== 'GET') return
 
+  const url = new URL(req.url)
 
-// ======================================================
-// FETCH ROUTER
-// ======================================================
-
-self.addEventListener("fetch", (event) => {
-
-  const req = event.request;
-
-  // Only handle GET requests
-  if (req.method !== "GET") return;
-
-  const url = new URL(req.url);
-
-  // ----------------------------------------
-  // 1. Heavy datasets (.parquet)
-  // Cache-first (avoid huge downloads)
-  // ----------------------------------------
-
-  if (url.pathname.endsWith(".parquet")) {
-
-    event.respondWith(cacheFirst(req));
-    return;
+  // Parquet datasets — cache-first (avoid re-downloading 100MB+ files)
+  if (url.pathname.endsWith('.parquet')) {
+    event.respondWith(cacheFirst(req))
+    return
   }
 
-  // ----------------------------------------
-  // 2. Map tiles
-  // Stale-while-revalidate
-  // ----------------------------------------
-
-  if (url.pathname.includes("/tiles/")) {
-
-    event.respondWith(staleWhileRevalidate(req));
-    return;
+  // Map tiles — stale-while-revalidate
+  if (url.pathname.includes('/tiles/')) {
+    event.respondWith(staleWhileRevalidate(req))
+    return
   }
 
-  // ----------------------------------------
-  // 3. API requests
-  // Network-first
-  // ----------------------------------------
+  // SSE stream — never intercept, let browser handle natively
+  if (url.pathname.includes('/api/gps/stream')) return
 
-  if (url.pathname.startsWith("/api/")) {
+  // Everything else — don't intercept, SvelteKit handles it
+})
 
-    event.respondWith(networkFirst(req));
-    return;
+// ── Background sync — flush GPS outbox ───────────────────────────────────────
+
+self.addEventListener('sync', (event: SyncEvent) => {
+  if (event.tag === 'sync-gps-data') {
+    event.waitUntil(flushGpsOutbox())
   }
+})
 
-  // ----------------------------------------
-  // 4. Default: network-first
-  // ----------------------------------------
-
-  event.respondWith(networkFirst(req));
-});
-
-
-// ======================================================
-// BACKGROUND SYNC
-// ======================================================
-
-self.addEventListener("sync", (event) => {
-
-  if (event.tag === "sync-gps-data") {
-
-    event.waitUntil(flushGpsOutbox());
-
-  }
-
-});
-
-
-// ======================================================
-// FLUSH OUTBOX
-// ======================================================
-
-async function flushGpsOutbox() {
-
-  const db = await openDB(DB_NAME, 1);
-
-  const items = await db.getAll(STORE_OUTBOX);
-
-  if (!items.length) return;
+async function flushGpsOutbox(): Promise<void> {
+  const db    = await openDB(DB_NAME, 1)
+  const items = await db.getAll(STORE_OUTBOX)
+  if (!items.length) return
 
   for (const item of items) {
-
     try {
-
-      const response = await fetch("/api/map/gps-update", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(item)
-      });
-
-      if (response.ok) {
-
-        await db.delete(STORE_OUTBOX, item.id);
-
+      const res = await fetch('/api/map/gps-update', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(item),
+      })
+      if (res.ok) {
+        await db.delete(STORE_OUTBOX, item.id)
       } else {
-
-        throw new Error("Server rejected sync");
-
+        throw new Error(`Server rejected: ${res.status}`)
       }
-
     } catch (err) {
-
-      console.warn("Sync retry failed:", err);
-
-      // Stop loop if still offline
-      return;
+      console.warn('[sw] Sync retry failed:', err)
+      return // still offline — stop and retry on next sync event
     }
   }
 
-  notifyClients({
-    type: "SYNC_COMPLETE"
-  });
+  notifyClients({ type: 'SYNC_COMPLETE' })
 }
 
+// ── Cache strategies ──────────────────────────────────────────────────────────
 
-// ======================================================
-// CACHE STRATEGIES
-// ======================================================
+async function cacheFirst(req: Request): Promise<Response> {
+  const cache  = await caches.open(CACHE_NAME)
+  const cached = await cache.match(req)
+  if (cached) return cached
 
-
-// -------------------------------
-// Cache First
-// -------------------------------
-
-async function cacheFirst(req) {
-
-  const cache = await caches.open(CACHE_NAME);
-
-  const cached = await cache.match(req);
-
-  if (cached) return cached;
-
-  const network = await fetch(req);
-
+  const network = await fetch(req)
   if (network.ok) {
-
-    cache.put(req, network.clone());
-
-    notifyClients({
-      type: "CACHE_UPDATED",
-      url: req.url
-    });
-
+    cache.put(req, network.clone())
+    notifyClients({ type: 'CACHE_UPDATED', url: req.url })
   }
-
-  return network;
+  return network
 }
 
+async function staleWhileRevalidate(req: Request): Promise<Response> {
+  const cache  = await caches.open(CACHE_NAME)
+  const cached = await cache.match(req)
 
-// -------------------------------
-// Network First
-// -------------------------------
+  const networkFetch = fetch(req).then((res) => {
+    if (res.ok) cache.put(req, res.clone())
+    return res
+  })
 
-async function networkFirst(req) {
-
-  const cache = await caches.open(CACHE_NAME);
-
-  try {
-
-    const network = await fetch(req);
-
-    if (network.ok) {
-
-      cache.put(req, network.clone());
-
-    }
-
-    return network;
-
-  } catch (err) {
-
-    const cached = await cache.match(req);
-
-    return cached;
-  }
+  return cached ?? networkFetch
 }
 
-
-// -------------------------------
-// Stale While Revalidate
-// -------------------------------
-
-async function staleWhileRevalidate(req) {
-
-  const cache = await caches.open(CACHE_NAME);
-
-  const cached = await cache.match(req);
-
-  const networkFetch = fetch(req).then(res => {
-
-    if (res.ok) {
-
-      cache.put(req, res.clone());
-
-      notifyClients({
-        type: "CACHE_UPDATED",
-        url: req.url
-      });
-
-    }
-
-    return res;
-  });
-
-  return cached || networkFetch;
-}
-
-
-// ======================================================
-// CLIENT MESSAGING
-// ======================================================
-
-async function notifyClients(message) {
-
-  const clients = await self.clients.matchAll({
-    includeUncontrolled: true
-  });
-
-  for (const client of clients) {
-
-    client.postMessage(message);
-
-  }
+async function notifyClients(message: Record<string, unknown>): Promise<void> {
+  const clients = await self.clients.matchAll({ includeUncontrolled: true })
+  for (const client of clients) client.postMessage(message)
 }

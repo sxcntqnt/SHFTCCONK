@@ -42,7 +42,7 @@ build: {
   rollupOptions: {
     output: {
       manualChunks: {
-        'three':    ['three', 'three-stdlib', '@threlte/core', '@threlte/extras'],
+        'three':    ['three', '@threlte/core', '@threlte/extras'],
         'firebase': ['firebase'],
         'supabase': ['@supabase/supabase-js', '@supabase/ssr'],
         'maps':     ['maplibre-gl', 'maplibre-gl-draw'],
