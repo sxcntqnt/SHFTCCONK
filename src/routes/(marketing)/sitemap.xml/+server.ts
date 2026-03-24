@@ -2,13 +2,16 @@ import type { RequestHandler } from "@sveltejs/kit"
 import * as sitemap from "super-sitemap"
 import { WebsiteBaseUrl } from "../../../config"
 
-export const prerender = true
+export const prerender = false
 
 export const GET: RequestHandler = async () => {
-  return await sitemap.response({
+  return sitemap.response({
     origin: WebsiteBaseUrl,
     excludeRoutePatterns: [
-      ".*\\(auth\\).*", // i.e. exclude routes within auth group
-    ],
-  })
-}
+      ".*\\(auth\\).*",            // exclude standalone (auth)
+      ".*\\(marketing\\)/auth.*",  // exclude (marketing)/auth
+      "^/verify(/.*)?$",           // standalone /verify
+      "^/login(/.*)?$"             // login from (marketing)
+    ]
+  });
+};
