@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Home } from "lucide-svelte"
+  import type { Home } from "@lucide/svelte"
 
   let {
     title,

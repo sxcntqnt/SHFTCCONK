@@ -1,7 +1,12 @@
 <script lang="ts">
   // src/routes/admin/hyperledger/revoke/+page.svelte
   import { enhance } from "$app/forms"
-  import { ArrowLeft, ShieldOff, CheckCircle, AlertCircle } from "lucide-svelte"
+  import {
+    ArrowLeft,
+    ShieldOff,
+    CheckCircle,
+    AlertCircle,
+  } from "@lucide/svelte"
   import type { PageData, ActionData } from "./$types"
 
   export let data: PageData

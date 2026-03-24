@@ -10,7 +10,7 @@
     Truck,
     Users,
     FileText,
-  } from "lucide-svelte"
+  } from "@lucide/svelte"
   import type { PageData } from "./$types"
 
   export let data: PageData

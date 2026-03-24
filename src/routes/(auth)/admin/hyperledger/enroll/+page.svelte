@@ -11,7 +11,7 @@
     AlertCircle,
     Eye,
     EyeOff,
-  } from "lucide-svelte"
+  } from "@lucide/svelte"
   import type { ActionData } from "./$types"
 
   export let form: ActionData

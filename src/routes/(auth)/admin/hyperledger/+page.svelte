@@ -1,43 +1,49 @@
 <script lang="ts">
   // src/routes/admin/hyperledger/+page.svelte
-  import { createTabs, melt } from '@melt-ui/svelte';
+  import { createTabs, melt } from "@melt-ui/svelte"
   import {
-    ShieldCheck, Users, AlertTriangle, Activity,
-    ChevronRight, CircleDot, XCircle,
-  } from 'lucide-svelte';
-  import type { PageData } from './$types';
+    ShieldCheck,
+    Users,
+    AlertTriangle,
+    Activity,
+    ChevronRight,
+    CircleDot,
+    XCircle,
+  } from "@lucide/svelte"
+  import type { PageData } from "./$types"
 
-  export let data: PageData;
+  export let data: PageData
 
-  const { stats, identities, ledgerStats } = data;
+  const { stats, identities, ledgerStats } = data
 
   const {
     elements: { root, list, trigger, content },
     stores: { value },
-  } = createTabs({ defaultValue: 'identities' });
+  } = createTabs({ defaultValue: "identities" })
 
   const roleColour: Record<string, string> = {
-    'org-admin':     'bg-violet-100 text-violet-700',
-    'fleet-manager': 'bg-blue-100   text-blue-700',
-    'driver':        'bg-emerald-100 text-emerald-700',
-    'iot-device':    'bg-amber-100  text-amber-700',
-    'admin':         'bg-rose-100   text-rose-700',
-    'unknown':       'bg-gray-100   text-gray-600',
-  };
+    "org-admin": "bg-violet-100 text-violet-700",
+    "fleet-manager": "bg-blue-100   text-blue-700",
+    driver: "bg-emerald-100 text-emerald-700",
+    "iot-device": "bg-amber-100  text-amber-700",
+    admin: "bg-rose-100   text-rose-700",
+    unknown: "bg-gray-100   text-gray-600",
+  }
 
   function roleClass(role: string) {
-    return roleColour[role] ?? roleColour.unknown;
+    return roleColour[role] ?? roleColour.unknown
   }
 
   function fmt(iso: string) {
-    return new Date(iso).toLocaleDateString('en-KE', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    });
+    return new Date(iso).toLocaleDateString("en-KE", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
   }
 </script>
 
 <div class="min-h-screen bg-gray-50 p-6 lg:p-8">
-
   <!-- ── Header ─────────────────────────────────────────────── -->
   <div class="mb-8 flex items-center justify-between">
     <div>
@@ -70,28 +76,42 @@
   <!-- ── Stat cards ──────────────────────────────────────────── -->
   <div class="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
     <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Total enrolled</p>
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Total enrolled
+      </p>
       <p class="mt-2 text-3xl font-bold text-gray-900">{stats.total}</p>
     </div>
     <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Active</p>
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Active
+      </p>
       <p class="mt-2 text-3xl font-bold text-emerald-600">{stats.active}</p>
     </div>
     <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Revoked</p>
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Revoked
+      </p>
       <p class="mt-2 text-3xl font-bold text-rose-600">{stats.revoked}</p>
     </div>
     <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">IoT devices</p>
-      <p class="mt-2 text-3xl font-bold text-amber-600">{stats.byRole['iot-device'] ?? 0}</p>
+      <p class="text-xs font-medium uppercase tracking-wide text-gray-500">
+        IoT devices
+      </p>
+      <p class="mt-2 text-3xl font-bold text-amber-600">
+        {stats.byRole["iot-device"] ?? 0}
+      </p>
     </div>
   </div>
 
   <!-- ── Role breakdown ─────────────────────────────────────── -->
   <div class="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
     {#each Object.entries(stats.byRole) as [role, count]}
-      <div class="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3 shadow-sm">
-        <span class={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleClass(role)}`}>
+      <div
+        class="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-4 py-3 shadow-sm"
+      >
+        <span
+          class={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleClass(role)}`}
+        >
           {role}
         </span>
         <span class="text-sm font-semibold text-gray-900">{count}</span>
@@ -100,10 +120,16 @@
   </div>
 
   <!-- ── Tabs: Identities | Ledger stats ────────────────────── -->
-  <div use:melt={$root} class="rounded-xl border border-gray-100 bg-white shadow-sm">
-
-    <div use:melt={$list} class="flex border-b border-gray-100 px-4" aria-label="Hyperledger sections">
-      {#each [{ id: 'identities', label: 'Recent identities', icon: Users }, { id: 'ledger', label: 'Ledger stats', icon: Activity }] as tab}
+  <div
+    use:melt={$root}
+    class="rounded-xl border border-gray-100 bg-white shadow-sm"
+  >
+    <div
+      use:melt={$list}
+      class="flex border-b border-gray-100 px-4"
+      aria-label="Hyperledger sections"
+    >
+      {#each [{ id: "identities", label: "Recent identities", icon: Users }, { id: "ledger", label: "Ledger stats", icon: Activity }] as tab}
         <button
           use:melt={$trigger(tab.id)}
           class="flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors
@@ -118,9 +144,11 @@
     </div>
 
     <!-- Identities tab -->
-    <div use:melt={$content('identities')} class="p-4">
+    <div use:melt={$content("identities")} class="p-4">
       {#if identities.length === 0}
-        <p class="py-8 text-center text-sm text-gray-400">No identities enrolled yet.</p>
+        <p class="py-8 text-center text-sm text-gray-400">
+          No identities enrolled yet.
+        </p>
       {:else}
         <table class="w-full text-sm">
           <thead>
@@ -135,13 +163,19 @@
           <tbody class="divide-y divide-gray-50">
             {#each identities as id}
               <tr class="group">
-                <td class="py-3 pr-4 font-mono text-xs text-gray-700">{id.userId}</td>
+                <td class="py-3 pr-4 font-mono text-xs text-gray-700"
+                  >{id.userId}</td
+                >
                 <td class="py-3 pr-4">
-                  <span class={`rounded-full px-2 py-0.5 text-xs font-medium ${roleClass(id.attributes?.role)}`}>
-                    {id.attributes?.role ?? '—'}
+                  <span
+                    class={`rounded-full px-2 py-0.5 text-xs font-medium ${roleClass(id.attributes?.role)}`}
+                  >
+                    {id.attributes?.role ?? "—"}
                   </span>
                 </td>
-                <td class="py-3 pr-4 text-gray-600">{id.attributes?.orgId ?? '—'}</td>
+                <td class="py-3 pr-4 text-gray-600"
+                  >{id.attributes?.orgId ?? "—"}</td
+                >
                 <td class="py-3 pr-4 text-gray-500">{fmt(id.enrolledAt)}</td>
                 <td class="py-3">
                   {#if id.revoked}
@@ -159,7 +193,10 @@
           </tbody>
         </table>
         <div class="mt-3 border-t border-gray-50 pt-3">
-          <a href="/admin/hyperledger/identities" class="text-xs text-indigo-600 hover:underline">
+          <a
+            href="/admin/hyperledger/identities"
+            class="text-xs text-indigo-600 hover:underline"
+          >
             View all identities →
           </a>
         </div>
@@ -167,11 +204,14 @@
     </div>
 
     <!-- Ledger stats tab -->
-    <div use:melt={$content('ledger')} class="p-4">
+    <div use:melt={$content("ledger")} class="p-4">
       {#if !ledgerStats}
-        <div class="flex items-center gap-2 rounded-lg bg-amber-50 p-4 text-sm text-amber-700">
+        <div
+          class="flex items-center gap-2 rounded-lg bg-amber-50 p-4 text-sm text-amber-700"
+        >
           <AlertTriangle class="h-4 w-4 shrink-0" />
-          Ledger stats unavailable — peer may be unreachable. Identity data above comes from Vault.
+          Ledger stats unavailable — peer may be unreachable. Identity data above
+          comes from Vault.
         </div>
       {:else}
         <dl class="grid grid-cols-2 gap-4 lg:grid-cols-3">
@@ -184,6 +224,5 @@
         </dl>
       {/if}
     </div>
-
   </div>
 </div>

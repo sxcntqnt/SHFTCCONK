@@ -12,7 +12,7 @@
     Search,
     SlidersHorizontal,
     X,
-  } from "lucide-svelte"
+  } from "@lucide/svelte"
   import type { PageData, ActionData } from "./$types"
 
   export let data: PageData
