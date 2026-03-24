@@ -6,8 +6,8 @@ import {
   getWalletBalance,
   getComplianceEvents,
   getOrgAuditLog,
-} from './ledgerQueries';
-import type { OrgConnectionContext } from './connection';
+} from './utils/ledgerQueries';
+import type { OrgConnectionContext } from './utils/connection';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   if (!locals.user) throw redirect(303, '/org/select');

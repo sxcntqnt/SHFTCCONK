@@ -1,7 +1,7 @@
 // src/routes/admin/hyperledger/enroll/+page.server.ts
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import { enrollUser, enrollDevice } from '../enrollment';
+import { enrollUser, enrollDevice } from '../utils/enrollment';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.user) throw redirect(303, '/admin/account');

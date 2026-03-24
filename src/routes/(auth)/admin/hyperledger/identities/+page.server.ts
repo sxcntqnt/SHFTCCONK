@@ -2,7 +2,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { listIdentities, loadIdentity } from '$lib/hyperledger/vault';
-import { revokeUser } from '../enrollment';
+import { revokeUser } from '../utils/enrollment';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   if (!locals.user) throw redirect(303, '/admin/account');
