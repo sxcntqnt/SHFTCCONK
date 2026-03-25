@@ -14,6 +14,12 @@ importers:
       '@duckdb/node-bindings':
         specifier: 1.5.0-r.1
         version: 1.5.0-r.1
+      '@grpc/grpc-js':
+        specifier: ^1.14.3
+        version: 1.14.3
+      '@hyperledger/fabric-gateway':
+        specifier: ^1.10.1
+        version: 1.10.1
       '@internationalized/date':
         specifier: ^3.12.0
         version: 3.12.0
@@ -767,12 +773,21 @@ packages:
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
 
+  '@grpc/grpc-js@1.14.3':
+    resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
+    engines: {node: '>=12.10.0'}
+
   '@grpc/grpc-js@1.9.15':
     resolution: {integrity: sha512-nqE7Hc0AzI+euzUwDAy0aY5hCp10r734gMGRdU+qOPX0XSceI2ULrcXB5U2xSc5VkWwalCj4M7GzCAygZl2KoQ==}
     engines: {node: ^8.13.0 || >=10.10.0}
 
   '@grpc/proto-loader@0.7.15':
     resolution: {integrity: sha512-tMXdRCfYVixjuFK+Hk0Q1s38gV9zDiDJfWL3h1rv4Qc39oILCu1TRTDt7+fGUI8K4G1Fj125Hx/ru3azECWTyQ==}
+    engines: {node: '>=6'}
+    hasBin: true
+
+  '@grpc/proto-loader@0.8.0':
+    resolution: {integrity: sha512-rc1hOQtjIWGxcxpb9aHAfLpIctjEnsDehj0DAiVfBlmT84uvR0uUtN2hEi/ecvWVjXUGf5qPF4qEgiLOx1YIMQ==}
     engines: {node: '>=6'}
     hasBin: true
 
@@ -788,6 +803,14 @@ packages:
   '@humanwhocodes/object-schema@2.0.3':
     resolution: {integrity: sha512-93zYdMES/c1D69yZiKDBj0V24vqNzB/koF26KPaagAfd3P/4gUlh3Dys5ogAK+Exi9QyzlD8x/08Zt7wIKcDcA==}
     deprecated: Use @eslint/object-schema instead
+
+  '@hyperledger/fabric-gateway@1.10.1':
+    resolution: {integrity: sha512-nIw4oUUhHtrgxH5UAu53Dy778+xf2eM7SwvBXQlJhx9vJQ7eYX4MF0BuGGDxaYsc8gNZddddj8n99ex3Z8+exw==}
+    engines: {node: '>=20.9.0'}
+
+  '@hyperledger/fabric-protos@0.3.7':
+    resolution: {integrity: sha512-p69dVT+QKrL7OZOuWRrimopNUAQL+VpgVEovud5MGqHSMl20S5hZy0aWqmIW+qasRgJiHLNuU0T6xVfXJIeHKg==}
+    engines: {node: '>=16.13.0'}
 
   '@internationalized/date@3.12.0':
     resolution: {integrity: sha512-/PyIMzK29jtXaGU23qTvNZxvBXRtKbNnGDFD+PY6CZw/Y8Ex8pFUzkuCJCG9aOqmShjqhS9mPqP6Dk5onQY8rQ==}
@@ -814,6 +837,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@js-sdsl/ordered-map@4.4.2':
+    resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
   '@kurkle/color@0.3.4':
     resolution: {integrity: sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==}
@@ -906,6 +932,14 @@ packages:
     resolution: {integrity: sha512-Jer+M7DgIwT5IHfTayb4Iw/fkkxWNmC/mqn/nMh9JrbPbkxmyabfLQnhJ+JDn5HK77f84j34lubO3iqFtYAfMg==}
     peerDependencies:
       svelte: ^3.0.0 || ^4.0.0 || ^5.0.0-next.118
+
+  '@noble/curves@1.9.7':
+    resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
+    engines: {node: ^14.21.3 || >=16}
+
+  '@noble/hashes@1.8.0':
+    resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
+    engines: {node: ^14.21.3 || >=16}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -3362,6 +3396,9 @@ packages:
   globrex@0.1.2:
     resolution: {integrity: sha512-uHJgbwAMwNFf5mLst7IWLNg14x1CkeqglJb/K3doi4dw6q2IvAAmM/Y81kevy83wP+Sst+nutFTYOGg3d1lsxg==}
 
+  google-protobuf@3.21.4:
+    resolution: {integrity: sha512-MnG7N936zcKTco4Jd2PX2U96Kf9PxygAPKBug+74LHzmHXmceN16MmRcdgZv+DGef/S9YvQAfRsNCn4cjf9yyQ==}
+
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
@@ -4220,6 +4257,10 @@ packages:
 
   pkcs11js@1.3.1:
     resolution: {integrity: sha512-eo7fTeQwYGzX1pFmRaf4ji/WcDW2XKpwqylOwzutsjNWECv6G9PzDHj3Yj5dX9EW/fydMnJG8xvWj/btnQT9TA==}
+
+  pkcs11js@2.1.6:
+    resolution: {integrity: sha512-+t5jxzB749q8GaEd1yNx3l98xYuaVK6WW/Vjg1Mk1Iy5bMu/A5W4O/9wZGrpOknWF6lFQSb12FXX+eSNxdriwA==}
+    engines: {node: '>=18.0.0'}
 
   point-in-polygon@1.1.0:
     resolution: {integrity: sha512-3ojrFwjnnw8Q9242TzgXuTD+eKiutbzyslcq1ydfu82Db2y+Ogbmyrkpv0Hgj31qwT3lbS9+QAAO/pIQM35XRw==}
@@ -5894,12 +5935,24 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
+  '@grpc/grpc-js@1.14.3':
+    dependencies:
+      '@grpc/proto-loader': 0.8.0
+      '@js-sdsl/ordered-map': 4.4.2
+
   '@grpc/grpc-js@1.9.15':
     dependencies:
       '@grpc/proto-loader': 0.7.15
       '@types/node': 25.3.0
 
   '@grpc/proto-loader@0.7.15':
+    dependencies:
+      lodash.camelcase: 4.3.0
+      long: 5.3.2
+      protobufjs: 7.5.4
+      yargs: 17.7.2
+
+  '@grpc/proto-loader@0.8.0':
     dependencies:
       lodash.camelcase: 4.3.0
       long: 5.3.2
@@ -5917,6 +5970,20 @@ snapshots:
   '@humanwhocodes/module-importer@1.0.1': {}
 
   '@humanwhocodes/object-schema@2.0.3': {}
+
+  '@hyperledger/fabric-gateway@1.10.1':
+    dependencies:
+      '@grpc/grpc-js': 1.14.3
+      '@hyperledger/fabric-protos': 0.3.7
+      '@noble/curves': 1.9.7
+      google-protobuf: 3.21.4
+    optionalDependencies:
+      pkcs11js: 2.1.6
+
+  '@hyperledger/fabric-protos@0.3.7':
+    dependencies:
+      '@grpc/grpc-js': 1.14.3
+      google-protobuf: 3.21.4
 
   '@internationalized/date@3.12.0':
     dependencies:
@@ -5951,6 +6018,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@js-sdsl/ordered-map@4.4.2': {}
 
   '@kurkle/color@0.3.4': {}
 
@@ -6090,6 +6159,12 @@ snapshots:
       focus-trap: 7.8.0
       nanoid: 5.1.6
       svelte: 5.53.0
+
+  '@noble/curves@1.9.7':
+    dependencies:
+      '@noble/hashes': 1.8.0
+
+  '@noble/hashes@1.8.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -9287,6 +9362,8 @@ snapshots:
 
   globrex@0.1.2: {}
 
+  google-protobuf@3.21.4: {}
+
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
@@ -10206,6 +10283,9 @@ snapshots:
   pkcs11js@1.3.1:
     dependencies:
       nan: 2.26.2
+    optional: true
+
+  pkcs11js@2.1.6:
     optional: true
 
   point-in-polygon@1.1.0: {}
