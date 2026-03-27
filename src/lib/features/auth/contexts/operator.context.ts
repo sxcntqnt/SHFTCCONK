@@ -1,182 +1,200 @@
-/**
- * operator.context.ts — Cross-org OPERATOR context.
- *
- * LAZY ACTIVATION: Starts null.
- * Call activateOperatorContext() in /operator/+layout.ts.
- *
- * ROUTE: /operator/*
- *
- * WHAT IS AN OPERATOR?
- *   A special platform role approved directly by ORG_CHAIR (not platform admins).
- *   Think of a transport business owner or logistics coordinator who:
- *
- *   - Works ACROSS multiple SACCOs simultaneously (e.g. manages 3 orgs)
- *   - Manages a defined set of routes per org (e.g. 3 routes × 3 orgs)
- *   - Has a vehicle allocation per org (e.g. up to 10 vehicles per org)
- *   - Can organise trips, add fuel, and coordinate cross-SACCO movements
- *   - Has delegated fleet authority — NOT full org admin access
- *
- * HOW THEY'RE VERIFIED:
- *   1. User selects OPERATOR role during onboarding
- *   2. actor_request created with requested_type = 'OPERATOR'
- *   3. ORG_CHAIR at each desired org approves → creates actor + jurisdiction
- *   4. Jurisdiction is org-scoped with vehicle + route limits in metadata
- *
- * MULTI-ORG MODEL:
- *   An OPERATOR can hold jurisdictions over N orgs.
- *   Each OrgSlot describes their allocation for one org:
- *     - orgId, orgName
- *     - maxVehicles (e.g. 10)
- *     - assignedVehicleIds (current allocation)
- *     - routeIds (approved routes for this org)
- *
- *   The operator switches active org context via setActiveOperatorOrg(orgId).
- *
- * LIMITS vs ORG_CHAIR:
- *   OPERATOR cannot:
- *     - Approve members
- *     - Change org settings
- *     - View finance records of the org
- *     - Edit vehicle records (only view + use)
- *   OPERATOR can:
- *     - Organise and dispatch trips across their allocated vehicles
- *     - Log fuel for allocated vehicles
- *     - View live tracking for their vehicles
- *     - Create and edit bookings on their routes
- *     - View customers on their routes
- */
+// src/lib/features/auth/contexts/operator.context.ts
+//
+// Cross-org OPERATOR context.
+//
+// LAZY ACTIVATION: Starts null.
+// Call activateOperatorContext(userState) in /operator/+layout.ts.
+//
+// ROUTE: /operator/*
+//
+// MIGRATION FROM sessionStore:
+//   activateOperatorContext() now accepts UserState instead of reading sessionStore.
+//
+// VEHICLE CAP:
+//   maxVehicles sourced from actor_jurisdictions.max_vehicles (set by ORG_CHAIR).
+//   assignedVehicleIds sourced from fleet_ownership rows for this actor + org.
+//   isAtVehicleLimit = assignedVehicleIds.length >= maxVehicles.
+//
+// MULTI-ORG MODEL:
+//   One OperatorOrgSlot per org-level jurisdiction.
+//   Operator switches active org via setActiveOperatorOrg(orgId).
 
-import { writable, derived, get } from 'svelte/store'
-import { sessionStore } from '$lib/features/auth/stores/auth'
-import { ROLES } from '$lib/features/auth/stores/roles'
+import { derived, get } from 'svelte/store'
+import type { Tables } from '../../../DatabaseDefinitions'
+import type { UserState } from '$lib/features/auth/services/userState.server'
+import {
+  createContextStore,
+  extractPermissions,
+  extractJurisdictions,
+  extractOrgMemberships,
+  isAllowed,
+  ACTOR_TYPES,
+} from '$lib/features/auth/contexts/context.template'
+import type {
+  EffectivePermission,
+  Jurisdiction,
+} from '$lib/features/auth/contexts/context.template'
 import { ACTIONS } from '$lib/features/auth/stores/permisions'
-import type { Actor, OrgMembership, EffectivePermission, Jurisdiction } from '$lib/features/auth/stores/auth'
 
-// ── Org slot shape ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ActorRow = Tables<'actors'>
+
+// ── Org slot ──────────────────────────────────────────────────────────────────
 
 export interface OperatorOrgSlot {
-  orgId:              string
-  orgName:            string
+  orgId:   string
+  orgName: string
 
   /**
-   * Maximum vehicles this operator may use in this org.
-   * Stored in actor_jurisdictions metadata by the approving ORG_CHAIR.
-   * Default: 10 (can be set per-approval).
+   * Maximum vehicles this operator may manage in this org.
+   * Set by ORG_CHAIR on the actor_jurisdictions row at approval time.
+   * -1 means no limit was set (ORG_CHAIR omitted it — treat as unlimited,
+   * UI should flag this as a data quality issue).
    */
-  maxVehicles:        number
+  maxVehicles: number
 
   /**
-   * Vehicle IDs currently allocated to this operator in this org.
-   * Subset of the org's full fleet.
+   * Vehicle IDs currently managed by this operator in this org.
+   * Sourced from fleet_ownership rows for this actor.
    */
   assignedVehicleIds: string[]
 
   /**
-   * Route IDs (from stage_assignments or route definitions)
-   * this operator is approved to dispatch on.
+   * Stage IDs this operator is approved to dispatch on in this org.
+   * Sourced from stage_assignments rows scoped to this org.
    */
-  routeIds:           string[]
+  routeIds: string[]
 
-  /** Permissions specifically granted for this org */
-  permissions:        EffectivePermission[]
+  /**
+   * Permissions scoped to this org.
+   * Includes direct, policy_group, and delegated grants.
+   */
+  permissions: EffectivePermission[]
 }
 
 // ── Context shape ─────────────────────────────────────────────────────────────
 
 export interface OperatorContext {
-  actor:     Actor
+  actor: ActorRow
 
   /**
    * All orgs this operator has approved jurisdiction over.
-   * Populated from jurisdictions + orgMemberships on activation.
+   * One slot per org-level jurisdiction entry.
    */
-  orgSlots:  OperatorOrgSlot[]
+  orgSlots: OperatorOrgSlot[]
 
   /**
-   * The org the operator is currently "working in" — determines
-   * which vehicles, routes and bookings are shown.
-   * Defaults to the first slot. Operator can switch via setActiveOperatorOrg().
+   * The org the operator is currently working in.
+   * Defaults to first slot on activation.
+   * Switched via setActiveOperatorOrg(orgId).
    */
   activeOrgId: string
 
-  /** Convenience: the active slot data */
+  /** The currently active slot — convenience accessor */
   activeSlot: OperatorOrgSlot
 
-  /** All permissions across all orgs — for cross-org reports */
+  /**
+   * All permissions across all orgs — for cross-org aggregate views.
+   * Not scoped — use activeSlot.permissions for scoped checks.
+   */
   allPermissions: EffectivePermission[]
 
   jurisdictions: Jurisdiction[]
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Store
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const operatorCtx = writable<OperatorContext | null>(null)
+const { store, setContext, clearContext } = createContextStore<OperatorContext>()
+export const operatorCtx = store
 
-// ── Activation ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Activation
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Call from /operator/+layout.ts load().
- * Returns false if user has no approved OPERATOR actor → redirect.
+ * Call from /operator/+layout.ts load({ data }).
+ * Returns false if user has no approved active OPERATOR actor → redirect.
  *
  * @example
- *   export async function load() {
- *     if (!activateOperatorContext()) throw redirect(302, '/app/dashboard')
+ *   // /operator/+layout.ts
+ *   export async function load({ data }) {
+ *     if (!data.userState) throw redirect(302, '/login')
+ *     if (!activateOperatorContext(data.userState)) throw redirect(302, '/app/dashboard')
  *   }
  */
-export function activateOperatorContext(): boolean {
-  const s = get(sessionStore)
-
-  const actor = s.actors.find(
-    (a) => a.type === ROLES.OPERATOR && a.status === 'active',
+export function activateOperatorContext(userState: UserState): boolean {
+  const actorCtx = userState.activeContexts.find(
+    ctx => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === 'active'
   ) ?? null
 
-  if (!actor) {
-    operatorCtx.set(null)
+  if (!actorCtx) {
+    clearContext()
     return false
   }
 
-  sessionStore.update((st) => ({ ...st, activeActorId: actor.id }))
+  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  if (!actor) {
+    clearContext()
+    return false
+  }
 
-  const actorJurisdictions = s.jurisdictions.filter((j) => j.actor_id === actor.id)
-  const actorPermissions   = s.permissions.filter((p) => p.actor_id === actor.id)
+  const jurisdictions  = extractJurisdictions(userState, actorCtx.actorId)
+  const orgMemberships = extractOrgMemberships(userState, actorCtx.actorId)
+  const allPermissions = extractPermissions(userState, actorCtx.actorId)
 
-  // Build org slots from org-level jurisdictions
-  // Each jurisdiction's metadata holds maxVehicles, assignedVehicleIds, routeIds
-  const orgSlots: OperatorOrgSlot[] = actorJurisdictions
-    .filter((j) => j.level === 'org' && j.scope_id)
-    .map((j) => {
+  // ── Build org slots ─────────────────────────────────────────────────────────
+  const orgSlots: OperatorOrgSlot[] = jurisdictions
+    .filter(j => j.level === 'org' && j.scope_id != null)
+    .map(j => {
       const orgId     = j.scope_id as string
-      const meta      = (j.metadata as Record<string, unknown>) ?? {}
-      const orgMember = s.orgMemberships.find((m) => m.organization_id === orgId)
+      const orgMember = orgMemberships.find(m => m.organization_id === orgId)
+
+      // max_vehicles — set by ORG_CHAIR at approval time via actor_jurisdictions
+      // -1 signals the column was not set (data quality issue — ORG_CHAIR should
+      // always provide a cap when approving OPERATOR actor_requests)
+      const maxVehicles = j.max_vehicles ?? -1
+
+      // Vehicles this operator currently manages in this org
+      const assignedVehicleIds = actorCtx.fleetOwnership
+        .filter(f => f.actor_id === actorCtx.actorId)
+        .map(f => f.vehicle_id)
+
+      // Stages/routes approved for this org
+      const routeIds = actorCtx.stageAssignments
+        .filter(s => s.organization_id === orgId)
+        .map(s => s.id)
+
+      // Permissions scoped to this org (federal grants included)
+      const permissions = extractPermissions(userState, actorCtx.actorId, orgId)
 
       return {
         orgId,
-        orgName:            orgMember?.org_name ?? 'Unknown SACCO',
-        maxVehicles:        (meta.max_vehicles        as number)   ?? 10,
-        assignedVehicleIds: (meta.assigned_vehicle_ids as string[]) ?? [],
-        routeIds:           (meta.route_ids           as string[]) ?? [],
-        permissions: actorPermissions.filter(
-          (p) => p.scope_id === orgId || p.level === 'federal',
-        ),
+        orgName: orgMember?.org_name ?? 'Unknown SACCO',
+        maxVehicles,
+        assignedVehicleIds,
+        routeIds,
+        permissions,
       }
     })
 
+  // Approved actor but no org jurisdictions yet — rare edge case
   if (orgSlots.length === 0) {
-    // Approved actor but no org jurisdictions yet — rare edge case
-    operatorCtx.set(null)
+    clearContext()
     return false
   }
 
-  const activeOrgId = orgSlots[0].orgId
-  const activeSlot  = orgSlots[0]
-
-  operatorCtx.set({
+  setContext({
     actor,
     orgSlots,
-    activeOrgId,
-    activeSlot,
-    allPermissions: actorPermissions,
-    jurisdictions:  actorJurisdictions,
+    activeOrgId:    orgSlots[0].orgId,
+    activeSlot:     orgSlots[0],
+    allPermissions,
+    jurisdictions,
   })
 
   return true
@@ -184,167 +202,115 @@ export function activateOperatorContext(): boolean {
 
 /**
  * Switch the active org context for the operator.
- * Call when operator selects a different org from the org switcher.
- *
- * @example
- *   setActiveOperatorOrg('org-uuid-for-super-metro')
+ * Call when operator selects a different org from the org switcher UI.
  */
 export function setActiveOperatorOrg(orgId: string): void {
-  operatorCtx.update((ctx) => {
+  operatorCtx.update(ctx => {
     if (!ctx) return ctx
-    const slot = ctx.orgSlots.find((s) => s.orgId === orgId)
+    const slot = ctx.orgSlots.find(s => s.orgId === orgId)
     if (!slot) return ctx
     return { ...ctx, activeOrgId: orgId, activeSlot: slot }
   })
 }
 
 export function deactivateOperatorContext(): void {
-  operatorCtx.set(null)
+  clearContext()
 }
 
-// ── Internal helper ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Permission check against the ACTIVE org slot only */
+const _allows = (ctx: OperatorContext | null, action: string): boolean =>
+  ctx ? isAllowed(ctx.activeSlot.permissions, action) : false
+
+/** Permission check across ALL orgs — for cross-org aggregate views */
+const _allowsGlobal = (ctx: OperatorContext | null, action: string): boolean =>
+  ctx ? isAllowed(ctx.allPermissions, action) : false
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Permission stores — scoped to active org slot
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Check permission against the ACTIVE org slot only.
- * Use _allowsGlobal for cross-org permission checks.
- */
-const _allows = (ctx: OperatorContext | null, action: string) =>
-  ctx?.activeSlot.permissions.some(
-    (p) => p.action === action && p.effect === 'allow',
-  ) ?? false
-
-const _allowsGlobal = (ctx: OperatorContext | null, action: string) =>
-  ctx?.allPermissions.some(
-    (p) => p.action === action && p.effect === 'allow',
-  ) ?? false
-
-// ── Permission stores (scoped to active org) ──────────────────────────────────
-
-/**
- * Organise and dispatch trips on allocated routes (booking.add + booking.edit).
  * Core OPERATOR capability — gate all trip creation UI on this.
+ * Requires booking.add AND booking.edit in the active org slot.
  */
 export const canOrganiseTrips = derived(
   operatorCtx,
   ($c) => _allows($c, ACTIONS.BOOKING_ADD) && _allows($c, ACTIONS.BOOKING_EDIT),
 )
 
-/** View bookings / passenger lists for their routes (booking.list) */
-export const canViewBookings = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
-
-/** Edit an existing booking / cancellation (booking.edit) */
-export const canEditBooking = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_EDIT))
-
-/** View allocated vehicles (vehicle.view) */
-export const canViewVehicles = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_VIEW))
-
-/** List allocated vehicles (vehicle.list) */
-export const canListVehicles = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_LIST))
-
-/**
- * Log fuel for allocated vehicles (fuel.add).
- * Operators can add fuel entries for any vehicle in their assignedVehicleIds.
- */
-export const canLogFuel = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_ADD))
-
-/** View fuel history for their vehicles (fuel.list) */
-export const canViewFuel = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_LIST))
-
-/** Live tracking for allocated vehicles (tracking.live) */
-export const canTrackLive = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
-
-/** Historical trip playback (tracking.history) */
-export const canTrackHistory = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_HISTORY))
-
-/** View + manage customers on their routes (customer.list) */
+export const canViewBookings  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
+export const canEditBooking   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_EDIT))
+export const canViewVehicles  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_VIEW))
+export const canListVehicles  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_LIST))
+export const canLogFuel       = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_ADD))
+export const canViewFuel      = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_LIST))
+export const canTrackLive     = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
+export const canTrackHistory  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_HISTORY))
 export const canListCustomers = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_LIST))
-
-/** Add new customers / passengers (customer.add) */
-export const canAddCustomer = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_ADD))
-
-/** Edit customer records (customer.edit) */
-export const canEditCustomer = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_EDIT))
-
-/** View reports for their routes (reports.view) */
-export const canViewReports = derived(operatorCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
+export const canAddCustomer   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_ADD))
+export const canEditCustomer  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_EDIT))
+export const canViewReports   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
 
 // ── Cross-org stores ──────────────────────────────────────────────────────────
 
 /**
- * True if operator has cross-org trip organisation permission globally.
- * Use for the "All Orgs" view vs per-org view toggle.
+ * True if operator has trip organisation permission across ALL their orgs.
+ * Use to toggle the "All Orgs" aggregate view.
  */
 export const canOrganiseTripsGlobally = derived(
   operatorCtx,
   ($c) => _allowsGlobal($c, ACTIONS.BOOKING_ADD) && _allowsGlobal($c, ACTIONS.BOOKING_EDIT),
 )
 
-/** All org slots — for the org switcher UI */
-export const operatorOrgSlots = derived(operatorCtx, ($c) => $c?.orgSlots ?? [])
-
-/** Number of orgs this operator manages — shows multi-org badge if > 1 */
-export const operatorOrgCount = derived(operatorCtx, ($c) => $c?.orgSlots.length ?? 0)
-
-/** Active org ID */
-export const activeOrgId = derived(operatorCtx, ($c) => $c?.activeOrgId ?? null)
-
-/** Active org name — for topbar / breadcrumb */
-export const activeOrgName = derived(operatorCtx, ($c) => $c?.activeSlot.orgName ?? '')
-
-/** Vehicles allocated to the operator in the active org */
-export const activeAssignedVehicleIds = derived(
-  operatorCtx,
-  ($c) => $c?.activeSlot.assignedVehicleIds ?? [],
-)
-
-/** Max vehicles allowed in the active org */
-export const activeMaxVehicles = derived(
-  operatorCtx,
-  ($c) => $c?.activeSlot.maxVehicles ?? 10,
-)
-
-/** Routes the operator is approved to use in the active org */
-export const activeRouteIds = derived(
-  operatorCtx,
-  ($c) => $c?.activeSlot.routeIds ?? [],
-)
+export const operatorOrgSlots         = derived(operatorCtx, ($c) => $c?.orgSlots        ?? [])
+export const operatorOrgCount         = derived(operatorCtx, ($c) => $c?.orgSlots.length ?? 0)
+export const activeOrgId              = derived(operatorCtx, ($c) => $c?.activeOrgId      ?? null)
+export const activeOrgName            = derived(operatorCtx, ($c) => $c?.activeSlot.orgName ?? '')
+export const activeAssignedVehicleIds = derived(operatorCtx, ($c) => $c?.activeSlot.assignedVehicleIds ?? [])
+export const activeMaxVehicles        = derived(operatorCtx, ($c) => $c?.activeSlot.maxVehicles ?? -1)
+export const activeRouteIds           = derived(operatorCtx, ($c) => $c?.activeSlot.routeIds ?? [])
 
 /**
- * Vehicle capacity utilisation in the active org.
- * 0.0 – 1.0. Use for a progress bar in the fleet dashboard.
+ * Vehicle utilisation in the active org — 0.0 to 1.0.
+ * Returns 0 if maxVehicles is -1 (no cap set — ORG_CHAIR data quality issue).
  */
-export const vehicleUtilisation = derived(
-  operatorCtx,
-  ($c) => {
-    if (!$c) return 0
-    const { assignedVehicleIds, maxVehicles } = $c.activeSlot
-    return maxVehicles > 0 ? assignedVehicleIds.length / maxVehicles : 0
-  },
-)
+export const vehicleUtilisation = derived(operatorCtx, ($c) => {
+  if (!$c) return 0
+  const { assignedVehicleIds, maxVehicles } = $c.activeSlot
+  if (maxVehicles <= 0) return 0   // -1 = no cap set
+  return assignedVehicleIds.length / maxVehicles
+})
 
-/** True if operator has reached their vehicle allocation limit in the active org */
-export const isAtVehicleLimit = derived(
-  operatorCtx,
-  ($c) => {
-    if (!$c) return false
-    const { assignedVehicleIds, maxVehicles } = $c.activeSlot
-    return assignedVehicleIds.length >= maxVehicles
-  },
-)
+/**
+ * True if operator has reached their ORG_CHAIR-approved vehicle cap.
+ * False if maxVehicles is -1 (no cap set — treat as warning, not block).
+ */
+export const isAtVehicleLimit = derived(operatorCtx, ($c) => {
+  if (!$c) return false
+  const { assignedVehicleIds, maxVehicles } = $c.activeSlot
+  if (maxVehicles <= 0) return false  // -1 = no cap set
+  return assignedVehicleIds.length >= maxVehicles
+})
 
-/** True if operator manages more than one org — shows org switcher */
+/** True if operator manages more than one org — show org switcher */
 export const isMultiOrg = derived(operatorCtx, ($c) => ($c?.orgSlots.length ?? 0) > 1)
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const getOperatorActorId    = () => get(operatorCtx)?.actor.id ?? null
-export const getOperatorActiveOrg  = () => get(operatorCtx)?.activeOrgId ?? null
-export const getOperatorOrgSlots   = () => get(operatorCtx)?.orgSlots ?? []
+export const getOperatorActorId      = () => get(operatorCtx)?.actor.id    ?? null
+export const getOperatorActiveOrg    = () => get(operatorCtx)?.activeOrgId  ?? null
+export const getOperatorOrgSlots     = () => get(operatorCtx)?.orgSlots     ?? []
 export const isOperatorContextActive = () => get(operatorCtx) !== null
 
 /**
  * Check if operator can use a specific vehicle in the active org.
- * Respects their assigned vehicle allocation, not the full org fleet.
+ * Respects their fleet_ownership allocation, not the full org fleet.
  */
 export function operatorOwnsVehicle(vehicleId: string): boolean {
   const ctx = get(operatorCtx)
@@ -363,25 +329,18 @@ export function operatorOwnsRoute(routeId: string): boolean {
 
 /**
  * Imperative permission check against the active org slot.
- * @example
- *   if (!operatorCan(ACTIONS.BOOKING_ADD)) return showError('Not authorised')
  */
 export function operatorCan(action: string): boolean {
   const ctx = get(operatorCtx)
   if (!ctx) return false
-  return ctx.activeSlot.permissions.some(
-    (p) => p.action === action && p.effect === 'allow',
-  )
+  return isAllowed(ctx.activeSlot.permissions, action)
 }
 
 /**
  * Check permission across ALL orgs this operator manages.
- * Use when building the "All Orgs" aggregate view.
  */
 export function operatorCanGlobally(action: string): boolean {
   const ctx = get(operatorCtx)
   if (!ctx) return false
-  return ctx.allPermissions.some(
-    (p) => p.action === action && p.effect === 'allow',
-  )
+  return isAllowed(ctx.allPermissions, action)
 }

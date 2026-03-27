@@ -305,3 +305,101 @@ alter table geofences
     check (scope != 'personal' or vehicle_id is not null),
   add constraint geofence_org_needs_org
     check (scope != 'org' or org_id is not null);
+
+
+
+    -- migrations/20260327000001_profiles_onboarding_mpesa.sql
+-- =========================================================
+-- Adds explicit onboarding lifecycle tracking to profiles
+-- and replaces stripe_customers with mpesa_customers.
+--
+-- onboarding_status drives the guest trap in hooks.server.ts:
+--   GUEST        → registered, no intent chosen
+--   AWAITING_KYC → intent chosen, Ballerine flow not yet complete
+--   ACTIVE       → KYC cleared, at least one active actor exists
+--
+-- kyc_intent holds the chosen onboarding path so the hook can
+-- redirect back to the correct /onboarding/[intent] route.
+-- =========================================================
+
+-- ── 1. Onboarding columns on profiles ─────────────────────────────────────
+
+alter table public.profiles
+  add column if not exists onboarding_status text
+    not null default 'GUEST'
+    check (onboarding_status in ('GUEST', 'AWAITING_KYC', 'ACTIVE')),
+
+  add column if not exists kyc_intent text
+    check (kyc_intent in ('passenger', 'crew', 'operator', 'org_staff'));
+
+comment on column public.profiles.onboarding_status is
+  'Lifecycle state: GUEST (no intent) → AWAITING_KYC (Ballerine started) → ACTIVE (cleared)';
+
+comment on column public.profiles.kyc_intent is
+  'Chosen onboarding path — used by hooks.server.ts to redirect to /onboarding/[intent]';
+
+-- Backfill existing profiles:
+--   Any profile with at least one active actor → ACTIVE
+--   Everyone else stays GUEST
+update public.profiles p
+set onboarding_status = 'ACTIVE'
+where exists (
+  select 1 from public.actors a
+  where a.profile_id = p.id
+    and a.status = 'active'
+);
+
+-- ── 2. M-Pesa customers table (replaces stripe_customers) ─────────────────
+
+create table if not exists public.mpesa_customers (
+  user_id            text        primary key references public.profiles(id) on delete cascade,
+  phone_number       text,                        -- E.164 format e.g. +254712345678
+  mpesa_customer_id  text,                        -- Safaricom customer reference if available
+  subscription_code  text,                        -- Active subscription/standing order code
+  subscription_status text
+    check (subscription_status in ('active', 'inactive', 'pending', 'cancelled')),
+  updated_at         timestamptz default now()
+);
+
+comment on table public.mpesa_customers is
+  'M-Pesa billing records — replaces stripe_customers. hasPaidPlan = subscription_status = active';
+
+-- ── 3. Index for hooks.server.ts lookup ───────────────────────────────────
+
+create index if not exists idx_mpesa_customers_user_id
+  on public.mpesa_customers(user_id);
+
+create index if not exists idx_profiles_onboarding_status
+  on public.profiles(onboarding_status);
+
+
+  -- migrations/20260327000002_operator_vehicle_cap.sql
+-- =========================================================
+-- Adds max_vehicles cap to actor_jurisdictions.
+--
+-- When an ORG_CHAIR approves an OPERATOR actor_request,
+-- they set max_vehicles on the jurisdiction row to cap
+-- how many fleet vehicles that operator may manage in their org.
+--
+-- operator.context.ts reads this column to compute:
+--   isAtVehicleLimit    → assignedVehicleIds.length >= max_vehicles
+--   vehicleUtilisation  → assignedVehicleIds.length / max_vehicles
+-- =========================================================
+
+alter table public.actor_jurisdictions
+  add column if not exists max_vehicles integer
+    check (max_vehicles > 0),
+  add column if not exists metadata jsonb;
+
+comment on column public.actor_jurisdictions.max_vehicles is
+  'OPERATOR only — maximum fleet vehicles this actor may manage in this org scope. '
+  'Set by ORG_CHAIR at approval time. Null for non-operator jurisdictions.';
+
+comment on column public.actor_jurisdictions.metadata is
+  'Arbitrary JSON for future jurisdiction constraints. '
+  'Currently unused — max_vehicles is a typed column, not stored here.';
+
+-- Index for operator context lookups — filters by actor_id + level + scope_id
+create index if not exists idx_actor_jurisdictions_operator
+  on public.actor_jurisdictions(actor_id, level, scope_id)
+  where max_vehicles is not null;
