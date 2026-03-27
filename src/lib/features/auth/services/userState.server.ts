@@ -162,6 +162,7 @@ export type UserState = {
    * subscription_status = 'active'.
    */
   hasPaidPlan:    boolean
+  mpesaGo:     MpesaGoProfile | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
