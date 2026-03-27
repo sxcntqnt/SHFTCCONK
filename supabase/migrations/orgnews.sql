@@ -403,3 +403,86 @@ comment on column public.actor_jurisdictions.metadata is
 create index if not exists idx_actor_jurisdictions_operator
   on public.actor_jurisdictions(actor_id, level, scope_id)
   where max_vehicles is not null;
+
+
+
+  -- migrations/20260327000003_passenger_minor_mpesa_go.sql
+-- =========================================================
+-- Adds minor passenger support and M-PESA GO fields.
+--
+-- Covers:
+--   1. date_of_birth + guardian linkage on profiles
+--   2. kyc_document_status — tracks the 30-day document
+--      submission window Safaricom requires for M-PESA GO
+--   3. mpesa_customers extended with minor-specific fields:
+--        is_minor_account
+--        guardian_phone
+--        daily_limit
+--        per_transaction_limit
+--        send_money_enabled
+--        lipa_na_mpesa_enabled
+--        documents_submitted
+--        documents_due_by
+-- =========================================================
+
+-- ── 1. Profiles — minor + guardian fields ─────────────────────────────────
+
+alter table public.profiles
+  add column if not exists date_of_birth      date,
+  add column if not exists guardian_profile_id uuid
+    references public.profiles(id) on delete set null;
+
+comment on column public.profiles.date_of_birth is
+  'Used to derive isMinor (age < 18). Required for M-PESA GO onboarding.';
+
+comment on column public.profiles.guardian_profile_id is
+  'For minors: the parent/guardian profile that controls this account. '
+  'Null for adult passengers.';
+
+-- ── 2. M-PESA GO columns on mpesa_customers ───────────────────────────────
+
+alter table public.mpesa_customers
+  add column if not exists is_minor_account        boolean   default false,
+  add column if not exists guardian_phone          text,
+  add column if not exists daily_limit             numeric,
+  add column if not exists per_transaction_limit   numeric,
+  add column if not exists send_money_enabled      boolean   default true,
+  add column if not exists lipa_na_mpesa_enabled   boolean   default true,
+  add column if not exists documents_submitted     boolean   default false,
+  add column if not exists documents_due_by        timestamptz;
+
+comment on column public.mpesa_customers.is_minor_account is
+  'True for M-PESA GO accounts (child aged 8–17).';
+
+comment on column public.mpesa_customers.guardian_phone is
+  'E.164 phone of the parent/guardian linked to this M-PESA GO account.';
+
+comment on column public.mpesa_customers.daily_limit is
+  'Parent-set daily transaction cap in KES. Null = Safaricom default.';
+
+comment on column public.mpesa_customers.per_transaction_limit is
+  'Parent-set per-transaction cap in KES. Null = Safaricom default.';
+
+comment on column public.mpesa_customers.send_money_enabled is
+  'Parent toggle — whether child can send money to other M-PESA users.';
+
+comment on column public.mpesa_customers.lipa_na_mpesa_enabled is
+  'Parent toggle — whether child can pay for goods via Lipa na M-PESA.';
+
+comment on column public.mpesa_customers.documents_submitted is
+  'True once birth certificate or passport has been uploaded. '
+  'M-PESA GO account cannot transact until this is done (30-day window).';
+
+comment on column public.mpesa_customers.documents_due_by is
+  'Safaricom compliance deadline — documents must be submitted by this date. '
+  'Null for adult accounts.';
+
+-- ── 3. Indexes ─────────────────────────────────────────────────────────────
+
+create index if not exists idx_profiles_guardian
+  on public.profiles(guardian_profile_id)
+  where guardian_profile_id is not null;
+
+create index if not exists idx_mpesa_minor_accounts
+  on public.mpesa_customers(user_id)
+  where is_minor_account = true;

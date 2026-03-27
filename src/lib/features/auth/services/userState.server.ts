@@ -316,13 +316,31 @@ supabase
       .select('*')
       .in('operator_id', actorIds),
 
+    supabase
+  .from('delegated_authority')
+  .select('from_actor_id, to_actor_id, permission_id, expires_at')
+  .in('from_actor_id', actorIds)
+  .eq('revoked', false)
+  .gt('expires_at', new Date().toISOString()),
+
     // M-Pesa subscription check — replaces stripe_customers.
     // maybeSingle — row may not exist for non-paying users.
-    supabase
-      .from('mpesa_customers')
-      .select('subscription_status')
-      .eq('user_id', userId)
-      .maybeSingle(),
+    // In resolveUserState() — replace the mpesa_customers query:
+supabase
+  .from('mpesa_customers')
+  .select(`
+    subscription_status,
+    is_minor_account,
+    guardian_phone,
+    daily_limit,
+    per_transaction_limit,
+    send_money_enabled,
+    lipa_na_mpesa_enabled,
+    documents_submitted,
+    documents_due_by
+  `)
+  .eq('user_id', userId)
+  .maybeSingle(),
   ])
 
   // ── 5. Unwrap results (null-safe) ──────────────────────────────────────────
@@ -372,7 +390,7 @@ supabase
         scope_id: p.scope_id,
         source:   p.source,
       }))
-
+    outboundDelegations: outboundRows.filter(d => d.from_actor_id === actor.id)
     const policyGroupIds = actorPolicyGroups
       .filter(apg => apg.actor_id === actor.id)
       .map(apg => apg.group_id)

@@ -1,103 +1,202 @@
+// src/lib/features/auth/contexts/super-admin.context.ts
+//
+// sxcntqnt platform admin context.
+//
+// LAZY ACTIVATION: Starts null.
+// Call activateSuperAdminContext(userState) in /admin/+layout.ts.
+//
+// ROUTE: /admin/*
+//
+// MIGRATION FROM sessionStore:
+//   activateSuperAdminContext() now accepts UserState instead of reading sessionStore.
+//   sessionStore.update() calls removed.
+//   ROLES.* replaced with ACTOR_TYPES.* from context.template.
+//
+// TWO ADMIN TYPES:
+//   SUPER_ADMIN — full platform god-mode, isSuperAdmin = true
+//   ADMIN       — elevated but not full — canAdminFull may be false
+//
+// PERMISSION SCOPE:
+//   Super admin permissions are federal-level (level = 'federal', scope_id = null).
+//   extractPermissions() with no scopeId returns all permissions including federal.
+//   No org-scoping needed — super admin sees everything.
+
+import { derived, get } from 'svelte/store'
+import type { Tables } from '../../../DatabaseDefinitions'
+import type { UserState } from '$lib/features/auth/services/userState.server'
+import {
+  createContextStore,
+  extractPermissions,
+  extractOrgMemberships,
+  isAllowed,
+  ACTOR_TYPES,
+} from '$lib/features/auth/contexts/context.template'
+import type {
+  EffectivePermission,
+  OrgMembership,
+} from '$lib/features/auth/contexts/context.template'
+import { ACTIONS } from '$lib/features/auth/stores/permisions'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ActorRow = Tables<'actors'>
+
+// ── Context shape ─────────────────────────────────────────────────────────────
+
+export interface SuperAdminContext {
+  actor: ActorRow
+
   /**
-   * super-admin.context.ts — sxcntqnt platform admin context.
-   *
-   * LAZY ACTIVATION: Starts null.
-   * Call activateSuperAdminContext() in /admin/+layout.ts.
-   *
-   * ROUTE: /admin/*
+   * All org memberships across the platform.
+   * Super admin has visibility into all SACCOs — not scoped to a single org.
+   * Sourced from userState.assignments.orgMemberships (all actors combined).
    */
+  orgs: OrgMembership[]
 
-  import { writable, derived, get } from 'svelte/store'
-  import { sessionStore } from '$lib/features/auth/stores/auth'
-  import { ROLES } from '$lib/features/auth/stores/roles'
-  import { ACTIONS } from '$lib/features/auth/stores/permisions'
-  import type { Actor, OrgMembership, EffectivePermission } from '$lib/features/auth/stores/auth'
-
-  // ── Context shape ─────────────────────────────────────────────
-  export interface SuperAdminContext {
-    actor: Actor
-    orgs: OrgMembership[]
-    permissions: EffectivePermission[]
-    isSuperAdmin: boolean
-  }
-
-  // ── Store ─────────────────────────────────────────────────────
-  export const superAdminCtx = writable<SuperAdminContext | null>(null)
-
-  // ── Activation ────────────────────────────────────────────────
   /**
-   * Call from /admin/+layout.ts load().
-   * Returns false → redirect to /unauthorized.
-   *
-   * @example
-   *   export async function load() {
-   *     if (!activateSuperAdminContext()) throw redirect(302, '/unauthorized')
-   *   }
+   * Federal-level permissions for this actor.
+   * Includes direct, policy_group, and delegated grants at federal scope.
    */
-  export function activateSuperAdminContext(): boolean {
-    const s = get(sessionStore)
+  permissions: EffectivePermission[]
 
-    const actor =
-      s.actors.find((a) => a.type === ROLES.SUPER_ADMIN && a.status === 'active') ??
-      s.actors.find((a) => a.type === ROLES.ADMIN       && a.status === 'active') ??
-      null
+  /**
+   * True if actor.type === SUPER_ADMIN.
+   * False for ADMIN — used to gate canAdminFull and any
+   * destructive platform operations that require the highest privilege.
+   */
+  isSuperAdmin: boolean
+}
 
-    if (!actor) {
-      superAdminCtx.set(null)
-      return false
-    }
+// ─────────────────────────────────────────────────────────────────────────────
+// Store
+// ─────────────────────────────────────────────────────────────────────────────
 
-    sessionStore.update((st) => ({ ...st, activeActorId: actor.id }))
+const { store, setContext, clearContext } = createContextStore<SuperAdminContext>()
+export const superAdminCtx = store
 
-    superAdminCtx.set({
-      actor,
-      orgs:        s.orgMemberships,
-      permissions: s.permissions.filter((p) => p.actor_id === actor.id),
-      isSuperAdmin: actor.type === ROLES.SUPER_ADMIN,
-    })
+// ─────────────────────────────────────────────────────────────────────────────
+// Activation
+// ─────────────────────────────────────────────────────────────────────────────
 
-    return true
+/**
+ * Call from /admin/+layout.ts load({ data }).
+ * Returns false if user has no active SUPER_ADMIN or ADMIN actor → redirect.
+ *
+ * Prefers SUPER_ADMIN over ADMIN when user holds both.
+ *
+ * @example
+ *   // /admin/+layout.ts
+ *   export async function load({ data }) {
+ *     if (!data.userState) throw redirect(302, '/login')
+ *     if (!activateSuperAdminContext(data.userState)) throw redirect(302, '/unauthorized')
+ *   }
+ */
+export function activateSuperAdminContext(userState: UserState): boolean {
+  // Prefer SUPER_ADMIN over ADMIN
+  const actorCtx =
+    userState.activeContexts.find(
+      ctx => ctx.type === ACTOR_TYPES.SUPER_ADMIN && ctx.status === 'active'
+    ) ??
+    userState.activeContexts.find(
+      ctx => ctx.type === ACTOR_TYPES.ADMIN && ctx.status === 'active'
+    ) ??
+    null
+
+  if (!actorCtx) {
+    clearContext()
+    return false
   }
 
-  export function deactivateSuperAdminContext(): void {
-    superAdminCtx.set(null)
+  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  if (!actor) {
+    clearContext()
+    return false
   }
 
-  // ── Permission stores ─────────────────────────────────────────
+  // No scopeId — super admin permissions are federal, extractPermissions
+  // returns all grants including federal when no scope is provided
+  const permissions = extractPermissions(userState, actorCtx.actorId)
 
-  const _allows = (ctx: SuperAdminContext | null, action: string) =>
-    ctx?.permissions.some((p) => p.action === action && p.effect === 'allow') ?? false
+  // Platform-wide org visibility — all memberships across all actors
+  // Super admin needs this for the SACCO management dashboard
+  const orgs = userState.assignments.orgMemberships
 
-  /** Create new SACCO organizations (org.create) */
-  export const canCreateOrg = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ORG_CREATE))
+  setContext({
+    actor,
+    orgs,
+    permissions,
+    isSuperAdmin: actor.type === ACTOR_TYPES.SUPER_ADMIN,
+  })
 
-  /** Approve SACCO org activation requests (org.approve) */
-  export const canApproveOrg = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ORG_APPROVE))
+  return true
+}
 
-  /** View + edit any user account (admin.users) */
-  export const canManageUsers = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ADMIN_USERS))
+export function deactivateSuperAdminContext(): void {
+  clearContext()
+}
 
-  /** Full platform god-mode (admin.full) */
-  export const canAdminFull = derived(
-    superAdminCtx,
-    ($c) => ($c?.isSuperAdmin ?? false) || _allows($c, ACTIONS.ADMIN_FULL),
-  )
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helper
+// ─────────────────────────────────────────────────────────────────────────────
 
-  /** View audit logs (audit.view) */
-  export const canViewAuditLogs = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.AUDIT_VIEW))
+const _allows = (ctx: SuperAdminContext | null, action: string): boolean =>
+  ctx ? isAllowed(ctx.permissions, action) : false
 
-  /** Approve actor_requests at platform level (member.approve) */
-  export const canApproveRequests = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.MEMBER_APPROVE))
+// ─────────────────────────────────────────────────────────────────────────────
+// Permission stores
+// ─────────────────────────────────────────────────────────────────────────────
 
-  /** View all reports (reports.view) */
-  export const canViewReports = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
+/** Create new SACCO organizations (org.create) */
+export const canCreateOrg = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ORG_CREATE))
 
-  /** All allowed action strings — for debug panel / feature flags */
-  export const adminAllowedActions = derived(
-    superAdminCtx,
-    ($c) => $c?.permissions.filter((p) => p.effect === 'allow').map((p) => p.action) ?? [],
-  )
+/** Approve SACCO org activation requests (org.approve) */
+export const canApproveOrg = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ORG_APPROVE))
 
-  // ── Helpers ───────────────────────────────────────────────────
-  export const getSuperAdminActorId = () => get(superAdminCtx)?.actor.id ?? null
-  export const isSuperAdminActive   = () => get(superAdminCtx) !== null
+/** View + edit any user account (admin.users) */
+export const canManageUsers = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.ADMIN_USERS))
+
+/**
+ * Full platform god-mode (admin.full).
+ * True if SUPER_ADMIN type OR has explicit admin.full permission grant.
+ * ADMIN actors can have this granted explicitly — not automatic.
+ */
+export const canAdminFull = derived(
+  superAdminCtx,
+  ($c) => ($c?.isSuperAdmin ?? false) || _allows($c, ACTIONS.ADMIN_FULL),
+)
+
+/** View audit logs (audit.view) */
+export const canViewAuditLogs = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.AUDIT_VIEW))
+
+/** Approve actor_requests at platform level (member.approve) */
+export const canApproveRequests = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.MEMBER_APPROVE))
+
+/** View all platform reports (reports.view) */
+export const canViewReports = derived(superAdminCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
+
+/** All allowed action strings — for debug panel / feature flag inspection */
+export const adminAllowedActions = derived(
+  superAdminCtx,
+  ($c) => $c?.permissions.filter(p => p.effect === 'allow').map(p => p.action) ?? [],
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getSuperAdminActorId = () => get(superAdminCtx)?.actor.id ?? null
+export const isSuperAdminActive   = () => get(superAdminCtx) !== null
+
+/**
+ * Imperative permission check — use in server load functions or event handlers.
+ *
+ * @example
+ *   if (!superAdminCan(ACTIONS.ORG_APPROVE)) throw redirect(302, '/unauthorized')
+ */
+export function superAdminCan(action: string): boolean {
+  const ctx = get(superAdminCtx)
+  if (!ctx) return false
+  return isAllowed(ctx.permissions, action)
+}
