@@ -1,31 +1,39 @@
 // src/routes/(auth)/onboarding/[intent]/+page.server.ts
 //
-// Ballerine KYC page — renders the Ballerine SDK for the chosen intent.
+// Ballerine KYC page — serves ALL intents (passenger + invited roles).
 //
-// FLOW:
-//   1. load()   → validates intent, generates Ballerine token, returns workflowId
-//   2. SDK      → user completes KYC in the browser (Ballerine handles UI)
-//   3. submitKyc action → receives caseId from SDK → writes to profile
-//   4. Ballerine webhook → /api/webhooks/ballerine → creates actor + redirects
-//
-// INTENT → WORKFLOW MAPPING:
-//   passenger → kyc_light    (basic ID verification)
-//   crew      → kyc_full_ntsa (NTSA PSV licence + ID)
+// EVERY ROLE GOES THROUGH KYC:
+//   passenger → kyc_light    (basic ID + selfie)
+//   crew      → kyc_full_ntsa (NTSA PSV licence + ID + selfie)
 //   operator  → kyc_full_ntsa (NTSA operator licence + ID)
-//   owner     → kyc_full_ntsa (NTSA + vehicle ownership docs)
-//   org       → kyc_full_ntsa (NTSA + company registration)
+//   owner     → kyc_full_ntsa (vehicle ownership docs + ID)
+//   org       → kyc_full_ntsa (company registration + director ID)
 //
-// NOTE:
-//   This page does NOT create actors — that is done by the Ballerine webhook.
-//   Profile is identity. Actors are capabilities. Onboarding = identity completion.
+// WHO ARRIVES HERE:
+//   passenger — redirected from /onboarding after setIntent action
+//   crew/operator/owner/org — redirected here directly after invite
+//     redemption (redeem_invite sets kyc_intent on profile and redirects)
+//
+// POST-KYC FLOW:
+//   submitKyc → writes caseId → /onboarding/[intent]/pending
+//   webhook fires → actor created → pending page detects → role dashboard
+//
+// ROLE DASHBOARD MAPPING (via intentToDashboard):
+//   passenger → /app/dashboard
+//   crew      → /crew/dashboard
+//   operator  → /operator/dashboard
+//   owner/org → /org/select
 
 import type { PageServerLoad, Actions } from './$types'
 import { redirect, error }              from '@sveltejs/kit'
 import { PRIVATE_BALLERINE_SECRET }     from '$env/static/private'
-import { VALID_INTENTS }                from '../+page.server'
+import {
+  VALID_INTENTS,
+  intentToDashboard,
+}                                       from '../+page.server'
 import type { OnboardingIntent }        from '../+page.server'
 
-// Ballerine workflow IDs per intent
+// KYC workflow per intent — passenger gets light, everyone else gets full
 const WORKFLOW_MAP: Record<OnboardingIntent, string> = {
   passenger: 'kyc_light',
   crew:      'kyc_full_ntsa',
@@ -34,11 +42,10 @@ const WORKFLOW_MAP: Record<OnboardingIntent, string> = {
   org:       'kyc_full_ntsa',
 }
 
-// Whether the intent requires a retry-friendly UI (for rejected cases)
-const RETRYABLE_INTENTS = new Set<OnboardingIntent>(['crew', 'operator', 'owner', 'org'])
-
-async function generateBallerineToken(userId: string, workflowId: string): Promise<string> {
-  // Call Ballerine API to generate a session token for the SDK
+async function generateBallerineToken(
+  userId:     string,
+  workflowId: string,
+): Promise<string> {
   const response = await fetch('https://api.ballerine.com/v1/end-user/session', {
     method:  'POST',
     headers: {
@@ -70,28 +77,56 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     throw error(404, 'Invalid onboarding path.')
   }
 
-  // If user is already verified, skip onboarding entirely
+  // ── Already verified → send to the CORRECT dashboard ─────────────────
+  // A verified crew member should land on /crew/dashboard, not /app/dashboard
   if (userState && !userState.isGuest) {
-    throw redirect(303, '/app/dashboard')
+    const profileIntent = (userState.profile as any).kyc_intent as string | null
+    throw redirect(303, intentToDashboard(profileIntent ?? intent))
   }
 
-  const isRetry        = url.searchParams.get('retry') === 'true'
-  const workflowId     = WORKFLOW_MAP[intent]
-  const isProWorkflow  = workflowId === 'kyc_full_ntsa'
+  // ── Guard: intent must match what's on the profile ────────────────────
+  // Prevents a passenger from navigating to /onboarding/crew manually
+  const profileKycIntent = (userState?.profile as any)?.kyc_intent as string | null
+  if (profileKycIntent && profileKycIntent !== intent) {
+    // They have a different intent set — redirect to their actual flow
+    throw redirect(303, `/onboarding/${profileKycIntent}`)
+  }
+
+  // ── If no intent set yet, this must be an invite arriving directly ────
+  // Invite redemption redirects to /onboarding/[intent] without going
+  // through the picker. Set the intent on the profile now.
+  if (!profileKycIntent) {
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        kyc_intent:        intent,
+        onboarding_status: 'AWAITING_KYC',
+      })
+      .eq('id', user.id)
+
+    if (updateError) {
+      console.error('[onboarding/[intent]] Failed to set intent from invite:', updateError)
+      throw error(500, 'Failed to initialise onboarding. Please try again.')
+    }
+  }
+
+  const isRetry    = url.searchParams.get('retry') === 'true'
+  const workflowId = WORKFLOW_MAP[intent]
 
   let ballerineToken: string
   try {
     ballerineToken = await generateBallerineToken(user.id, workflowId)
   } catch (err) {
-    console.error('[onboarding] Ballerine token generation failed:', err)
+    console.error('[onboarding/[intent]] Ballerine token generation failed:', err)
     throw error(503, 'Verification service unavailable. Please try again shortly.')
   }
 
   return {
     intent,
     workflowId,
-    isProWorkflow,
     isRetry,
+    isPassenger:   intent === 'passenger',
+    isProWorkflow: workflowId === 'kyc_full_ntsa',
     ballerine: {
       workflowId,
       token: ballerineToken,
@@ -100,8 +135,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 }
 
 export const actions: Actions = {
-  // Called by the Ballerine SDK after the user completes the flow
-  // SDK posts the caseId back to this action via a hidden form
   submitKyc: async ({ request, locals, params }) => {
     const { supabase, user } = locals
     const intent = params.intent as OnboardingIntent
@@ -110,15 +143,11 @@ export const actions: Actions = {
 
     const formData      = await request.formData()
     const caseId        = formData.get('ballerineCaseId') as string | null
-    const workflowRunId = formData.get('workflowRunId')  as string | null
 
     if (!caseId) {
       throw error(400, 'Missing Ballerine case ID.')
     }
 
-    // Write caseId + pending status to profile.
-    // Actor creation happens in the Ballerine webhook — NOT here.
-    // Profile = identity. Actors = capabilities.
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
@@ -130,11 +159,10 @@ export const actions: Actions = {
       .eq('id', user.id)
 
     if (updateError) {
-      console.error('[onboarding] Profile update failed:', updateError)
+      console.error('[onboarding/[intent]] Profile update failed:', updateError)
       throw error(500, 'Failed to record verification. Please try again.')
     }
 
-    // Redirect to a pending/waiting page while Ballerine reviews
     throw redirect(303, `/onboarding/${intent}/pending`)
   },
 }

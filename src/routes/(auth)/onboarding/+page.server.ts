@@ -1,127 +1,109 @@
-// src/routes/(auth)/app/onboarding/+page.server.ts
+// src/routes/(auth)/onboarding/+page.server.ts
 //
-// Onboarding form action — step 1 of the new user flow.
+// Intent picker — shown ONLY to self-registering passengers.
 //
-// Flow:
-//   /app/onboarding      → role selection + PRO verification acknowledgement
-//   /app/create_profile  → name, phone, org associations  (← we redirect here)
-//   /app/select_plan     → plan selection
-//   /app/dashboard       → done
+// WHO LANDS HERE:
+//   - New users who signed up directly (no invite)
+//   - They see one selectable intent: passenger
+//   - ALL other roles (crew, operator, owner, org staff) arrive via
+//     invite token which pre-sets kyc_intent — they skip this page
+//     entirely and land on /onboarding/[intent] directly
 //
-// What this action does:
-//   1. Validates the submitted role against your `roles` table values
-//   2. For PASSENGER: redirects straight to create_profile (no actor_request yet)
-//   3. For PRO/org roles: creates a pending actor_request so admins can approve
-//      while the user continues onboarding as a passenger
-//   4. Passes `role` forward as a URL param so create_profile can store it
+// FLOW:
+//   New signup → /onboarding (this page, passenger only)
+//             → setIntent action → profile.kyc_intent = 'passenger'
+//             → /onboarding/passenger (Ballerine kyc_light)
+//             → /onboarding/passenger/pending
+//             → webhook fires → actor created
+//             → /app/create_profile?rebootstrap=1
 //
-// What this does NOT do:
-//   - Collect name/phone (that's create_profile's job)
-//   - Handle SACCO/org associations (that's create_profile's job — DB-driven)
-//   - Create actors directly (admin approval or redeem_invite does that)
+//   Invite flow → redeem_invite sets kyc_intent on profile
+//              → /onboarding/[intent] (skips this page)
+//              → Ballerine kyc_full_ntsa
+//              → webhook fires → actor created (pending, org approves)
+//              → /[role]/create_profile?rebootstrap=1
 //
-// Schema used:
-//   actor_requests: profile_id, requested_type, payload (jsonb), status
-//   The handle_new_user trigger already created a PASSENGER actor on signup.
+// WHY PASSENGER ONLY FOR SELF-REGISTRATION:
+//   Roles (except PASSENGER) are organization-assigned — not user-selected.
+//   An operator cannot self-declare as DRIVER. Only an org inviting them
+//   can grant that capability. Onboarding = identity completion, not
+//   role assignment.
 
-import { fail, redirect } from "@sveltejs/kit"
-import type { Actions, PageServerLoad } from "./$types"
+import type { PageServerLoad, Actions } from './$types'
+import { redirect, error }              from '@sveltejs/kit'
 
-// ── Load ──────────────────────────────────────────────────────────────────────
-// Redirect away if the user already completed onboarding
-// (has a non-empty full_name and phone set by create_profile)
+// Only passenger is self-selectable.
+// All other intents are set by the invite redemption flow.
+const SELF_SELECTABLE_INTENTS = ['passenger'] as const
+export type SelfSelectIntent = typeof SELF_SELECTABLE_INTENTS[number]
+
+// All valid intents — used to validate invite-set intents in [intent]/+page.server.ts
+export const VALID_INTENTS = ['passenger', 'crew', 'operator', 'owner', 'org'] as const
+export type OnboardingIntent = typeof VALID_INTENTS[number]
+
+// ── Intent → dashboard mapping ─────────────────────────────────────────────
+// Single source of truth — used here AND in pending/+page.server.ts
+export function intentToDashboard(intent: string): string {
+  switch (intent) {
+    case 'crew':     return '/crew/dashboard'
+    case 'operator': return '/operator/dashboard'
+    case 'owner':
+    case 'org':      return '/org/select'
+    default:         return '/app/dashboard'   // passenger + unknown
+  }
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const { session } = await locals.safeGetSession()
-  if (!session) redirect(303, "/login/sign_in")
+  const { userState } = locals
 
-  const { data: profile } = await locals.supabase
-    .from("profiles")
-    .select("full_name, phone")
-    .eq("id", session.user.id)
-    .maybeSingle()
-
-  // If they already finished create_profile, push them forward
-  if (profile?.full_name?.trim() && profile?.phone?.trim()) {
-    redirect(303, "/app/select_plan")
+  // ── Already verified → send to the right dashboard ─────────────────────
+  // Uses intentToDashboard so a crew member doesn't land on /app/dashboard
+  if (userState && !userState.isGuest) {
+    const intent = (userState.profile as any).kyc_intent as string | null
+    throw redirect(303, intentToDashboard(intent ?? 'passenger'))
   }
 
+  // ── Mid-flow (kyc_intent already set) → resume at [intent] ────────────
+  // Handles: user set intent then navigated away, or arrived via invite
+  const kycIntent = (userState?.profile as any)?.kyc_intent as string | null
+  if (kycIntent) {
+    throw redirect(303, `/onboarding/${kycIntent}`)
+  }
+
+  // ── Fresh user — show passenger intent picker ──────────────────────────
   return {}
 }
 
-// ── Valid roles (must match your `roles` table) ───────────────────────────────
-const VALID_ROLES = new Set([
-  "PASSENGER",
-  "DRIVER",
-  "CONDUCTOR",
-  "OWNER",
-  "ORGANIZATION",
-  "STAGE_OPERATOR",
-  "PLANNER",
-  "REGULATOR",
-])
-
-const PRO_ROLES = new Set(["DRIVER", "CONDUCTOR", "STAGE_OPERATOR"])
-
-// ── Actions ───────────────────────────────────────────────────────────────────
-
 export const actions: Actions = {
-  completeOnboarding: async ({ request, locals }) => {
-    const { session } = await locals.safeGetSession()
-    if (!session) redirect(303, "/login/sign_in")
+  // Passenger self-registration intent selection
+  setIntent: async ({ request, locals }) => {
+    const { supabase, user } = locals
 
-    const supabase = locals.supabase
-    const userId   = session.user.id
+    if (!user) throw redirect(303, '/login')
+
     const formData = await request.formData()
+    const intent   = formData.get('intent') as string
 
-    const role = formData.get("role")?.toString()?.trim()
-
-    // ── Validate role ─────────────────────────────────────────────────────────
-    if (!role || !VALID_ROLES.has(role)) {
-      return fail(400, { message: "Please select a valid role to continue." })
+    // Only passengers can self-select — all others arrive via invite
+    if (!SELF_SELECTABLE_INTENTS.includes(intent as SelfSelectIntent)) {
+      throw error(400,
+        'Only passenger registration is available here. ' +
+        'Other roles require an invite from a registered organisation.'
+      )
     }
 
-    // ── PASSENGER — no actor_request needed ───────────────────────────────────
-    // handle_new_user trigger already created a PASSENGER actor on signup.
-    // Skip straight to create_profile to collect name + phone.
-    if (role === "PASSENGER") {
-      redirect(303, `/app/create_profile?role=PASSENGER`)
-    }
-
-    // ── PRO / org roles — create pending actor_request ────────────────────────
-    // The user still only has PASSENGER access until an admin approves.
-    // We log the request now so approval can happen in parallel while
-    // the user completes the rest of onboarding.
-    const { error: requestError } = await supabase
-      .from("actor_requests")
-      .insert({
-        profile_id:     userId,
-        requested_type: role,
-        payload: {
-          // PRO roles need NTSA verification — flag it in the payload
-          // so the admin panel can surface the right approval workflow
-          requires_verification: PRO_ROLES.has(role),
-        },
-        status: "pending",
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        kyc_intent:        intent,
+        onboarding_status: 'AWAITING_KYC',
       })
+      .eq('id', user.id)
 
-    if (requestError) {
-      // 23505 = unique constraint violation — duplicate pending request
-      if (requestError.code === "23505") {
-        // Not a hard error — just continue to create_profile
-        // They may have refreshed or gone back
-        redirect(303, `/app/create_profile?role=${role}`)
-      }
-
-      console.error("[onboarding] actor_request insert failed:", requestError)
-      return fail(500, {
-        message: "Something went wrong submitting your role request. Please try again.",
-      })
+    if (updateError) {
+      throw error(500, 'Failed to save intent. Please try again.')
     }
 
-    // ── Forward role to create_profile ────────────────────────────────────────
-    // create_profile will read ?role from the URL and include it in
-    // the actor_requests.payload when saving org associations + phone.
-    redirect(303, `/app/create_profile?role=${role}`)
+    throw redirect(303, `/onboarding/${intent}`)
   },
 }
