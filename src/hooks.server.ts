@@ -238,28 +238,42 @@ const userStateHandle: Handle = async ({ event, resolve }) => {
     const state = await resolveUserState(event.locals.supabase, user.id)
     event.locals.userState = state
 
-    // ── 2. GUEST TRAP ─────────────────────────────────────────────────────────
-    // isGuest = no active actors OR onboarding_status = 'GUEST'.
-    // Guests must complete onboarding before accessing /app, /crew, /org etc.
-    // Allow through if already heading to /onboarding.
-    if (state.isGuest && !isOnboardingPath(pathname)) {
-      throw redirect(303, '/onboarding')
-    }
 
-    // ── 3. KYC TRAP ───────────────────────────────────────────────────────────
-    // User has chosen an intent but Ballerine flow is not yet complete.
-    // Lock them to their specific /onboarding/[intent] route until the
-    // Ballerine webhook fires and sets onboarding_status = 'ACTIVE'.
-    // Cast needed until supabase gen types runs after migration.
-    const onboardingStatus = (state.profile as any).onboarding_status as string | null
-    const kycIntent        = (state.profile as any).kyc_intent        as string | null
+// ── 2. GUEST TRAP ─────────────────────────────────────────────────────────
+// isGuest = no active actors OR onboarding_status = 'GUEST'.
+// Allow through if already on any /onboarding path.
+if (state.isGuest && !isOnboardingPath(pathname)) {
+  const kycIntent = (state.profile as any).kyc_intent as string | null
 
-    if (
-      onboardingStatus === 'AWAITING_KYC' &&
-      !isOnboardingPath(pathname)
-    ) {
-      throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}`)
-    }
+  // If they have a kyc_intent already set, they picked a role previously
+  // but navigated away — send them back to their specific intent flow.
+  // Otherwise send to the intent picker.
+  if (kycIntent) {
+    throw redirect(303, `/onboarding/${kycIntent}`)
+  }
+  throw redirect(303, '/onboarding')
+}
+
+// ── 3. KYC TRAP ───────────────────────────────────────────────────────────
+// User has chosen an intent and submitted to Ballerine but webhook
+// hasn't fired yet (kyc_status = 'pending' or 'AWAITING_KYC').
+const onboardingStatus = (state.profile as any).onboarding_status as string | null
+const kycIntent        = (state.profile as any).kyc_intent        as string | null
+const kycStatus        = (state.profile as any).kyc_status        as string | null
+
+// Lock to /onboarding/[intent] while KYC is in flight
+if (
+  onboardingStatus === 'AWAITING_KYC' &&
+  kycStatus === 'pending' &&
+  !isOnboardingPath(pathname)
+) {
+  throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}`)
+}
+
+// KYC was rejected — send back to retry
+if (kycStatus === 'rejected' && !isOnboardingPath(pathname)) {
+  throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}?retry=true`)
+}
 
     // ── 4. Runtime context activation ─────────────────────────────────────────
     // Read the preferred context from the cookie set by the Context Switcher.

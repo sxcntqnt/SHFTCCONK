@@ -1,45 +1,40 @@
 // src/routes/(auth)/operator/+layout.ts
 //
-// Operator section layout (stage operators).
-// Guard: requireOperatorAccess → STAGE_OPERATOR actor, auto-switches.
+// Operator client layout — activates operator context store.
 //
-// Stage operators manage fuel, trips, and notifications for their
-// assigned stages/routes. They always have an org context (via
-// organization_members), so we resolve the org for scoping.
+// LAZY ACTIVATION PATTERN:
+//   Server resolved userState in hooks.server.ts.
+//   Server fetched stage assignments with org join in +layout.server.ts.
+//   This layout activates operatorCtx from userState.
+//
+// MULTI-ORG:
+//   activateOperatorContext() builds orgSlots from actor_jurisdictions.
+//   Each slot carries max_vehicles, assignedVehicleIds, routeIds, permissions.
+//   The active org defaults to the first slot — operator switches via
+//   setActiveOperatorOrg() from the org switcher UI component.
+//
+// NO STORE PATCH NEEDED:
+//   Unlike crew, operator context derives all its data from userState
+//   (fleet_ownership + stage_assignments already in actorCtx).
+//   The server stage fetch is for the layout shell template only —
+//   operatorCtx already has stage IDs via actorCtx.stageAssignments.
 
-import type { LayoutLoad } from "./$types"
-import { get } from "svelte/store"
-import { requireOperatorAccess } from "$lib/security/authGuard"
-import {
-  sessionStore,
-  getActorOrgIds,
-} from "$lib/features/auth/stores/auth"
+import type { LayoutLoad }              from './$types'
+import { redirect }                     from '@sveltejs/kit'
+import { activateOperatorContext }      from '$lib/features/auth/contexts/operator.context'
 
-export const load: LayoutLoad = async (event) => {
-  await requireOperatorAccess(event)
+export const load: LayoutLoad = async ({ data }) => {
+  if (!data.userState) throw redirect(303, '/login')
 
-  const { supabase, session, user } = await event.parent()
-  const s = get(sessionStore)
-
-  // After requireOperatorAccess, active actor is STAGE_OPERATOR.
-  // Resolve their org context for scoping queries in child pages.
-  const operatorActorId = s.activeActorId!
-  const orgIds = getActorOrgIds(operatorActorId)
-  const primaryOrgId = orgIds[0] ?? null
-
-  // Load the operator's stage assignments for nav/sidebar
-  const { data: stages } = await supabase
-    .from("stage_assignments")
-    .select("id, stage_name, organization_id, route")
-    .eq("operator_id", operatorActorId)
-    .order("stage_name")
+  // activateOperatorContext returns false if:
+  //   - No active OPERATOR actor (double-checked after server gate)
+  //   - Actor exists but has zero org jurisdiction slots
+  //     (approved but ORG_CHAIR hasn't set jurisdiction yet)
+  if (!activateOperatorContext(data.userState)) {
+    throw redirect(303, '/app/dashboard?denied=operator_no_jurisdiction')
+  }
 
   return {
-    supabase,
-    session,
-    user,
-    operatorActorId,
-    primaryOrgId,
-    stages: stages ?? [],
+    ...data,
   }
 }

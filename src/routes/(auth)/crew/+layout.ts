@@ -1,104 +1,58 @@
 // src/routes/(auth)/crew/+layout.ts
 //
-// Crew section layout (DRIVER + CONDUCTOR).
+// Crew client layout — activates crew context store + patches with
+// vehicle data fetched server-side.
 //
-// Guard:   requireCrewAccess  → activates crewCtx internally.
-//          No second activate() call needed — the guard IS the activation.
+// LAZY ACTIVATION PATTERN:
+//   Server resolved userState in hooks.server.ts.
+//   Server fetched vehicle assignment with org join in +layout.server.ts.
+//   This layout activates crewCtx from userState, then patches it with
+//   the richer vehicle data (plate, org name) from the server fetch.
 //
-// Layout-level data: vehicle assignment is loaded here because the
-// crew sidebar/topbar shows plate + org + shift state across ALL crew
-// pages (dashboard, incidents, tipjar, requests).
+// WHY PATCH:
+//   activateCrewContext() resolves vehicle_id from driver_assignments
+//   but NOT reg_number (that requires a vehicles join).
+//   +layout.server.ts has the join result — we push it into the store here.
+//
+// SHIFT STATE:
+//   Sourced from driver_assignments.shift_state via userState in
+//   activateCrewContext(). The server fetch confirms active_trip_id
+//   which may have changed since userState was resolved — we patch that too.
 
-import type { LayoutLoad } from "./$types"
-import { get } from "svelte/store"
-import { redirect } from "@sveltejs/kit"
-import { requireCrewAccess } from "$lib/security/authGuard"
-import { crewCtx } from "$lib/features/auth/contexts"
+import type { LayoutLoad }          from './$types'
+import { redirect }                 from '@sveltejs/kit'
+import { get }                      from 'svelte/store'
+import { activateCrewContext, crewCtx } from '$lib/features/auth/contexts/crew.context'
 
-export const load: LayoutLoad = async (event) => {
-  // ── Guard + context activation ────────────────────────────────────────────
-  // requireCrewAccess calls activateCrewContext() internally.
-  // crewCtx is guaranteed populated after this line.
-  await requireCrewAccess(event)
+export const load: LayoutLoad = async ({ data }) => {
+  if (!data.userState) throw redirect(303, '/login')
 
-  const { supabase, session, user } = await event.parent()
-
-  // ── Read context — no second activation needed ────────────────────────────
-  const crew = get(crewCtx)
-  if (!crew) redirect(302, "/app/dashboard")  // type narrowing safety net
-
-  const { actor, crewType, orgId, shiftState } = crew
-  const isDriver = crewType === "DRIVER"
-
-  // ── Load vehicle assignment ───────────────────────────────────────────────
-  // driver_assignments and conductor_assignments share the same shape.
-  // We join vehicles + organizations so the sidebar has plate + SACCO name
-  // without any per-page fetches.
-  const { data: assignment, error } = await supabase
-    .from(isDriver ? "driver_assignments" : "conductor_assignments")
-    .select(`
-      actor_id,
-      vehicle_id,
-      active_trip_id,
-      vehicles (
-        id,
-        reg_number,
-        capacity,
-        active,
-        organization_id,
-        organizations ( id, name )
-      )
-    `)
-    .eq("actor_id", actor.id)
-    .maybeSingle()
-
-  if (error) {
-    console.error("[crew layout] vehicle assignment fetch failed:", error)
+  // Activate the crew context store from server-resolved userState
+  if (!activateCrewContext(data.userState)) {
+    throw redirect(303, '/app/dashboard?denied=crew_not_active')
   }
 
-  // ── Patch crewCtx with richer live data ──────────────────────────────────
-  // activateCrewContext reads vehicle info from actor.metadata (bootstrap RPC).
-  // The DB join above gives us the full record including org name —
-  // patch the store so all child components get the most complete data.
-  if (assignment?.vehicles) {
-    const v = assignment.vehicles as {
-      id: string
-      reg_number: string
-      capacity: number
-      active: boolean
-      organization_id: string
-      organizations: { id: string; name: string } | null
-    }
-
-    crewCtx.update((c) => {
-      if (!c) return c
+  // ── Patch crewCtx with richer server data ──────────────────────────────────
+  // activateCrewContext() sets activeVehiclePlate = null (the TODO).
+  // +layout.server.ts joined vehicles to get reg_number + org name.
+  // Push those into the store now so all child components get full data.
+  if (data.crewSummary.plate || data.crewSummary.orgName) {
+    crewCtx.update(ctx => {
+      if (!ctx) return ctx
       return {
-        ...c,
-        activeVehicleId:    v.id,
-        activeVehiclePlate: v.reg_number,
-        activeTripId:       assignment.active_trip_id ?? null,
-        orgName:            v.organizations?.name ?? c.orgName,
+        ...ctx,
+        activeVehicleId:    data.crewSummary.vehicleId   ?? ctx.activeVehicleId,
+        activeVehiclePlate: data.crewSummary.plate        ?? ctx.activeVehiclePlate,
+        activeTripId:       data.crewSummary.tripId       ?? ctx.activeTripId,
+        orgName:            data.crewSummary.orgName      ?? ctx.orgName,
       }
     })
   }
 
-  // ── Return layout data ────────────────────────────────────────────────────
-  // crewSummary is a plain serialisable object for the layout template.
-  // Child pages use the reactive crewCtx store directly for anything dynamic.
   return {
-    supabase,
-    session,
-    user,
-    isDriver,
-    assignment: assignment ?? null,
-    crewSummary: {
-      actorId:    actor.id,
-      crewType,
-      orgId,
-      orgName:    get(crewCtx)?.orgName ?? "",
-      plate:      (assignment?.vehicles as { reg_number: string } | null)?.reg_number ?? null,
-      shiftState,
-      hasVehicle: assignment !== null,
-    },
+    ...data,
+    // Expose crew summary as a plain serialisable object for layout template.
+    // Child pages use the reactive crewCtx store directly for dynamic state.
+    crewSummary: data.crewSummary,
   }
 }

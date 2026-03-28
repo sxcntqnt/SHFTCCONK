@@ -1,26 +1,34 @@
 // src/routes/(auth)/app/+layout.ts
 //
-// Main application layout.
-// Guard: requireAuth → any authenticated user can access.
-// This is the passenger/default section: map, chat, feed, routes,
-// settings, bookings, weather, etc.
+// Passenger/Guest/Minor client layout — activates the passenger context store.
 //
-// No actor type restriction — passengers, regulators, planners,
-// and even admins can use the main app. Individual pages gate
-// features via permissions if needed (e.g. geofences might need
-// a specific permission).
+// LAZY ACTIVATION PATTERN:
+//   Server resolved userState in hooks.server.ts.
+//   This layout activates the passenger context store from that data.
+//   No DB calls — purely client-side store hydration.
+//
+// TWO STATES HANDLED:
+//   GUEST     → context activates, isVerified = false, UI shows join prompt
+//   PASSENGER → context activates, isVerified = true, full booking access
+//   MINOR     → PASSENGER subtype, isMinor = true, M-PESA GO gates apply
+//
+// DO NOT redirect GUEST users here — isVerified handles that in UI.
+// The guest trap in hooks.server.ts already handled the "no actors at all" case.
 
-import type { LayoutLoad } from "./$types"
-import { requireAuth } from "$lib/security/authGuard"
+import type { LayoutLoad }              from './$types'
+import { redirect }                     from '@sveltejs/kit'
+import { activatePassengerContext }     from '$lib/features/auth/contexts/passenger.context'
 
-export const load: LayoutLoad = async (event) => {
-  await requireAuth(event)
+export const load: LayoutLoad = async ({ data }) => {
+  if (!data.userState) throw redirect(303, '/login')
 
-  const { supabase, session, user } = await event.parent()
+  // activatePassengerContext returns false only if user has NO profile
+  // at all — not if they are a guest. Guests get a context too.
+  if (!activatePassengerContext(data.userState)) {
+    throw redirect(303, '/login')
+  }
 
   return {
-    supabase,
-    session,
-    user,
+    ...data,
   }
 }

@@ -486,3 +486,39 @@ create index if not exists idx_profiles_guardian
 create index if not exists idx_mpesa_minor_accounts
   on public.mpesa_customers(user_id)
   where is_minor_account = true;
+
+
+
+-- migrations/20260327000004_profiles_kyc_ballerine.sql
+-- =========================================================
+-- Adds Ballerine KYC tracking columns to profiles.
+--
+-- kyc_status tracks the Ballerine case lifecycle:
+--   pending    → case submitted, awaiting review
+--   approved   → KYC passed, actor will be created by webhook
+--   rejected   → KYC failed, user can retry
+--   expired    → case timed out, user must restart
+--
+-- ballerine_case_id is the external case reference returned by
+-- Ballerine SDK on submission. Used by the webhook to match the
+-- incoming event to the correct profile.
+-- =========================================================
+
+alter table public.profiles
+  add column if not exists kyc_status         text
+    check (kyc_status in ('pending', 'approved', 'rejected', 'expired')),
+  add column if not exists ballerine_case_id  text unique;
+
+comment on column public.profiles.kyc_status is
+  'Ballerine KYC case status. Null until KYC is submitted.';
+
+comment on column public.profiles.ballerine_case_id is
+  'External Ballerine case ID. Unique — used by webhook to match profile.';
+
+create index if not exists idx_profiles_ballerine_case
+  on public.profiles(ballerine_case_id)
+  where ballerine_case_id is not null;
+
+create index if not exists idx_profiles_kyc_status
+  on public.profiles(kyc_status)
+  where kyc_status is not null;
