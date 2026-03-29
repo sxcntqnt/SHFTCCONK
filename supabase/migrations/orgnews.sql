@@ -522,3 +522,82 @@ create index if not exists idx_profiles_ballerine_case
 create index if not exists idx_profiles_kyc_status
   on public.profiles(kyc_status)
   where kyc_status is not null;
+
+
+-- migrations/20260327000005_hyperledger_enrollment_queue.sql
+-- =========================================================
+-- Tracks Hyperledger Fabric enrollment attempts per actor.
+--
+-- Flow:
+--   Ballerine webhook → insert row (status: pending)
+--   Queue processor   → attempts enrollment → updates status
+--   On failure        → increments attempts, sets next_retry_at
+--   On success        → sets status: success, enrolled_at
+--   Max 5 attempts    → status: exhausted (admin must re-trigger)
+--
+-- Also tracks revocation events so actor suspension in Supabase
+-- can automatically revoke the Fabric identity.
+-- =========================================================
+
+create type hyperledger_event_type as enum (
+  'enroll_crew_member',
+  'enroll_operator',
+  'enroll_fleet_owner',
+  'register_organisation',
+  'revoke_identity'
+);
+
+create type hyperledger_queue_status as enum (
+  'pending',
+  'processing',
+  'success',
+  'failed',
+  'retrying',
+  'exhausted'   -- max attempts reached, needs manual admin intervention
+);
+
+create table public.hyperledger_enrollment_queue (
+  id              uuid        primary key default gen_random_uuid(),
+  actor_id        uuid        not null references public.actors(id) on delete cascade,
+  profile_id      uuid        not null references public.profiles(id) on delete cascade,
+  intent          text        not null,
+  event_name      hyperledger_event_type not null,
+  status          hyperledger_queue_status not null default 'pending',
+  attempts        integer     not null default 0,
+  max_attempts    integer     not null default 5,
+  last_error      text,
+  fabric_user_id  text,       -- the enrolled identity ID in Fabric CA / Vault
+  msp_id          text,       -- MSP ID assigned on enrollment
+  enrolled_at     timestamptz,
+  next_retry_at   timestamptz,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+comment on table public.hyperledger_enrollment_queue is
+  'Tracks Fabric CA enrollment attempts triggered by Ballerine KYC approvals. '
+  'Processed by /api/jobs/process-hyperledger-queue (cron every 2 min).';
+
+-- Indexes for queue processor queries
+create index idx_hlf_queue_status_retry
+  on public.hyperledger_enrollment_queue(status, next_retry_at)
+  where status in ('pending', 'retrying');
+
+create index idx_hlf_queue_actor
+  on public.hyperledger_enrollment_queue(actor_id);
+
+create index idx_hlf_queue_profile
+  on public.hyperledger_enrollment_queue(profile_id);
+
+-- Auto-update updated_at
+create or replace function update_hlf_queue_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create trigger hlf_queue_updated_at
+  before update on public.hyperledger_enrollment_queue
+  for each row execute function update_hlf_queue_updated_at();
