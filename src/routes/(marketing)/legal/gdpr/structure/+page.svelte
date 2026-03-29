@@ -81,7 +81,9 @@
       <p>
         Sxcntcnqunts Kenya Ltd processes personal data in accordance with
         applicable Kenyan data protection laws and the requirements of the
-        :contentReference[oaicite:0]{(index = 0)}.
+        <a href="https://www.odpc.go.ke/" target="_blank" rel="noopener">
+          Office of the Data Protection Commissioner Kenya
+        </a>.
       </p>
 
       <p>
