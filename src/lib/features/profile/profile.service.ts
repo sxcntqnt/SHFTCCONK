@@ -5,37 +5,46 @@
 //   +page.server.ts  (form action)
 //   +server.ts       (JSON API)
 
+// src/lib/features/profile/profile.service.ts
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
 export interface ProfileInput {
-  fullName:     string
-  phone:        string
+  fullName: string
+  phone: string
   companyName?: string
-  website?:     string
-  orgIds?:      string[]
+  website?: string
+
+  // New enrichment fields
+  startingLocations?: string
+  destinations?: string
+  highwayCorridors?: string[]
+  routesToTrack?: string[]
+  preferredVehicleType?: string[]
+  socialMediaLinks?: string
+  emergencyContacts?: string
+  languagesSpoken?: string[]
+  timeZone?: string
+  workingHoursStart?: string
+  workingHoursEnd?: string
+
+  orgIds?: string[]
 }
 
 export interface ProfileValidationError {
-  fields:  string[]
+  fields: string[]
   message: string
 }
 
 export interface Organization {
-  id:     string
-  name:   string
+  id: string
+  name: string
   status: string
-  type:   string | null
+  type: string | null
   county: string | null
 }
 
 // ── Validation ─────────────────────────────────────────────────────────────────
-
-/**
- * Validate profile input fields.
- * Returns null if valid, or an error object with field names + message.
- */
 export function validateProfileInput(
   input: ProfileInput,
 ): ProfileValidationError | null {
@@ -46,21 +55,15 @@ export function validateProfileInput(
   const phoneDigits = input.phone?.replace(/\D/g, '') ?? ''
   if (!phoneDigits || phoneDigits.length < 9) fields.push('phone')
 
+  // You can add more validation here (e.g. for phone format, URLs, etc.)
+
   if (fields.length > 0) {
     return { fields, message: 'Please fix the highlighted fields.' }
   }
-
   return null
 }
 
-// ── Phone normalisation ────────────────────────────────────────────────────────
-
-/**
- * Normalise any Kenyan phone number to +2547XXXXXXXX format.
- *
- * Accepts:  07XXXXXXXX  |  2547XXXXXXXX  |  +2547XXXXXXXX
- * Returns:  +2547XXXXXXXX
- */
+// ── Phone normalisation (unchanged) ───────────────────────────────────────────
 export function normalisePhone(phone: string): string {
   let digits = phone.replace(/\D/g, '')
   if (digits.startsWith('0')) digits = '254' + digits.slice(1)
@@ -68,6 +71,46 @@ export function normalisePhone(phone: string): string {
   return digits
 }
 
+// ── Core operations ────────────────────────────────────────────────────────────
+export async function upsertProfile(
+  supabase: SupabaseClient,
+  userId: string,
+  input: ProfileInput & { normalisedPhone: string },
+): Promise<string | null> {
+  const { error } = await supabase
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        full_name: input.fullName.trim(),
+        phone: input.normalisedPhone,
+        company_name: input.companyName?.trim() || null,
+        website: input.website?.trim() || null,
+
+        // New fields
+        starting_locations: input.startingLocations?.trim() || null,
+        destinations: input.destinations?.trim() || null,
+        highway_corridors: input.highwayCorridors?.length ? input.highwayCorridors : null,
+        routes_to_track: input.routesToTrack?.length ? input.routesToTrack : null,
+        preferred_vehicle_type: input.preferredVehicleType?.length ? input.preferredVehicleType : null,
+        social_media_links: input.socialMediaLinks?.trim() || null,
+        emergency_contacts: input.emergencyContacts?.trim() || null,
+        languages_spoken: input.languagesSpoken?.length ? input.languagesSpoken : null,
+        time_zone: input.timeZone?.trim() || null,
+        working_hours_start: input.workingHoursStart || null,
+        working_hours_end: input.workingHoursEnd || null,
+
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+
+  if (error) {
+    console.error('[profile.service] upsert error:', error)
+    return 'Failed to save profile. Please try again.'
+  }
+  return null
+}
 // ── Core operations ────────────────────────────────────────────────────────────
 
 /**
@@ -167,8 +210,8 @@ export async function upsertActorRequest(
  */
 export async function saveProfile(
   supabase: SupabaseClient,
-  userId:   string,
-  input:    ProfileInput,
+  userId: string,
+  input: ProfileInput,
 ): Promise<ProfileValidationError | { serverError: string } | null> {
   const validationError = validateProfileInput(input)
   if (validationError) return validationError
@@ -179,18 +222,13 @@ export async function saveProfile(
   if (saveError) return { serverError: saveError }
 
   await upsertActorRequest(supabase, userId, input.orgIds ?? [], normalisedPhone)
-
   return null
 }
 
-// ── Queries ────────────────────────────────────────────────────────────────────
-
-/**
- * Fetch everything needed to render / pre-fill the create_profile form.
- */
+// ── Load (updated to fetch new fields) ─────────────────────────────────────────
 export async function loadProfileFormData(
   supabase: SupabaseClient,
-  userId:   string,
+  userId: string,
 ) {
   const [
     { data: profile },
@@ -199,7 +237,23 @@ export async function loadProfileFormData(
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('full_name, phone, company_name, website')
+      .select(`
+        full_name, 
+        phone, 
+        company_name, 
+        website,
+        starting_locations,
+        destinations,
+        highway_corridors,
+        routes_to_track,
+        preferred_vehicle_type,
+        social_media_links,
+        emergency_contacts,
+        languages_spoken,
+        time_zone,
+        working_hours_start,
+        working_hours_end
+      `)
       .eq('id', userId)
       .maybeSingle(),
 
@@ -219,10 +273,10 @@ export async function loadProfileFormData(
   if (orgError) console.error('[profile.service] organizations load error:', orgError)
 
   const organizations: Organization[] = (orgsRaw ?? []).map((o) => ({
-    id:     o.id,
-    name:   o.name,
+    id: o.id,
+    name: o.name,
     status: o.status,
-    type:   (o.metadata as any)?.type   ?? null,
+    type: (o.metadata as any)?.type ?? null,
     county: (o.metadata as any)?.county ?? null,
   }))
 
@@ -230,5 +284,9 @@ export async function loadProfileFormData(
     (r) => (r.payload as any)?.desired_org_ids ?? [],
   )
 
-  return { profile: profile ?? null, organizations, linkedOrgIds }
+  return { 
+    profile: profile ?? null, 
+    organizations, 
+    linkedOrgIds 
+  }
 }

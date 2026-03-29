@@ -201,6 +201,138 @@
             Organisations <span class="optional">select all that apply</span>
           </div>
 
+          <!-- Additional Profile Enrichment Fields -->
+
+          <div class="field">
+            <label class="field-label" for="preferredVehicleType">
+              Preferred Vehicle Type <span class="optional">optional</span>
+            </label>
+            <select
+              id="preferredVehicleType"
+              name="preferredVehicleType"
+              class="field-input"
+              multiple
+              bind:value={preferredVehicleType}
+            >
+              <option value="Bus">Bus</option>
+              <option value="Minibus">Minibus</option>
+              <option value="Van">Van</option>
+              <option value="Taxi">Taxi</option>
+              <option value="Matatu">Matatu</option>
+              <!-- Add more vehicle types as needed -->
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="socialMediaLinks">
+              Social Media / Online Presence <span class="optional"
+                >optional</span
+              >
+            </label>
+            <input
+              id="socialMediaLinks"
+              name="socialMediaLinks"
+              type="url"
+              placeholder="e.g. https://linkedin.com/in/amina-odhiambo"
+              class="field-input"
+              bind:value={socialMediaLinks}
+              maxlength="200"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="profileImage">
+              Profile Picture / Logo <span class="optional">optional</span>
+            </label>
+            <input
+              id="profileImage"
+              name="profileImage"
+              type="file"
+              accept="image/*"
+              class="field-input"
+              bind:value={profileImage}
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="emergencyContacts">
+              Emergency Contacts <span class="optional">optional</span>
+            </label>
+            <input
+              id="emergencyContacts"
+              name="emergencyContacts"
+              type="text"
+              placeholder="e.g. 0712 345 678, 0722 987 654"
+              class="field-input"
+              bind:value={emergencyContacts}
+              maxlength="150"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="languagesSpoken">
+              Languages Spoken <span class="optional">optional</span>
+            </label>
+            <select
+              id="languagesSpoken"
+              name="languagesSpoken"
+              class="field-input"
+              multiple
+              bind:value={languagesSpoken}
+            >
+              <option value="English">English</option>
+              <option value="Swahili">Swahili</option>
+              <option value="Kiswahili">Kiswahili</option>
+              <option value="Luo">Luo</option>
+              <option value="Kikuyu">Kikuyu</option>
+              <option value="Kalenjin">Kalenjin</option>
+              <option value="Somali">Somali</option>
+              <!-- Add more languages as needed -->
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="preferredWorkingHours">
+              Preferred Working Hours <span class="optional">optional</span>
+            </label>
+            <div class="time-range">
+              <input
+                type="time"
+                id="workingHoursStart"
+                name="workingHoursStart"
+                class="field-input time-input"
+                bind:value={workingHoursStart}
+              />
+              <span class="time-separator">to</span>
+              <input
+                type="time"
+                id="workingHoursEnd"
+                name="workingHoursEnd"
+                class="field-input time-input"
+                bind:value={workingHoursEnd}
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="timeZone">
+              Time Zone <span class="optional">optional</span>
+            </label>
+            <select
+              id="timeZone"
+              name="timeZone"
+              class="field-input"
+              bind:value={timeZone}
+            >
+              <option value="Africa/Nairobi"
+                >East Africa Time (EAT) - Nairobi</option
+              >
+              <option value="Africa/Mombasa"
+                >East Africa Time (EAT) - Mombasa</option
+              >
+              <!-- You can add more if supporting other regions -->
+            </select>
+          </div>
+
           {#if organizations.length === 0}
             <div class="org-empty">No organisations found.</div>
           {:else}
