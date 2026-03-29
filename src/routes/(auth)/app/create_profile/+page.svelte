@@ -36,6 +36,7 @@
   let { data, form }: Props = $props()
   let { user, profile, organizations, linkedOrgIds } = data
   let preferredVehicleType = []
+  let socialMediaLinks = []
 
   // Role forwarded from onboarding — live URL param takes priority
   let role = $derived(
