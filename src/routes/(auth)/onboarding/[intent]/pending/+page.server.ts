@@ -5,7 +5,7 @@
 
 import type { PageServerLoad } from './$types'
 import { redirect }            from '@sveltejs/kit'
-import { intentToDashboard }   from '../../+page.server'
+import { intentToDashboard }   from '$lib/features/onboarding/intents'
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const { supabase, user } = locals

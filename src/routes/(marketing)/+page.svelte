@@ -78,7 +78,7 @@
       title: "Locate a Matatu",
       description:
         "Select a route and instantly see nearby vehicles approaching your stage.",
-      link: "/app/dashboard",
+      link: "/product/features",
     },
     {
       icon: "routes",
@@ -218,8 +218,8 @@
           stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
         >
       </a>
-      <a href="/app/dashboard" class="btn-hero-secondary">
-        Try Live Web Tracker →
+      <a href="/product/routes" class="btn-hero-secondary">
+        Try Live Route Manager →
       </a>
     </div>
 

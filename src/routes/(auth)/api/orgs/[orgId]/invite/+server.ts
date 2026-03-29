@@ -1,4 +1,4 @@
-// src/routes/(auth)/admin/account/api/invite/+server.ts
+// src/routes/(auth)/org/orgId/api/invite/+server.ts
 //
 // Invite Management — Federated Governance (Production)
 //
