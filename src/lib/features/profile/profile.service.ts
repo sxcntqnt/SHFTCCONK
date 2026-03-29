@@ -114,37 +114,6 @@ export async function upsertProfile(
 // ── Core operations ────────────────────────────────────────────────────────────
 
 /**
- * Upsert the user's profile row.
- * Returns null on success, or an error message string on failure.
- */
-export async function upsertProfile(
-  supabase: SupabaseClient,
-  userId:   string,
-  input:    ProfileInput & { normalisedPhone: string },
-): Promise<string | null> {
-  const { error } = await supabase
-    .from('profiles')
-    .upsert(
-      {
-        id:           userId,
-        full_name:    input.fullName.trim(),
-        phone:        input.normalisedPhone,
-        company_name: input.companyName?.trim() || null,
-        website:      input.website?.trim()     || null,
-        updated_at:   new Date().toISOString(),
-      },
-      { onConflict: 'id' },
-    )
-
-  if (error) {
-    console.error('[profile.service] upsert error:', error)
-    return 'Failed to save profile. Please try again.'
-  }
-
-  return null
-}
-
-/**
  * Upsert desired org IDs into the user's pending actor_request payload.
  * Creates a new request if none exists; merges into the existing one if it does.
  */

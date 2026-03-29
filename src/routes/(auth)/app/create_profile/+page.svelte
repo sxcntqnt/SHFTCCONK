@@ -35,20 +35,28 @@
 
   let { data, form }: Props = $props()
   let { user, profile, organizations, linkedOrgIds } = data
-  let preferredVehicleType = []
-  let socialMediaLinks = []
 
-  // Role forwarded from onboarding — live URL param takes priority
+  // Role derived from URL or data
   let role = $derived(
     $page.url.searchParams.get("role") ?? data.role ?? "PASSENGER",
   )
 
-  // Form fields — prefer form return values after a failed submit
+  // --- Reactive Form State (Svelte 5 Runes) ---
   let loading = $state(false)
   let fullName = $state(form?.fullName ?? profile?.full_name ?? "")
   let phone = $state(form?.phone ?? profile?.phone ?? "")
   let companyName = $state(form?.companyName ?? profile?.company_name ?? "")
   let website = $state(form?.website ?? profile?.website ?? "")
+
+  // Additional Profile Enrichment State
+  let preferredVehicleType = $state<string[]>([])
+  let socialMediaLinks = $state("")
+  let profileImage = $state<FileList | null>(null) // Used with bind:files
+  let emergencyContacts = $state("")
+  let languagesSpoken = $state<string[]>([])
+  let workingHoursStart = $state("")
+  let workingHoursEnd = $state("")
+  let timeZone = $state("Africa/Nairobi")
 
   // Org selector
   let selectedOrgs = $state<Set<string>>(new Set(linkedOrgIds))
@@ -252,7 +260,7 @@
               type="file"
               accept="image/*"
               class="field-input"
-              bind:value={profileImage}
+              bind:files={profileImage}
             />
           </div>
 
