@@ -319,7 +319,7 @@
     {
       key: "dashboard",
       label: "Dashboard",
-      href: "/dashboard",
+      href: "/crew/dashboard",
       badge: () => 0,
       icon: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>`,
     },
@@ -503,7 +503,7 @@
           >
         </button>
         <nav class="breadcrumb">
-          <a href="/dashboard">Dashboard</a><span class="bc-sep">›</span>
+          <a href="/crew/dashboard">Dashboard</a><span class="bc-sep">›</span>
           <span class="bc-cur">Requests</span>
         </nav>
       </div>

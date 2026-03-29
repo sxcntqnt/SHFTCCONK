@@ -86,7 +86,8 @@
     </div>
 
     <div class="js-actions">
-      <a href="/dashboard" class="js-btn-primary">Go to dashboard</a>
+      <a href="/org/[orgId]/dashboard" class="js-btn-primary">Go to dashboard</a
+      >
       <a href="/org/join-sacco" class="js-btn-secondary"
         >Request another SACCO</a
       >

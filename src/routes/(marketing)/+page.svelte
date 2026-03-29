@@ -22,10 +22,10 @@
   const jsonldScript = `<script type="application/ld+json">${JSON.stringify(ldJson) + "<"}/script>`
 
   const ICONS: Record<IconKey, string> = {
-    tracking: "marker.png",
-    routes: "line-chart.svg",
-    notifications: "star.png",
-    analytics: "point.png",
+    tracking: "/icons/marker.png",
+    routes: "/icons/out.png",
+    notifications: "/icons/star.png",
+    analytics: "/icons/point.png",
   }
 
   export const MATATU_PARTNERS: readonly MatatuPartner[] = [
@@ -377,7 +377,7 @@
           </li>
         {/each}
       </ul>
-      <a href="/contact" class="btn-teal">
+      <a href="/contact_us" class="btn-teal">
         Request a Demo
         <svg
           width="14"
@@ -424,7 +424,7 @@
           stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
         >
       </a>
-      <a href="/contact" class="btn-hero-secondary"> Operator Demo → </a>
+      <a href="/contact_us" class="btn-hero-secondary"> Operator Demo → </a>
     </div>
 
     <p class="final-note">
