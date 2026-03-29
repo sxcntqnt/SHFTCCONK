@@ -69,7 +69,7 @@
         "SLA & dedicated account manager",
       ],
       cta: "Contact Sales",
-      href: "/contact",
+      href: "/contact_us",
     },
   ]
 

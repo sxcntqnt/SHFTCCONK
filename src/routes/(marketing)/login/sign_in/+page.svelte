@@ -174,7 +174,7 @@
       Sacco staff? <a href="/login/invite">Redeem your invitation code</a>
     </div>
     <div class="auth-footer-row">
-      Fleet owner not yet onboarded? <a href="/contact?type=partnership"
+      Fleet owner not yet onboarded? <a href="/contact_us?type=partnership"
         >Request access</a
       >
     </div>

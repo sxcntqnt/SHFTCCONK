@@ -292,7 +292,7 @@
         Real-time tracking, delay alerts, route analytics, and optimization
         tools built for Nairobi roads.
       </p>
-      <a href="/contact" class="btn-outline">
+      <a href="/contact_us" class="btn-outline">
         Request a Demo
         <svg
           width="14"
@@ -344,7 +344,7 @@
       <a href="/about">About Us</a>
       <a href="/blog">Blog</a>
       <a href="/careers">Careers</a>
-      <a href="/contact">Contact</a>
+      <a href="/contact_us">Contact</a>
       <a href="/press">Press</a>
     </div>
 
