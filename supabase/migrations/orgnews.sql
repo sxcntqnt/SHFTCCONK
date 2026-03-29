@@ -601,3 +601,20 @@ $$;
 create trigger hlf_queue_updated_at
   before update on public.hyperledger_enrollment_queue
   for each row execute function update_hlf_queue_updated_at();
+
+-- migrations/20260327000006_profiles_phone_plan.sql
+-- =========================================================
+-- Adds phone number to profiles (needed for M-Pesa STK push).
+-- Plan is derived from mpesa_customers.subscription_status —
+-- no separate plan column needed. This migration only adds phone.
+-- =========================================================
+
+alter table public.profiles
+  add column if not exists phone text;
+
+comment on column public.profiles.phone is
+  'E.164 format e.g. +254712345678. Used for M-Pesa STK push top-ups.';
+
+create index if not exists idx_profiles_phone
+  on public.profiles(phone)
+  where phone is not null;

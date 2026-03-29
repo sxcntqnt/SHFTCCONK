@@ -1,44 +1,81 @@
 // src/routes/(auth)/app/wallet/+page.server.ts
 //
-// Passenger wallet — top-up balance, pay for bookings, receive refunds.
+// Passenger wallet — top-up, booking payments, refunds.
 //
-// MONEY FLOWS IN:
-//   - M-Pesa STK Push top-ups (passenger loads credit)
-//   - Booking refunds (cancelled trips)
-//   - Cashback (future: loyalty programme)
+// MIGRATION:
+//   requirePassengerAccess(event) → userState check
+//   get(passengerCtx) → locals.userState directly
+//   profiles.phone → added via migration
 //
-// MONEY FLOWS OUT:
-//   - Booking payments (deducted at reservation time)
+// PLAN NUDGE:
+//   Free plan passengers must manually refresh their Fabric identity
+//   when certificates expire (annual). Subscribed passengers get
+//   automatic re-enrollment via the queue processor.
 //
-// No withdrawal — passenger wallet is for in-app spending only.
-// Balance lives in: profiles.wallet_balance_kes (or wallet_transactions table)
+// HYPERLEDGER ADDITION:
+//   Passenger's enrollment status shown — for identity assurance badge.
 
-import { redirect } from "@sveltejs/kit"
-import type { Actions, PageServerLoad } from "./$types"
-import { requirePassengerAccess } from "$lib/security/authGuard"
-import { get } from "svelte/store"
-import { passengerCtx } from "$lib/features/auth/contexts"
-import { processMpesaPush } from "$lib/server/mpesa-provider"
-import type { WalletTransaction, WalletSummary } from "$lib/features/wallet/wallet.types"
+import { redirect }                 from '@sveltejs/kit'
+import type { Actions, PageServerLoad } from './$types'
+import { processMpesaPush }         from '$lib/server/mpesa-provider'
+import type { WalletTransaction, WalletSummary } from '$lib/features/wallet/wallet.types'
+import { ACTOR_TYPES }              from '$lib/features/auth/contexts/context.template'
 
-export const load: PageServerLoad = async (event) => {
-  await requirePassengerAccess(event)
+export const load: PageServerLoad = async ({ locals }) => {
+  const { userState, supabase, user } = locals
 
-  const { supabase, session } = await event.parent()
-  const passenger = get(passengerCtx)
-  if (!passenger) redirect(302, "/app/dashboard")
+  // ── Gate ──────────────────────────────────────────────────────────────────
+  if (!userState || !user) throw redirect(303, '/login')
 
-  const profileId = session!.user.id
+  // Passengers and guests can access the wallet page
+  const passengerCtx = userState.activeContexts.find(
+    ctx =>
+      [ACTOR_TYPES.PASSENGER, ACTOR_TYPES.GUEST].includes(ctx.type as any)
+      && ctx.status === 'active'
+  )
+  if (!passengerCtx) throw redirect(303, '/onboarding')
 
-  // ── Wallet transactions ───────────────────────────────────────────────────
-  const { data: rows } = await supabase
-    .from("wallet_transactions")
-    .select("id, type, description, amount_kes, direction, status, mpesa_ref, counterpart, created_at")
-    .eq("profile_id", profileId)
-    .order("created_at", { ascending: false })
-    .limit(60)
+  const profileId = user.id
 
-  const transactions: WalletTransaction[] = (rows ?? []).map((r) => ({
+  // ── Parallel fetch ─────────────────────────────────────────────────────────
+  const [
+    txResult,
+    profileResult,
+    mpesaResult,
+    hlfResult,
+  ] = await Promise.all([
+    supabase
+      .from('wallet_transactions')
+      .select('id, type, description, amount_kes, direction, status, mpesa_ref, counterpart, created_at')
+      .eq('profile_id', profileId)
+      .order('created_at', { ascending: false })
+      .limit(60),
+
+    // Phone for STK push pre-fill
+    supabase
+      .from('profiles')
+      .select('phone')
+      .eq('id', profileId)
+      .maybeSingle(),
+
+    // Plan / subscription status from mpesa_customers
+    supabase
+      .from('mpesa_customers')
+      .select('subscription_status, is_minor_account, daily_limit, per_transaction_limit')
+      .eq('user_id', profileId)
+      .maybeSingle(),
+
+    // Hyperledger enrollment status for this passenger actor
+    supabase
+      .from('hyperledger_enrollment_queue')
+      .select('status, enrolled_at, fabric_user_id, last_error, attempts')
+      .eq('actor_id', passengerCtx.actorId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const transactions: WalletTransaction[] = (txResult.data ?? []).map(r => ({
     id:          r.id,
     type:        r.type,
     description: r.description,
@@ -50,73 +87,157 @@ export const load: PageServerLoad = async (event) => {
     createdAt:   r.created_at,
   }))
 
-  const completedIn  = transactions.filter((t) => t.direction === "in"  && t.status === "completed")
-  const completedOut = transactions.filter((t) => t.direction === "out" && t.status === "completed")
-  const pending      = transactions.filter((t) => t.status === "pending" || t.status === "processing")
+  const completedIn  = transactions.filter(t => t.direction === 'in'  && t.status === 'completed')
+  const completedOut = transactions.filter(t => t.direction === 'out' && t.status === 'completed')
+  const pending      = transactions.filter(t => t.status === 'pending' || t.status === 'processing')
 
   const summary: WalletSummary = {
-    availableKes:   completedIn.reduce((s, t) => s + t.amountKes, 0) - completedOut.reduce((s, t) => s + t.amountKes, 0),
-    pendingKes:     pending.reduce((s, t) => s + t.amountKes, 0),
-    totalEarnedKes: completedIn.reduce((s, t) => s + t.amountKes, 0),
+    availableKes:   completedIn.reduce((s, t)  => s + t.amountKes, 0)
+                  - completedOut.reduce((s, t) => s + t.amountKes, 0),
+    pendingKes:     pending.reduce((s, t)      => s + t.amountKes, 0),
+    totalEarnedKes: completedIn.reduce((s, t)  => s + t.amountKes, 0),
     totalSpentKes:  completedOut.reduce((s, t) => s + t.amountKes, 0),
-    currency:       "KES",
+    currency:       'KES',
   }
 
-  // Profile phone for pre-filling STK Push
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("phone")
-    .eq("id", profileId)
-    .maybeSingle()
+  // ── Plan status ────────────────────────────────────────────────────────────
+  const mpesaData    = mpesaResult.data
+  const isSubscribed = mpesaData?.subscription_status === 'active'
+  const isMinor      = mpesaData?.is_minor_account ?? false
+
+  // ── Hyperledger identity status ────────────────────────────────────────────
+  // Passengers don't get Fabric enrolled (passenger intent = kyc_light only,
+  // no chaincode role). This field will be null for most passengers.
+  // Kept for future: if passenger gets a crew/operator role later.
+  const hlfStatus = hlfResult.data
+    ? {
+        status:      hlfResult.data.status,
+        enrolledAt:  hlfResult.data.enrolled_at,
+        fabricId:    hlfResult.data.fabric_user_id,
+      }
+    : null
 
   return {
     transactions,
     summary,
-    mpesaPhone: profile?.phone ?? null,
-    isVerified: passenger.isVerified,
+    mpesaPhone:  profileResult.data?.phone ?? null,
+    isVerified:  passengerCtx.type === ACTOR_TYPES.PASSENGER,
+    isSubscribed,
+    isMinor,
+    dailyLimit:          mpesaData?.daily_limit          ?? null,
+    perTransactionLimit: mpesaData?.per_transaction_limit ?? null,
+    hlfStatus,
+    // Nudge: free plan users must manually refresh Fabric identity on expiry
+    showPlanNudge: !isSubscribed,
   }
 }
 
 export const actions: Actions = {
   topup: async ({ request, locals }) => {
-    const { session } = await locals.safeGetSession()
-    if (!session) redirect(303, "/login/sign_in")
+    const { user } = locals
+    if (!user) throw redirect(303, '/login')
 
     const supabase  = locals.supabase
     const formData  = await request.formData()
-    const amountKes = Number(formData.get("amount"))
-    const phone     = (formData.get("phone") as string)?.trim() ?? ""
+    const amountKes = Number(formData.get('amount'))
+    const phone     = (formData.get('phone') as string)?.trim() ?? ''
 
     if (!amountKes || amountKes < 50)
-      return { error: "Minimum top-up is KES 50", success: false }
+      return { error: 'Minimum top-up is KES 50', success: false }
     if (amountKes > 100_000)
-      return { error: "Maximum single top-up is KES 100,000", success: false }
+      return { error: 'Maximum single top-up is KES 100,000', success: false }
     if (!phone.match(/^\+254[17]\d{8}$/))
-      return { error: "Enter a valid Kenyan phone (+254...)", success: false }
+      return { error: 'Enter a valid Kenyan phone (+254...)', success: false }
+
+    // M-PESA GO per-transaction limit check
+    const { data: mpesaData } = await supabase
+      .from('mpesa_customers')
+      .select('per_transaction_limit, is_minor_account')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (mpesaData?.is_minor_account && mpesaData.per_transaction_limit) {
+      if (amountKes > mpesaData.per_transaction_limit) {
+        return {
+          error:   `Amount exceeds your M-PESA GO per-transaction limit of KES ${mpesaData.per_transaction_limit.toLocaleString()}`,
+          success: false,
+        }
+      }
+    }
 
     try {
       const response = await processMpesaPush(
-        phone, amountKes, "WALLET_TOPUP", "Wallet top-up",
+        phone, amountKes, 'WALLET_TOPUP', 'Wallet top-up',
       )
 
-      // Record pending top-up — confirmed by STK callback
-      await supabase.from("wallet_transactions").insert({
-        profile_id:   session.user.id,
-        type:         "top_up",
-        description:  "M-Pesa wallet top-up",
-        amount_kes:   amountKes,
-        direction:    "in",
-        status:       "pending",
-        mpesa_ref:    response.CheckoutRequestID,
+      await supabase.from('wallet_transactions').insert({
+        profile_id:  user.id,
+        type:        'top_up',
+        description: 'M-Pesa wallet top-up',
+        amount_kes:  amountKes,
+        direction:   'in',
+        status:      'pending',
+        mpesa_ref:   response.CheckoutRequestID,
       })
 
       return {
         success:           true,
         checkoutRequestId: response.CheckoutRequestID,
-        message:           "Check your phone and enter your M-Pesa PIN.",
+        message:           'Check your phone and enter your M-Pesa PIN.',
       }
-    } catch (err) {
-      return { error: "Top-up failed. Please try again.", success: false }
+    } catch {
+      return { error: 'Top-up failed. Please try again.', success: false }
     }
+  },
+
+  // Manual identity refresh for free plan passengers
+  refreshIdentity: async ({ locals }) => {
+    const { user, userState, supabaseServiceRole } = locals
+    if (!user || !userState) throw redirect(303, '/login')
+
+    const passengerActorCtx = userState.activeContexts.find(
+      ctx => ctx.type === ACTOR_TYPES.PASSENGER && ctx.status === 'active'
+    )
+    if (!passengerActorCtx) return { error: 'No active passenger actor.', success: false }
+
+    // Check subscription — subscribed users don't need manual refresh
+    const { data: mpesa } = await supabaseServiceRole
+      .from('mpesa_customers')
+      .select('subscription_status')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (mpesa?.subscription_status === 'active') {
+      return { error: 'Subscribed users refresh automatically.', success: false }
+    }
+
+    // Check for existing pending/processing refresh
+    const { data: existing } = await supabaseServiceRole
+      .from('hyperledger_enrollment_queue')
+      .select('id, status')
+      .eq('actor_id', passengerActorCtx.actorId)
+      .in('status', ['pending', 'retrying', 'processing'])
+      .maybeSingle()
+
+    if (existing) {
+      return { error: 'A refresh is already in progress.', success: false }
+    }
+
+    // Queue a fresh enrollment — processor handles it
+    const { error: queueError } = await supabaseServiceRole
+      .from('hyperledger_enrollment_queue')
+      .insert({
+        actor_id:   passengerActorCtx.actorId,
+        profile_id: user.id,
+        intent:     'passenger',
+        event_name: 'enroll_crew_member',  // passenger re-enrollment event
+        status:     'pending',
+      })
+
+    if (queueError) {
+      return { error: 'Failed to queue refresh. Please try again.', success: false }
+    }
+
+    return { success: true, message: 'Identity refresh queued. This usually takes a few minutes.' }
   },
 }
