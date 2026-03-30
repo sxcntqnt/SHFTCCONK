@@ -428,7 +428,7 @@
     </div>
 
     <p class="final-note">
-      No account needed to start tracking. Instant access.
+      Register for an account to start tracking. Instant access.
     </p>
   </div>
 </section>

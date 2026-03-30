@@ -346,6 +346,7 @@
       <a href="/careers">Careers</a>
       <a href="/contact_us">Contact</a>
       <a href="/press">Press</a>
+      <a href="/cookies">Cookies</a>
     </div>
 
     <!-- Legal -->
@@ -354,26 +355,31 @@
       <a href="/privacy">Privacy Policy</a>
       <a href="/terms">Terms of Service</a>
       <a href="/security">Security</a>
+      <a href="/legal/gdpr">Legal</a>
+      <a href="/legal/gdpr/structure">More Info</a>
+    </div>
+    <!-- Resources -->
+    <div class="footer-col">
       <h6 style="margin-top:28px">Resources</h6>
       <a href="/docs">Documentation</a>
       <a href="/help">Help Center</a>
       <a href="/community">Community</a>
     </div>
-  </div>
 
-  <!-- Bottom bar -->
-  <div
-    class="footer-bottom"
-    style="border-top: 1px solid var(--rim); padding: 22px 0;"
-  >
-    <p>
-      © {new Date().getFullYear()}
-      {WebsiteName}. Designed for smarter urban mobility in Nairobi.
-    </p>
-    <div class="footer-bottom-links">
-      <a href="/privacy">Privacy</a>
-      <a href="/terms">Terms</a>
-      <a href="/security">Security</a>
+    <!-- Bottom bar -->
+    <div
+      class="footer-bottom"
+      style="border-top: 1px solid var(--rim); padding: 22px 0;"
+    >
+      <p>
+        © {new Date().getFullYear()}
+        {WebsiteName}. Designed for smarter urban mobility in Nairobi.
+      </p>
+      <div class="footer-bottom-links">
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/security">Security</a>
+      </div>
     </div>
   </div>
 </footer>
