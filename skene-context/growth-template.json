@@ -1,0 +1,442 @@
+{
+  "title": "FLAM Matatu Fleet PLG Template",
+  "description": "A Product-Led Growth lifecycle template for FLAM, a Kenyan matatu fleet management SaaS platform. Tracks the full operator journey from organic discovery through SACCO onboarding, GPS activation, operational engagement, monetization conversion, and long-term retention \u2014 spanning ORG_CHAIRs, drivers, conductors, regulators, and urban planners across the B2B, B2G, and marketplace segments.",
+  "version": "1.0.0",
+  "framework": "FLAM-PLG",
+  "lifecycles": [
+    {
+      "name": "DISCOVERY",
+      "description": "The Signal",
+      "order_index": 1,
+      "milestones": [
+        {
+          "title": "Blog or SEO Content Visited",
+          "description": "A matatu operator, SACCO manager, or fleet owner lands on a FLAM blog post (e.g., NTSA compliance, empty return trips, GPS tracking) via organic search, WhatsApp share, or social link \u2014 indicating an active pain point match.",
+          "order_index": 1
+        },
+        {
+          "title": "Pricing Page Viewed",
+          "description": "Prospect navigates to the pricing page, signalling intent to evaluate the platform commercially. This is a high-intent signal indicating the visitor is considering a paid subscription.",
+          "order_index": 2
+        },
+        {
+          "title": "Lead Magnet or Demo Request Submitted",
+          "description": "Prospect submits their contact details in exchange for a data report download (e.g., 'Kenya Matatu Route Performance Report') or requests a product demo, entering the nurture funnel.",
+          "order_index": 3
+        },
+        {
+          "title": "Signup Initiated",
+          "description": "Prospect begins the account creation flow, selecting their primary intent (passenger, crew, operator, owner, or org). This is the top-of-funnel conversion event marking the transition from anonymous visitor to identified lead.",
+          "order_index": 4
+        },
+        {
+          "title": "Intent Role Selected",
+          "description": "New user completes the intent routing step, declaring their role in the matatu ecosystem. This determines which growth loop they enter and which onboarding checklist is surfaced.",
+          "order_index": 5
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Blog-to-Signup Conversion Rate",
+          "howToMeasure": "Divide the number of new account signups attributed to blog UTM sources by the total number of blog unique visitors in the same period. Track via PostHog with UTM parameters on all blog CTAs.",
+          "healthyBenchmark": "> 2.5%"
+        },
+        {
+          "name": "Pricing Page Visit-to-Signup Rate",
+          "howToMeasure": "Divide the number of users who begin the signup flow within the same session as a pricing page visit by the total number of pricing page unique visitors. Measure via PostHog funnel: pricing_page_viewed \u2192 signup_initiated.",
+          "healthyBenchmark": "> 15%"
+        },
+        {
+          "name": "Intent Completion Rate",
+          "howToMeasure": "Divide the number of users who successfully select an intent and are routed to a dashboard by the total number of users who initiate the signup flow. Capture intent_selected and intent_routed events in PostHog.",
+          "healthyBenchmark": "> 80%"
+        },
+        {
+          "name": "WhatsApp Content Share Rate",
+          "howToMeasure": "Track the number of WhatsApp share button clicks on blog posts divided by total blog page views. Use PostHog click events on share buttons with whatsapp_share_clicked event name.",
+          "healthyBenchmark": "> 1.5%"
+        }
+      ]
+    },
+    {
+      "name": "ONBOARDING",
+      "description": "The Trust",
+      "order_index": 2,
+      "milestones": [
+        {
+          "title": "SACCO Organisation Joined or Claimed",
+          "description": "An ORG_CHAIR or operator successfully completes the join-sacco flow \u2014 either claiming ownership of a pre-seeded SACCO organisation or submitting a join request. This is the primary top-of-funnel activation path that anchors all downstream organisational growth.",
+          "order_index": 1
+        },
+        {
+          "title": "Invitation Token Redeemed",
+          "description": "A new crew member (driver, conductor, route supervisor, or dispatcher) redeems an invitation token sent by an ORG_CHAIR, completing account creation with a pre-assigned role. Measures the effectiveness of the viral invite loop.",
+          "order_index": 2
+        },
+        {
+          "title": "Actor Request Approved by Admin",
+          "description": "A pending role request (ORG_CHAIR claim, operator join, or crew invite) is approved by an admin, unlocking the user's role-specific dashboard and enabling full platform access. Approval latency is a direct churn risk.",
+          "order_index": 3
+        },
+        {
+          "title": "Role-Specific Onboarding Checklist Started",
+          "description": "The newly activated user engages with the guided onboarding checklist for their role (e.g., Operator: Add vehicle \u2192 Pair GPS tracker \u2192 Add driver \u2192 View first trip). Checklist engagement is a leading indicator of activation success.",
+          "order_index": 4
+        },
+        {
+          "title": "First Vehicle Added to Organisation",
+          "description": "An ORG_CHAIR or fleet owner adds the first vehicle record to their organisation, populating the fleet roster and enabling GPS tracker pairing. This is the first tangible platform action that creates persistent data.",
+          "order_index": 5
+        },
+        {
+          "title": "GPS Tracker Paired to Vehicle",
+          "description": "An operator completes the BLE or QR-based device pairing flow, linking a physical GPS tracker to a vehicle record. This is the critical hardware-to-ledger activation step that enables live tracking and trip telemetry.",
+          "order_index": 6
+        }
+      ],
+      "metrics": [
+        {
+          "name": "SACCO Join Request Approval Latency (p50 / p95)",
+          "howToMeasure": "Measure the time in hours between join_request_submitted and actor_request_approved events for each user. Compute p50 and p95 percentiles in PostHog or DuckDB. Track per admin to identify individual bottlenecks.",
+          "healthyBenchmark": "p50 < 4 hours, p95 < 24 hours"
+        },
+        {
+          "name": "Invite Token Redemption Rate",
+          "howToMeasure": "Divide the number of invite tokens redeemed (token_redeemed event) by the total number of invite tokens issued (token_created event) within the same 72-hour window. Track via PostHog server-side events.",
+          "healthyBenchmark": "> 60%"
+        },
+        {
+          "name": "Onboarding Checklist Completion Rate",
+          "howToMeasure": "Divide the number of users who complete all checklist steps for their role by the total number of users who start the checklist. Track checklist_step_completed events per role type in PostHog with a funnel analysis.",
+          "healthyBenchmark": "> 45%"
+        },
+        {
+          "name": "Vehicle-to-GPS Pairing Rate",
+          "howToMeasure": "Divide the number of vehicles that have a successfully paired GPS tracker (device_paired event) by the total number of vehicles added to the platform. Measure per organisation cohort.",
+          "healthyBenchmark": "> 70%"
+        },
+        {
+          "name": "Time from Signup to First Vehicle Added",
+          "howToMeasure": "Measure the elapsed time in hours between account_created and first vehicle_added event per ORG_CHAIR user. Compute the median across all new operator signups in a given week.",
+          "healthyBenchmark": "< 48 hours"
+        }
+      ]
+    },
+    {
+      "name": "ACTIVATION",
+      "description": "The Magic Moment",
+      "order_index": 3,
+      "milestones": [
+        {
+          "title": "First Live GPS Ping Received",
+          "description": "The platform receives the first real-time GPS position update from a paired tracker via the SSE stream, confirming the hardware-to-ledger chain is complete. This is the primary 'magic moment' \u2014 operators see their vehicle moving on the MapLibre map for the first time.",
+          "order_index": 1
+        },
+        {
+          "title": "First Trip Recorded on Hyperledger Ledger",
+          "description": "A complete trip event (departure to arrival) is committed to the Hyperledger Fabric ledger, generating the first immutable compliance record. This validates the platform's core value proposition for compliance-sensitive operators and regulators.",
+          "order_index": 2
+        },
+        {
+          "title": "Finance Dashboard Viewed with Real Data",
+          "description": "An ORG_CHAIR or fleet owner opens the Org Finance & Route Intelligence Dashboard and sees actual revenue, route performance, and reconciliation data \u2014 not empty states. This is the moment the platform transitions from a setup tool to a decision-making tool.",
+          "order_index": 3
+        },
+        {
+          "title": "First Route Alert or Geofence Configured",
+          "description": "An operator configures their first route alert or geofence boundary, demonstrating proactive engagement with the platform's monitoring capabilities. This action signals intent to use the platform operationally rather than passively.",
+          "order_index": 4
+        },
+        {
+          "title": "First Driver or Conductor Crew Member Activated",
+          "description": "At least one driver or conductor in the organisation completes onboarding and is marked active, enabling trip assignment and crew management. This signals the organisation is operationally live on the platform.",
+          "order_index": 5
+        }
+      ],
+      "metrics": [
+        {
+          "name": "GPS Activation Rate",
+          "howToMeasure": "Divide the number of organisations that receive at least one GPS ping within 7 days of their first vehicle being added by the total number of organisations that added a vehicle. Track via PostHog group analytics with first_gps_ping event.",
+          "healthyBenchmark": "> 65%"
+        },
+        {
+          "name": "Time from Device Pairing to First GPS Ping",
+          "howToMeasure": "Measure the elapsed time in minutes between device_paired and first_gps_ping_received events per vehicle. A long gap indicates tracker configuration issues or connectivity problems.",
+          "healthyBenchmark": "< 10 minutes"
+        },
+        {
+          "name": "Finance Dashboard Engagement Rate (Week 1)",
+          "howToMeasure": "Divide the number of ORG_CHAIR users who view the finance dashboard within their first 7 days by the total number of ORG_CHAIR users activated in the same cohort. Track finance_dashboard_viewed PostHog event with user role filter.",
+          "healthyBenchmark": "> 55%"
+        },
+        {
+          "name": "Activation Completeness Score",
+          "howToMeasure": "Score each new organisation on a 5-point scale: +1 for first GPS ping, +1 for first trip on ledger, +1 for finance dashboard viewed, +1 for route alert configured, +1 for crew member activated. Track average score per weekly cohort.",
+          "healthyBenchmark": ">= 4 out of 5 within 14 days"
+        },
+        {
+          "name": "Empty State Rate at Day 7",
+          "howToMeasure": "Count the percentage of organisations that open the finance or operations dashboard but see zero data (no trips, no pings) after 7 days. High empty state rate signals a broken activation path.",
+          "healthyBenchmark": "< 15%"
+        }
+      ]
+    },
+    {
+      "name": "ENGAGEMENT",
+      "description": "The Habit",
+      "order_index": 4,
+      "milestones": [
+        {
+          "title": "Daily Active Operations Dashboard Session",
+          "description": "A DISPATCHER, ROUTE_SUPERVISOR, or OPERATIONS_MANAGER logs in and actively uses the real-time operations store \u2014 viewing live incident counts, delayed trips, and the opsSummary KPIs \u2014 on at least 5 of 7 days in a week.",
+          "order_index": 1
+        },
+        {
+          "title": "Weekly Finance Digest Email Opened",
+          "description": "An ORG_CHAIR opens the weekly SACCO health email digest (sent via Resend) containing top-line KPIs \u2014 total collected, on-time %, top route, fleet uptime vs. prior week. Email open is a re-engagement signal for operators who haven't logged in.",
+          "order_index": 2
+        },
+        {
+          "title": "Anomaly Alert Acknowledged Within SLA",
+          "description": "An operator or dispatcher acknowledges a critical incident or revenue anomaly alert (e.g., vehicle 40% below target, GPS tracker silent) within the defined response SLA. Measures operational responsiveness and alert utility.",
+          "order_index": 3
+        },
+        {
+          "title": "Live View Link Shared via WhatsApp",
+          "description": "An ORG_CHAIR or fleet owner generates and shares a read-only live tracking URL with a SACCO stakeholder, investor, or regulator via WhatsApp. This is both an engagement signal and a viral acquisition trigger.",
+          "order_index": 4
+        },
+        {
+          "title": "Compliance Export or Report Downloaded",
+          "description": "A COMPLIANCE_OFFICER, REGULATOR, or PLANNER downloads a Hyperledger audit trail, NTSA-formatted compliance export, or route adherence report. Signals high-value B2G engagement and validates the compliance module's retention power.",
+          "order_index": 5
+        },
+        {
+          "title": "GPS Stream Active for 30+ Consecutive Days",
+          "description": "An organisation maintains continuous GPS ping activity (at least one ping per vehicle per day) for 30 consecutive days, indicating the platform is embedded in daily operations rather than used episodically.",
+          "order_index": 6
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Weekly Active Organisation Rate (WAO)",
+          "howToMeasure": "Divide the number of organisations with at least one dashboard session in a given week by the total number of activated organisations. Track via PostHog group analytics with weekly session events segmented by org_id.",
+          "healthyBenchmark": "> 70%"
+        },
+        {
+          "name": "Operations Dashboard Daily Active Rate",
+          "howToMeasure": "Divide the number of unique DISPATCHER or ROUTE_SUPERVISOR users who open the operations dashboard on a given day by the total number of activated users in those roles. Measure as a 7-day rolling average.",
+          "healthyBenchmark": "> 60% on weekdays"
+        },
+        {
+          "name": "Weekly Digest Email Open Rate",
+          "howToMeasure": "Divide the number of weekly digest emails opened by the total number sent in the same batch. Track via Resend open tracking, segmented by subscription tier and organisation size.",
+          "healthyBenchmark": "> 35%"
+        },
+        {
+          "name": "Critical Incident Time-to-Acknowledge",
+          "howToMeasure": "Measure the elapsed time in minutes between a critical incident being created in the operations store and the first acknowledge action by any user in the same organisation. Track incident_acknowledged PostHog event with incident_severity=CRITICAL filter.",
+          "healthyBenchmark": "< 15 minutes"
+        },
+        {
+          "name": "GPS Stream Continuity Rate",
+          "howToMeasure": "For each active vehicle, calculate the percentage of expected operating hours (06:00\u201322:00 EAT) during which at least one GPS ping was received. Average across all vehicles per organisation per week.",
+          "healthyBenchmark": "> 85% of operating hours"
+        }
+      ]
+    },
+    {
+      "name": "MONETISATION",
+      "description": "The Commitment",
+      "order_index": 5,
+      "milestones": [
+        {
+          "title": "Free Tier Feature Limit Encountered",
+          "description": "A free-tier user attempts an action that exceeds their plan limits (e.g., adding a 3rd vehicle, creating a 4th route alert, configuring a 6th geofence) and is intercepted by the FeatureGate component, which surfaces a contextual upgrade modal with an M-Pesa STK push CTA.",
+          "order_index": 1
+        },
+        {
+          "title": "M-Pesa STK Push Initiated",
+          "description": "A user initiates a subscription checkout, triggering an M-Pesa STK push to their registered phone number. This is the conversion intent event \u2014 the user has decided to pay and is completing the payment step.",
+          "order_index": 2
+        },
+        {
+          "title": "First Subscription Payment Confirmed",
+          "description": "The M-Pesa STK push is confirmed and the subscription is activated, upgrading the organisation to a paid tier (Starter, Pro, or Business). This is the primary revenue conversion event.",
+          "order_index": 3
+        },
+        {
+          "title": "Annual Plan Selected",
+          "description": "A user selects an annual subscription variant (starter_annual, pro_annual, or business_annual) at the 20% discounted rate, committing to a 12-month relationship and improving platform LTV and cash flow.",
+          "order_index": 4
+        },
+        {
+          "title": "Referral Link Generated and Shared",
+          "description": "An existing ORG_CHAIR generates a referral link from their org dashboard and shares it via WhatsApp with another SACCO operator. Measures the activation of the peer referral loop within the tight-knit matatu operator network.",
+          "order_index": 5
+        },
+        {
+          "title": "Post-Trip Passenger Tip Submitted",
+          "description": "A passenger submits a tip via the post-trip tipping screen using M-Pesa quick-select amounts (KES 20, 50, or 100), activating the platform's secondary revenue stream and generating an 80% platform share on the transaction.",
+          "order_index": 6
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Free-to-Paid Conversion Rate",
+          "howToMeasure": "Divide the number of organisations that complete their first M-Pesa subscription payment by the total number of organisations that have been activated (received first GPS ping) in the same monthly cohort.",
+          "healthyBenchmark": "> 18%"
+        },
+        {
+          "name": "M-Pesa STK Push Success Rate",
+          "howToMeasure": "Divide the number of STK push confirmations received by the total number of STK push requests initiated in the same billing period. Track mpesa_stk_initiated and mpesa_stk_confirmed events server-side.",
+          "healthyBenchmark": "> 75%"
+        },
+        {
+          "name": "Feature Gate Upgrade Conversion Rate",
+          "howToMeasure": "Divide the number of users who complete a subscription payment within 24 hours of seeing a FeatureGate upgrade modal by the total number of users who were shown the modal. Track feature_gate_shown and subscription_activated events in PostHog.",
+          "healthyBenchmark": "> 12%"
+        },
+        {
+          "name": "Annual Plan Adoption Rate",
+          "howToMeasure": "Divide the number of new subscriptions on annual plans by the total number of new subscriptions in the same period. Track plan_interval=annual in the subscription_activated PostHog event.",
+          "healthyBenchmark": "> 25% of new paid subscribers"
+        },
+        {
+          "name": "Referral-Attributed Paid Conversion Rate",
+          "howToMeasure": "Divide the number of referred organisations that complete their first M-Pesa subscription payment by the total number of referral links that were clicked and resulted in a signup. Track referral_link_clicked \u2192 signup_completed \u2192 subscription_activated funnel in PostHog.",
+          "healthyBenchmark": "> 30%"
+        }
+      ]
+    },
+    {
+      "name": "RETENTION",
+      "description": "The Stickiness",
+      "order_index": 6,
+      "milestones": [
+        {
+          "title": "Second Consecutive Monthly Renewal Completed",
+          "description": "A paying organisation successfully renews their M-Pesa subscription for a second consecutive month, confirming the initial payment was not a one-time experiment and establishing a recurring revenue relationship.",
+          "order_index": 1
+        },
+        {
+          "title": "Dunning Recovery Sequence Completed",
+          "description": "An organisation whose M-Pesa STK push failed on renewal is successfully recovered through the 3-step dunning flow (in-UI retry \u2192 Day 1 SMS \u2192 Day 3 Resend email), completing payment before the grace period expires.",
+          "order_index": 2
+        },
+        {
+          "title": "Plan Upgrade from Starter to Pro or Business",
+          "description": "An existing paying subscriber upgrades to a higher tier, triggered either by a contextual FeatureGate prompt, a route optimisation suggestion card in the finance dashboard, or a 'your SACCO vs. platform average' benchmarking insight in the weekly digest.",
+          "order_index": 3
+        },
+        {
+          "title": "Compliance Module Add-On Purchased",
+          "description": "A REGULATOR, COMPLIANCE_OFFICER, or PLANNER role user (or their institutional buyer) purchases the Compliance Module add-on, activating NTSA-formatted exports, Hyperledger audit trails, and route adherence reporting. Signals B2G revenue conversion.",
+          "order_index": 4
+        },
+        {
+          "title": "Organisation Active at 90-Day Mark",
+          "description": "An organisation maintains at least weekly dashboard activity, active GPS streams, and an uninterrupted subscription through the 90-day cohort milestone. This is the primary long-term retention health signal.",
+          "order_index": 5
+        },
+        {
+          "title": "Multi-SACCO Fleet Owner Expands to Second Organisation",
+          "description": "A fleet owner or enterprise operator who manages multiple SACCOs creates or joins a second organisation on the platform, expanding their footprint and deepening platform dependency.",
+          "order_index": 6
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Month-1 to Month-2 Subscription Renewal Rate",
+          "howToMeasure": "Divide the number of organisations that successfully renew their subscription in month 2 by the total number of organisations that paid in month 1. Exclude annual plan subscribers from denominator. Track subscription_renewed PostHog event.",
+          "healthyBenchmark": "> 85%"
+        },
+        {
+          "name": "Involuntary Churn Recovery Rate (Dunning)",
+          "howToMeasure": "Divide the number of failed M-Pesa renewal attempts that are successfully recovered through the dunning sequence (any of the 3 steps) by the total number of failed renewal attempts in the same period.",
+          "healthyBenchmark": "> 40% of failed payments recovered"
+        },
+        {
+          "name": "Net Revenue Retention (NRR)",
+          "howToMeasure": "Calculate NRR as: (Starting MRR + Expansion MRR from upgrades and add-ons - Contraction MRR from downgrades - Churned MRR) / Starting MRR \u00d7 100. Measure monthly using subscription event data in DuckDB.",
+          "healthyBenchmark": "> 110%"
+        },
+        {
+          "name": "90-Day Organisation Retention Rate",
+          "howToMeasure": "Divide the number of organisations that are still active (at least one dashboard session and active subscription) at day 90 by the total number of organisations that completed activation (first GPS ping) in the same cohort.",
+          "healthyBenchmark": "> 70%"
+        },
+        {
+          "name": "Subscriber Churn Rate (Monthly)",
+          "howToMeasure": "Divide the number of organisations that cancel or fail to renew their subscription in a given month by the total number of active subscribers at the start of that month. Track subscription_cancelled and subscription_lapsed PostHog events.",
+          "healthyBenchmark": "< 5% monthly"
+        }
+      ]
+    },
+    {
+      "name": "EXPANSION",
+      "description": "The Flywheel",
+      "order_index": 7,
+      "milestones": [
+        {
+          "title": "SACCO Referral Results in New Paid Subscriber",
+          "description": "A referred organisation \u2014 introduced by an existing ORG_CHAIR via a WhatsApp-shared referral link \u2014 completes their first M-Pesa subscription payment, triggering a billing credit reward for the referring operator. This closes the peer referral flywheel loop.",
+          "order_index": 1
+        },
+        {
+          "title": "Hyperledger Ledger Depth Milestone Reached",
+          "description": "An organisation accumulates enough immutable trip and GPS events on the Hyperledger Fabric ledger to qualify for a compliance-grade audit export, creating a data lock-in effect and reinforcing the upgrade value of the Compliance Module.",
+          "order_index": 2
+        },
+        {
+          "title": "Transit Data API Access Provisioned for Planner or Regulator",
+          "description": "A PLANNER, REGULATOR, or urban research institution is provisioned access to the anonymised Transit Intelligence API or data export product, activating the B2G data monetisation revenue stream at KES 20,000\u201350,000/month.",
+          "order_index": 3
+        },
+        {
+          "title": "Live View Link Generates New Account Signup",
+          "description": "A non-user who receives a WhatsApp-shared read-only live tracking link views the GPS map, is prompted to create an account, and completes signup \u2014 demonstrating the viral acquisition loop driven by the platform's core magic moment.",
+          "order_index": 4
+        },
+        {
+          "title": "Platform Benchmarking Data Drives Upgrade Decision",
+          "description": "An ORG_CHAIR sees a 'your SACCO vs. platform average' benchmarking insight in the weekly digest or finance dashboard \u2014 showing their route performance or revenue collection below the platform median \u2014 and upgrades to Pro to access route-level drill-down analytics.",
+          "order_index": 5
+        }
+      ],
+      "metrics": [
+        {
+          "name": "Referral Viral Coefficient (K-Factor)",
+          "howToMeasure": "Multiply the average number of referral links sent per existing ORG_CHAIR by the referral-to-paid-signup conversion rate. A K-factor above 1.0 indicates self-sustaining viral growth. Track via PostHog referral funnel with referral_sent and referral_converted events.",
+          "healthyBenchmark": "> 0.5 (target > 1.0 for viral growth)"
+        },
+        {
+          "name": "Live View Link-to-Signup Conversion Rate",
+          "howToMeasure": "Divide the number of new account signups that originate from a live_view_link_visited session by the total number of unique live view link visits. Track live_view_visited and signup_completed events in PostHog with referral source attribution.",
+          "healthyBenchmark": "> 8%"
+        },
+        {
+          "name": "B2G Revenue as % of Total MRR",
+          "howToMeasure": "Divide the total monthly recurring revenue from REGULATOR, PLANNER, and COMPLIANCE_OFFICER role subscriptions and Compliance Module add-ons by total platform MRR. Track by subscription plan type in DuckDB.",
+          "healthyBenchmark": "> 15% of total MRR within 12 months"
+        },
+        {
+          "name": "Expansion MRR from Upgrades and Add-Ons",
+          "howToMeasure": "Sum the incremental MRR generated from plan upgrades (Starter \u2192 Pro, Pro \u2192 Business), seat expansions, Compliance Module add-ons, and API access provisioning in a given month. Track subscription_upgraded and addon_purchased PostHog events.",
+          "healthyBenchmark": "> 20% of new MRR comes from expansion"
+        },
+        {
+          "name": "Ledger Depth per Active Organisation",
+          "howToMeasure": "Calculate the average number of Hyperledger Fabric committed trip and GPS events per active organisation per month. Higher ledger depth correlates with stronger compliance lock-in and lower churn probability. Query via Hyperledger Fabric event logs aggregated in DuckDB.",
+          "healthyBenchmark": "> 500 ledger events per organisation per month"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "framework_description": "The FLAM PLG Framework maps the complete value journey for Kenyan matatu fleet operators, SACCO managers, drivers, and regulators \u2014 from organic discovery through GPS activation, operational habit formation, M-Pesa monetisation, subscription retention, and viral expansion. It is purpose-built for a B2B/B2G TransportTech SaaS with hardware dependencies (GPS trackers), blockchain compliance requirements (Hyperledger Fabric), and a mobile-first African market context where M-Pesa is the primary payment rail and WhatsApp is the dominant distribution channel.",
+    "usage": "Use this template to instrument PostHog funnels, define DuckDB cohort queries, prioritise engineering sprints, and run weekly PLG reviews across the seven lifecycle stages. Each milestone maps to a trackable PostHog event. Each metric has a defined measurement method and healthy benchmark to guide data-driven decisions. Assign lifecycle ownership to product, growth, and ops leads for accountability.",
+    "category": "TransportTech / B2B SaaS / B2G / Africa / Fleet Management / FinTech",
+    "created_at": "2026-03-30"
+  }
+}

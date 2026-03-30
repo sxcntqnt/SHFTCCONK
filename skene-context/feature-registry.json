@@ -1,0 +1,583 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-30T14:42:32.336543",
+  "features": [
+    {
+      "feature_name": "Organization Invitation Token System",
+      "feature_id": "organization_invitation_token_system",
+      "file_path": "src/routes/(marketing)/login/invite/[token]/+page.server.ts",
+      "detected_intent": "Enables viral growth through secure role-based invitations. Operators and org chairs can invite members to join their SACCO organization with pre-assigned roles, driving network expansion through trusted referrals.",
+      "growth_pillars": [
+        "onboarding",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.92,
+      "entry_point": "/login/invite/[token]",
+      "growth_potential": [
+        "Add PostHog tracking for invite funnel: token_viewed → account_created → role_activated to measure conversion rates",
+        "Implement bulk invite capability so ORG_CHAIRs can onboard entire crews at once",
+        "Add invite expiry extension flow — currently hard-fails at 72h with no recovery path, losing warm leads",
+        "Send a welcome email sequence post-redemption to accelerate new member activation",
+        "Surface invite acceptance rate in the admin dashboard as a SACCO health metric",
+        "Add SMS-based invite delivery for users without email access (critical in Kenyan market)"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "SACCO Join & ORG_CHAIR Claim Flow",
+      "feature_id": "sacco_join_org_chair_claim_flow",
+      "file_path": "src/routes/(auth)/org/join-sacco/+page.server.ts",
+      "detected_intent": "Facilitates operator onboarding by allowing users to self-select and claim ownership of pre-seeded SACCO organizations. This is the primary top-of-funnel activation path for the ORG_CHAIR role, which anchors the entire organizational growth loop.",
+      "growth_pillars": [
+        "onboarding"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.88,
+      "entry_point": "/org/join-sacco",
+      "growth_potential": [
+        "Add PostHog event on join request submission to measure drop-off between org selection and form completion",
+        "Implement email/SMS notification to admin when a new join request arrives to reduce approval latency",
+        "Add a status page at /org/join-status so applicants can track their pending request without contacting support",
+        "Pre-populate org selection via URL param (?org_id=) from marketing campaigns or QR codes at SACCO offices",
+        "Add a 'request new SACCO' path for operators whose organization isn't listed, capturing demand signal",
+        "Show estimated approval time on the join-success page to set expectations and reduce support tickets"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Admin Actor Requests Review & Approval",
+      "feature_id": "admin_actor_requests_review_approval",
+      "file_path": "src/routes/(auth)/admin/actor_requests/+page.svelte",
+      "detected_intent": "Drives user activation by enabling admins to approve pending role requests. Approval latency directly determines how quickly new operators, drivers, and conductors become active — making this a critical retention lever. Slow approval is a churn trigger.",
+      "growth_pillars": [
+        "onboarding",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.85,
+      "entry_point": "/admin/actor_requests",
+      "growth_potential": [
+        "Add push/email notification to admin when queue depth exceeds a threshold (e.g. >5 pending requests)",
+        "Track time-to-approval in PostHog to surface bottlenecks — p50/p95 approval latency as a platform health KPI",
+        "Add bulk approve capability for common patterns (e.g. approve all pending org_member requests for a specific SACCO)",
+        "Implement auto-approval rules for low-risk request types (e.g. passenger role) to reduce admin burden",
+        "Send approval confirmation SMS/email to the applicant immediately on approval to drive re-engagement",
+        "Add a rejection reason template library so admins can reject with helpful guidance rather than leaving users stranded"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Org Finance & Route Intelligence Dashboard",
+      "feature_id": "org_finance_route_intelligence_dashboard",
+      "file_path": "src/routes/(auth)/org/[orgId]/finance/+page.svelte",
+      "detected_intent": "Drives retention and upgrade conversion by surfacing revenue variance, route performance, and reconciliation data. The more value operators see in this dashboard, the stronger the case for maintaining a paid subscription. Acts as the primary data-driven decision tool for ORG_CHAIRs.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.87,
+      "entry_point": "/org/[orgId]/finance",
+      "growth_potential": [
+        "Add PostHog pageview and interaction events to measure which dashboard sections drive the most engagement",
+        "Implement weekly email digest of key metrics (total collected, variance, top route) to drive re-engagement without requiring login",
+        "Add a 'route optimization suggestion' card when variance is consistently negative — creates upgrade urgency",
+        "Surface a comparison view (this week vs last week) to make improvement visible and reinforce platform value",
+        "Add CSV/PDF export for reconciliation data — compliance reporting is a key retention driver for SACCO managers",
+        "Add anomaly alerts (e.g. 'Vehicle KDG 123X collected 40% below target today') via SMS to drive daily active use"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Admin Platform Revenue Wallet Dashboard",
+      "feature_id": "admin_platform_revenue_wallet_dashboard",
+      "file_path": "src/routes/(auth)/admin/wallet/+page.server.ts",
+      "detected_intent": "Enables data-driven monetization decisions by surfacing platform revenue, M-Pesa subscription counts, B2C payouts, and Hyperledger enrollment health in one view. Supports identifying revenue leakage and subscriber growth trends.",
+      "growth_pillars": [
+        "retention",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.82,
+      "entry_point": "/admin/wallet",
+      "growth_potential": [
+        "Add month-over-month subscriber growth trend chart to make subscription growth visible at a glance",
+        "Surface churn signal: track mpesa_customers who had active subscriptions last month but not this month",
+        "Add revenue forecasting based on current subscriber count and average booking volume",
+        "Implement alert when available balance drops below a configurable threshold (payout risk management)",
+        "Add cohort analysis: revenue per organization to identify highest-value SACCOs for account management focus",
+        "Track exhausted Hyperledger enrollments as a compliance risk metric with admin notification"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Onboarding Intent Routing System",
+      "feature_id": "onboarding_intent_routing_system",
+      "file_path": "src/lib/features/onboarding/intents.ts",
+      "detected_intent": "Facilitates user onboarding by routing new users to the correct dashboard based on their declared intent (passenger, crew, operator, owner, org). This is the branching point that determines which growth loop a new user enters.",
+      "growth_pillars": [
+        "onboarding"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.79,
+      "entry_point": "intentToDashboard()",
+      "growth_potential": [
+        "Add PostHog capture on intent selection to measure which roles are most commonly chosen and where drop-off occurs",
+        "Implement a guided onboarding checklist per intent type (e.g. 'operator' checklist: add vehicle → add driver → view dashboard)",
+        "Add progress persistence so users who abandon mid-onboarding can resume where they left off",
+        "A/B test intent label copy — 'operator' vs 'fleet manager' may resonate differently with target users",
+        "Add an 'I'm not sure' path that asks qualifying questions and recommends an intent, reducing wrong-role registrations",
+        "Track intent-to-activation rate: what % of users who select 'operator' actually complete their first GPS ping"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Server-Side PostHog Analytics Client",
+      "feature_id": "server_side_posthog_analytics_client",
+      "file_path": "src/lib/server/posthog.ts",
+      "detected_intent": "Enables data-driven decisions by providing a server-side analytics singleton for capturing events across SvelteKit server functions. Foundation for all product analytics, funnel tracking, and feature flag evaluation.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.91,
+      "entry_point": "getPostHogClient()",
+      "growth_potential": [
+        "Instrument the invite redemption flow (token_viewed, account_created, role_activated) to measure invite conversion",
+        "Add feature flags via PostHog to enable A/B testing of onboarding copy, upgrade prompts, and alert messaging",
+        "Implement group analytics to track SACCO-level metrics (vehicles added, GPS pings, payments processed) not just user-level",
+        "Add session recording opt-in for ORG_CHAIR dashboard to identify UX friction in the finance and fleet views",
+        "Track the join-sacco funnel server-side: page_loaded → org_selected → form_submitted → request_approved",
+        "Set up PostHog cohorts for 'activated operators' (emitted first GPS ping) vs 'dormant operators' to power targeted re-engagement"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Real-Time Operations Store with Incident Tracking",
+      "feature_id": "real_time_operations_store_with_incident_tracking",
+      "file_path": "src/lib/features/operations/operations.store.ts",
+      "detected_intent": "Drives daily active engagement for OPERATIONS_MANAGER, DISPATCHER, and ROUTE_SUPERVISOR roles by providing real-time situational awareness. Urgent incidents and delayed trips create natural daily return behavior. The opsSummary KPI object is the core engagement hook.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.83,
+      "entry_point": "initOperations() / opsSummary store",
+      "growth_potential": [
+        "Add push notifications for critical incidents (severity=CRITICAL) to drive immediate re-engagement even when dashboard is closed",
+        "Implement a daily operations summary email (trips completed, incidents resolved, on-time %) to create habitual return visits",
+        "Add gamification: 'streak' tracking for days with zero critical incidents to reinforce good operational behavior",
+        "Surface the urgentIncidents count as a badge on the navigation icon to create persistent engagement pull",
+        "Add shift handover notes feature so outgoing dispatchers can leave context for incoming shifts — increases stickiness",
+        "Track time-to-acknowledge for critical incidents in PostHog to measure operational responsiveness as a platform health metric"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "GPS SSE Stream Client",
+      "feature_id": "gps_sse_stream_client",
+      "file_path": "src/lib/features/fleet/services/gps/gps.client.ts",
+      "detected_intent": "Drives engagement by delivering real-time GPS position updates to fleet dashboards via Server-Sent Events. Live tracking is the core 'magic moment' for operators — seeing their vehicles move on a map is the primary value demonstration that drives retention.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [
+        "gps_broadcast_ledger_depth_flywheel"
+      ],
+      "confidence_score": 0.86,
+      "entry_point": "connectGpsStream() / initGpsClient()",
+      "growth_potential": [
+        "Add connection quality indicator (connected/reconnecting/disconnected) in the UI so operators know when they're seeing live vs stale data",
+        "Implement geofence breach alerts via the SSE stream — vehicle leaving approved route triggers immediate notification",
+        "Track stream connection duration in PostHog to measure 'live tracking session length' as a core engagement metric",
+        "Add offline replay mode: when SSE disconnects, show last known positions with a timestamp so operators aren't left with a blank map",
+        "Surface GPS ping frequency per vehicle in the fleet dashboard to help operators identify trackers that need maintenance",
+        "Add a 'share live view' link that generates a read-only tracking URL for SACCO stakeholders who don't have accounts"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Blog Content & SEO Engine",
+      "feature_id": "blog_content_seo_engine",
+      "file_path": "src/routes/(marketing)/blog/posts.ts",
+      "detected_intent": "Drives organic acquisition through SEO-optimized content targeting Nairobi matatu operators, SACCO managers, and transit researchers. The blog covers operational pain points (empty return trips, NTSA compliance, GPS tracking) that map directly to the platform's value proposition.",
+      "growth_pillars": [
+        "onboarding"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.78,
+      "entry_point": "/blog",
+      "growth_potential": [
+        "Add structured data (JSON-LD Article schema) to blog posts to improve Google rich snippet eligibility",
+        "Implement email capture with a 'Get the quarterly data report' lead magnet mentioned in the empty-return-trips post",
+        "Add category-based RSS feeds so transit researchers and operators can subscribe to relevant content streams",
+        "Create a 'Request a demo' CTA at the end of each operations/data post to convert readers to leads",
+        "Add social sharing buttons optimized for WhatsApp (dominant in Kenya) to enable viral content distribution",
+        "Track blog-to-signup conversion in PostHog with UTM parameters to identify which content categories drive the most operator signups"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Vehicle Device Pairing Flow",
+      "feature_id": "vehicle_device_pairing_flow",
+      "file_path": "src/routes/(auth)/org/[orgId]/(devices)/pair/+page.svelte",
+      "detected_intent": "Facilitates operator onboarding by guiding users through GPS tracker pairing via BLE or QR scan. This is the physical activation step that connects real-world vehicles to the platform — completing the hardware-to-ledger chain.",
+      "growth_pillars": [
+        "onboarding",
+        "engagement"
+      ],
+      "loop_ids": [
+        "gps_broadcast_ledger_depth_flywheel"
+      ],
+      "confidence_score": 0.81,
+      "entry_point": "/org/[orgId]/pair",
+      "growth_potential": [
+        "Add a post-pairing celebration state with 'Your first GPS ping will appear within 60 seconds' to set expectations and create anticipation",
+        "Implement a pairing guide video or animated walkthrough for operators unfamiliar with BLE scanning",
+        "Add QR code generation in the admin panel so pre-printed QR stickers can ship with hardware — reducing pairing friction",
+        "Track pairing success/failure rate in PostHog to identify which tracker models or environments cause problems",
+        "Send a confirmation SMS to the operator's phone when the first GPS ping is received post-pairing — closes the activation loop",
+        "Add a 'pair another tracker' shortcut that pre-fills org context to make bulk fleet onboarding faster"
+      ],
+      "first_seen_at": "2026-03-30T14:42:32.336543",
+      "last_seen_at": "2026-03-30T14:42:32.336543",
+      "status": "active"
+    },
+    {
+      "feature_name": "Organization Invitation System",
+      "feature_id": "organization_invitation_system",
+      "file_path": "src/routes/(auth)/api/orgs/[orgId]/invite/+server.ts",
+      "detected_intent": "Enables viral/referral growth by allowing org admins to invite new members via email with role pre-assignment. Each invite creates a new user account, expanding the platform's user base organically through existing organizations.",
+      "growth_pillars": [
+        "onboarding",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.95,
+      "entry_point": "POST /api/orgs/[orgId]/invite",
+      "growth_potential": [
+        "Add bulk invite support (CSV upload) to accelerate org onboarding",
+        "Implement invite tracking analytics (sent, opened, redeemed rates) in PostHog",
+        "Add referral incentives — reward the inviter when invitee completes onboarding",
+        "Send reminder emails for pending invites approaching expiry (currently 7 days)",
+        "Add invite link sharing UI so admins can copy/share link without email",
+        "Track invite funnel conversion in PostHog (invite_sent → invite_redeemed events already exist)",
+        "Reduce invite expiry friction by extending from 7 to 14 days or adding one-click resend"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Invite Redemption & Account Activation Flow",
+      "feature_id": "invite_redemption_account_activation_flow",
+      "file_path": "src/routes/(marketing)/login/invite/[token]/+page.svelte",
+      "detected_intent": "Drives user onboarding conversion by guiding invited users through a multi-step account activation flow with role/org confirmation and password setup. PostHog tracking of invite_redeemed events enables funnel analysis.",
+      "growth_pillars": [
+        "onboarding",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.95,
+      "entry_point": "/login/invite/[token]",
+      "growth_potential": [
+        "Add a welcome/orientation screen after activation showing the user their dashboard and key features",
+        "Implement a guided first-steps checklist post-activation (e.g. 'Complete your profile', 'Explore your dashboard')",
+        "A/B test the confirm vs set-password two-step flow against a single-page version",
+        "Add social proof elements on the invite page (e.g. 'Join 4,200+ members at [Org Name]')",
+        "Send a welcome email sequence post-activation with onboarding tips",
+        "Track password strength distribution to identify friction points",
+        "Add Google/OAuth sign-in as alternative to password for faster activation"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Tiered Pricing & Subscription System",
+      "feature_id": "tiered_pricing_subscription_system",
+      "file_path": "src/routes/(marketing)/pricing/+page.svelte",
+      "detected_intent": "Supports monetization through a 5-tier pricing model (Free → Enterprise) with M-Pesa STK push payments and Stripe integration. The free tier drives top-of-funnel acquisition while paid tiers generate revenue.",
+      "growth_pillars": [
+        "retention",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.92,
+      "entry_point": "/pricing",
+      "growth_potential": [
+        "Add annual billing toggle with 20% discount to increase LTV and reduce churn",
+        "Implement a trial period (14-day Pro trial) to reduce upgrade friction",
+        "Add a plan comparison calculator showing ROI for fleet operators",
+        "Implement upgrade prompts in-app when users hit free tier limits (e.g. 3 route alerts)",
+        "Add social proof to pricing page (customer logos, testimonials, user count)",
+        "Create a 'Most Popular' or usage-based recommendation engine to guide plan selection",
+        "Add exit-intent offer on pricing page for hesitant visitors",
+        "Implement dunning emails for failed M-Pesa payments to recover failed transactions"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "M-Pesa Payment Integration",
+      "feature_id": "m_pesa_payment_integration",
+      "file_path": "src/lib/server/mpesa-provider.ts",
+      "detected_intent": "Enables monetization through native M-Pesa STK Push (customer payments), B2C payouts (driver/conductor tips), and B2B settlements (SACCO revenue share). Critical for the Kenyan market where M-Pesa is the dominant payment method.",
+      "growth_pillars": [
+        "retention",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.93,
+      "entry_point": "processMpesaPush(), sendB2CPayment(), sendB2BPayment()",
+      "growth_potential": [
+        "Add M-Pesa payment status webhooks with real-time UI feedback to reduce abandonment",
+        "Implement automatic retry logic for failed STK pushes with user notification",
+        "Add M-Pesa till number as alternative payment method for users without STK",
+        "Create a payment history dashboard for users to track their transactions",
+        "Add tip prompting UI in the passenger app post-ride to drive B2C tip revenue",
+        "Implement subscription auto-renewal reminders via SMS before M-Pesa charge",
+        "Add payment analytics dashboard showing conversion rates by plan tier"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "PostHog Analytics & Error Tracking",
+      "feature_id": "posthog_analytics_error_tracking",
+      "file_path": "src/hooks.client.ts",
+      "detected_intent": "Enables data-driven decisions through PostHog event tracking (client + server-side) and Sentry error monitoring with session replay. Foundation for measuring growth funnels, feature adoption, and user behavior.",
+      "growth_pillars": [
+        "onboarding",
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.9,
+      "entry_point": "init() in hooks.client.ts, getPostHogClient() in src/lib/server/posthog.ts",
+      "growth_potential": [
+        "Implement feature flags in PostHog to enable A/B testing of onboarding flows",
+        "Add funnel tracking for key conversion paths: signup → invite → activation → first payment",
+        "Create a PostHog dashboard for key growth metrics (DAU, activation rate, churn)",
+        "Add user property tracking for plan tier to enable cohort analysis by subscription",
+        "Implement heatmaps on pricing and landing pages to identify drop-off points",
+        "Track feature adoption rates per actor type to identify underutilized features",
+        "Set up retention cohort analysis to measure 7-day and 30-day retention by signup source",
+        "Add error rate alerting to Sentry for payment flows to catch revenue-impacting bugs"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Community Forum & Social Hub",
+      "feature_id": "community_forum_social_hub",
+      "file_path": "src/routes/(marketing)/community/+page.svelte",
+      "detected_intent": "Drives viral growth and engagement through a community forum for Nairobi transit riders and operators. User-generated route tips and discussions create network effects and organic SEO content.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.82,
+      "entry_point": "/community",
+      "growth_potential": [
+        "Implement actual forum functionality (currently appears to be a marketing/placeholder page with static data)",
+        "Add gamification: badges, reputation scores, and leaderboards for top contributors",
+        "Implement email digest of top community posts to drive re-engagement",
+        "Add 'Share this tip' social sharing buttons to generate viral loops",
+        "Create a route tip submission flow that feeds directly into the platform's data",
+        "Add push notifications for replies to user's posts to drive DAU",
+        "Implement verified contributor program to reward power users and reduce churn",
+        "Add SEO optimization for community posts to drive organic discovery"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Real-Time Fleet Tracking with GPS",
+      "feature_id": "real_time_fleet_tracking_with_gps",
+      "file_path": "src/routes/(auth)/org/[orgId]/track/+page.svelte",
+      "detected_intent": "Drives engagement and retention for fleet operators by providing live vehicle tracking with GPS telemetry, 3D map visualization, and real-time position updates via SSE. Core value proposition for paid tier upgrades.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.88,
+      "entry_point": "/org/[orgId]/track",
+      "growth_potential": [
+        "Add geofence alerts when vehicles enter/exit defined zones to drive daily active use",
+        "Implement trip history playback to provide post-shift analytics for operators",
+        "Add driver behavior scoring (speeding, harsh braking) to increase stickiness",
+        "Create shareable tracking links for vehicle owners to monitor their assets",
+        "Add push/SMS notifications for GPS signal loss to create urgency",
+        "Implement fleet utilization reports (idle time, route adherence) to justify paid plan",
+        "Add ETA predictions for passengers based on live GPS data"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Admin Dashboard with KPI Monitoring",
+      "feature_id": "admin_dashboard_with_kpi_monitoring",
+      "file_path": "src/routes/(auth)/admin/dashboard/+page.svelte",
+      "detected_intent": "Enables data-driven decisions for platform admins by surfacing key metrics (pending requests, user count, org count, critical audit events) and providing quick-action workflows for actor request approval.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.85,
+      "entry_point": "/admin/dashboard",
+      "growth_potential": [
+        "Add growth metrics to the dashboard: new signups per day, activation rate, MRR",
+        "Implement trend charts (7-day, 30-day) for user and org growth",
+        "Add revenue dashboard showing M-Pesa transaction volume and Stripe MRR",
+        "Create automated alerts for anomalies (spike in failed payments, churn risk)",
+        "Add cohort retention table to identify which onboarding paths retain best",
+        "Implement one-click bulk approval for actor requests to reduce admin bottleneck",
+        "Add invite effectiveness metrics (invites sent vs redeemed by org)"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Stripe Subscription Management",
+      "feature_id": "stripe_subscription_management",
+      "file_path": "src/subscription_helpers.server.ts",
+      "detected_intent": "Supports monetization by managing Stripe customer creation, subscription fetching, and plan matching. Enables the platform to offer recurring billing alongside M-Pesa for international or card-paying users.",
+      "growth_pillars": [
+        "retention",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.88,
+      "entry_point": "getOrCreateCustomerId(), fetchSubscription()",
+      "growth_potential": [
+        "Add subscription upgrade/downgrade flow in the user account settings",
+        "Implement trial-to-paid conversion emails triggered at day 7, 12, and 14 of trial",
+        "Add subscription pause feature to reduce cancellations (alternative to cancel)",
+        "Implement win-back campaigns for churned subscribers via Resend email",
+        "Add usage-based billing triggers when users exceed free tier limits",
+        "Create a subscription analytics endpoint feeding into the admin dashboard",
+        "Add promo code support for growth campaigns and partnerships"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Transactional Email System",
+      "feature_id": "transactional_email_system",
+      "file_path": "src/lib/mailer.ts",
+      "detected_intent": "Supports user engagement and retention through templated transactional emails via Resend. Includes unsubscribe management and email verification checks to maintain deliverability.",
+      "growth_pillars": [
+        "onboarding",
+        "retention",
+        "engagement"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.83,
+      "entry_point": "sendUserEmail(), sendTemplatedEmail(), sendAdminEmail()",
+      "growth_potential": [
+        "Implement a welcome email sequence (day 0, 3, 7) for new user onboarding",
+        "Add weekly digest emails for operators showing fleet performance summaries",
+        "Create re-engagement emails for users inactive for 14+ days",
+        "Implement payment failure dunning sequence (day 1, 3, 7 after failed payment)",
+        "Add feature announcement emails when new capabilities are released",
+        "Create invite reminder emails for pending invites (3 days before expiry)",
+        "Add email preference center beyond binary unsubscribe to reduce opt-outs"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "Seat Reservation System",
+      "feature_id": "seat_reservation_system",
+      "file_path": "src/routes/(auth)/app/reserve/[matatuId]/+page.server.ts",
+      "detected_intent": "Drives engagement and monetization by enabling passengers to reserve seats on specific matatus. Creates a direct revenue stream (KES 19/seat reservation fee) and increases platform stickiness through utility.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.87,
+      "entry_point": "/app/reserve/[matatuId]",
+      "growth_potential": [
+        "Add push notifications when reserved matatu is approaching the boarding stage",
+        "Implement a 'Reserve Again' quick action for repeat routes to drive habitual use",
+        "Add social sharing of reservations ('I'm taking KBZ 123 at 7:30am — join me')",
+        "Create a reservation history page to encourage repeat bookings",
+        "Add loyalty points or rewards for frequent reservations to drive retention",
+        "Implement group booking (reserve multiple seats) to increase transaction value",
+        "Add cancellation flow with partial refund to reduce friction and trust barriers"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    },
+    {
+      "feature_name": "In-App Chat System",
+      "feature_id": "in_app_chat_system",
+      "file_path": "src/lib/features/chat/components/ChatArea.svelte",
+      "detected_intent": "Drives engagement and retention by enabling real-time communication between platform users (drivers, conductors, operators, passengers). Creates network effects and increases daily active usage.",
+      "growth_pillars": [
+        "engagement",
+        "retention"
+      ],
+      "loop_ids": [],
+      "confidence_score": 0.8,
+      "entry_point": "/app/chat",
+      "growth_potential": [
+        "Add push notifications for new messages to drive DAU",
+        "Implement group chats for org-wide announcements (e.g. SACCO broadcasts to all drivers)",
+        "Add read receipts and delivery confirmations to improve communication reliability",
+        "Create predefined quick-reply templates for common driver/conductor communications",
+        "Add file/image sharing for incident reporting (photos of accidents, breakdowns)",
+        "Implement message search to make chat history more useful",
+        "Add chatbot integration for common passenger queries (route info, ETAs)"
+      ],
+      "first_seen_at": "2026-03-30T13:53:56.945089",
+      "last_seen_at": "2026-03-30T13:53:56.945089",
+      "status": "archived"
+    }
+  ],
+  "growth_loops": [
+    {
+      "loop_id": "gps_broadcast_ledger_depth_flywheel",
+      "name": "GPS Broadcast Path & Ledger Depth Flywheel",
+      "linked_feature_id": "real_time_fleet_tracking_with_gps"
+    }
+  ]
+}

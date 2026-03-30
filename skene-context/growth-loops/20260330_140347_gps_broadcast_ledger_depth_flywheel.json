@@ -1,0 +1,435 @@
+{
+  "loop_id": "gps_broadcast_ledger_depth_flywheel",
+  "name": "GPS Broadcast Path & Ledger Depth Flywheel",
+  "description": "Drives operator activation and retention by establishing the GPS broadcast path as the core value delivery mechanism. Zero-auth driver PWA enables immediate GPS ping emission on account creation, triggering ledger genesis events on Hyperledger Fabric. V/T ratio instrumentation surfaces fleet coverage health in PostHog, while Hour-4 and Hour-24 SMS nudges (Upstash Redis delayed jobs) recover accounts that have not yet emitted a first ping. As ledger history accumulates, the compliance-framed free-tier gate (30-day cap with loss-aversion prompt) converts operators to paid plans via M-Pesa STK push. The flywheel compounds: more GPS pings → deeper ledger history → stronger compliance narrative → higher upgrade conversion → more vehicles onboarded → more GPS pings.",
+  "linked_feature": "Real-Time Fleet Tracking with GPS",
+  "linked_feature_id": "real_time_fleet_tracking_with_gps",
+  "growth_pillars": [
+    "onboarding",
+    "engagement",
+    "retention"
+  ],
+  "requirements": {
+    "files": [
+      {
+        "path": "apps/driver-pwa/src/routes/+page.svelte",
+        "purpose": "Root page of the zero-auth driver PWA. Initialises Geolocation API watch, renders connection status, queues pings to IndexedDB on connectivity loss, and flushes queue on reconnect. Cell tower fallback flag is set when accuracy >= 50m.",
+        "required": true,
+        "checks": [
+          {
+            "type": "contains",
+            "pattern": "navigator.geolocation.watchPosition",
+            "description": "File must use the Geolocation API watchPosition to stream GPS coordinates continuously"
+          },
+          {
+            "type": "contains",
+            "pattern": "IndexedDB",
+            "description": "File must reference IndexedDB for offline ping queuing"
+          },
+          {
+            "type": "contains",
+            "pattern": "cell_tower_fallback",
+            "description": "File must set or pass the cell_tower_fallback flag when GPS accuracy is >= 50m"
+          },
+          {
+            "type": "contains",
+            "pattern": "flushPingQueue",
+            "description": "File must call flushPingQueue to drain IndexedDB on reconnect"
+          }
+        ]
+      },
+      {
+        "path": "apps/driver-pwa/svelte.config.js",
+        "purpose": "SvelteKit configuration using the static adapter to produce a sub-200KB PWA bundle suitable for 3G delivery.",
+        "required": true,
+        "checks": [
+          {
+            "type": "contains",
+            "pattern": "@sveltejs/adapter-static",
+            "description": "Config must use the static adapter to enable zero-server PWA deployment"
+          }
+        ]
+      },
+      {
+        "path": "apps/driver-pwa/src/lib/pingQueue.ts",
+        "purpose": "IndexedDB-backed ping queue. Persists GPS ping payloads when offline and exposes a flush function that POSTs all queued pings to the ingest endpoint in order on reconnect.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "enqueuePing",
+            "description": "Function enqueuePing must exist to persist a ping payload to IndexedDB"
+          },
+          {
+            "type": "function_exists",
+            "pattern": "flushPingQueue",
+            "description": "Function flushPingQueue must exist to drain IndexedDB and POST pings to the server"
+          },
+          {
+            "type": "contains",
+            "pattern": "indexedDB.open",
+            "description": "File must open an IndexedDB database for offline storage"
+          }
+        ]
+      },
+      {
+        "path": "src/routes/api/gps/ping/+server.ts",
+        "purpose": "GPS ping ingest endpoint. Validates device token, writes the ping to the trip_events PostgreSQL table, and enqueues a Hyperledger Fabric write job. Cancels any pending activation nudge jobs on first ping for the org.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "POST",
+            "description": "Exported POST handler must exist to receive GPS ping payloads"
+          },
+          {
+            "type": "contains",
+            "pattern": "trip_events",
+            "description": "File must write to the trip_events table in PostgreSQL"
+          },
+          {
+            "type": "contains",
+            "pattern": "writeTripEvent",
+            "description": "File must enqueue or call writeTripEvent for Hyperledger Fabric persistence"
+          },
+          {
+            "type": "contains",
+            "pattern": "device_token",
+            "description": "File must validate the device_token from the incoming request"
+          },
+          {
+            "type": "contains",
+            "pattern": "cancelNudgeJobs",
+            "description": "File must call cancelNudgeJobs to cancel pending SMS nudges on first ping"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/server/fabric/writeTripEvent.ts",
+        "purpose": "Hyperledger Fabric event writer. Maps a GPS ping payload to a ledger transaction stamped with vehicle_id, route_corridor, timestamp, and accuracy_flag, then submits it to the Fabric network.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "writeTripEvent",
+            "description": "Function writeTripEvent must exist to submit a GPS ping as a Fabric ledger transaction"
+          },
+          {
+            "type": "contains",
+            "pattern": "vehicle_id",
+            "description": "File must stamp the ledger transaction with vehicle_id"
+          },
+          {
+            "type": "contains",
+            "pattern": "route_corridor",
+            "description": "File must stamp the ledger transaction with route_corridor"
+          },
+          {
+            "type": "contains",
+            "pattern": "accuracy_flag",
+            "description": "File must include the accuracy_flag in the ledger transaction payload"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/server/analytics/vehicleCoverage.ts",
+        "purpose": "V/T ratio computation module. Runs a DuckDB query over trip_events per vehicle per day against expected_trip_windows, computes the ratio, and emits a PostHog vehicle_vt_ratio_updated event on each compute cycle.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "computeVTRatio",
+            "description": "Function computeVTRatio must exist to calculate the V/T ratio per vehicle per day"
+          },
+          {
+            "type": "contains",
+            "pattern": "vehicle_vt_ratio_updated",
+            "description": "File must emit the vehicle_vt_ratio_updated PostHog event on each compute cycle"
+          },
+          {
+            "type": "contains",
+            "pattern": "expected_trip_windows",
+            "description": "File must query expected_trip_windows to compute the denominator of the V/T ratio"
+          },
+          {
+            "type": "contains",
+            "pattern": "duckdb",
+            "description": "File must use DuckDB to query trip_events for V/T ratio computation"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/server/jobs/gpsActivationNudge.ts",
+        "purpose": "Upstash Redis delayed job manager for GPS activation SMS nudges. Enqueues Hour-4 and Hour-24 nudge jobs at org signup. Cancels both jobs on first GPS ping received for the org.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "enqueueActivationNudges",
+            "description": "Function enqueueActivationNudges must exist to schedule Hour-4 and Hour-24 SMS jobs at signup"
+          },
+          {
+            "type": "function_exists",
+            "pattern": "cancelNudgeJobs",
+            "description": "Function cancelNudgeJobs must exist to cancel pending nudge jobs on first GPS ping"
+          },
+          {
+            "type": "contains",
+            "pattern": "Upstash",
+            "description": "File must use Upstash Redis client for delayed job scheduling"
+          },
+          {
+            "type": "contains",
+            "pattern": "T+4",
+            "description": "File must schedule the Hour-4 nudge job"
+          },
+          {
+            "type": "contains",
+            "pattern": "T+24",
+            "description": "File must schedule the Hour-24 nudge job"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/components/FreeTierLedgerGate.svelte",
+        "purpose": "Compliance-framed free-tier gate UI component. Queries ledger_event_count and days_until_cap, renders a loss-aversion upgrade prompt showing trip event count and KES compliance protection estimate, and initiates the M-Pesa STK push upgrade flow.",
+        "required": true,
+        "checks": [
+          {
+            "type": "contains",
+            "pattern": "ledger_event_count",
+            "description": "Component must display or bind to ledger_event_count from the operator's ledger stats"
+          },
+          {
+            "type": "contains",
+            "pattern": "days_until_cap",
+            "description": "Component must display or bind to days_until_cap to surface urgency"
+          },
+          {
+            "type": "contains",
+            "pattern": "mpesa-upgrade",
+            "description": "Component must link to or call the M-Pesa upgrade endpoint to initiate STK push"
+          },
+          {
+            "type": "contains",
+            "pattern": "KES",
+            "description": "Component must display the KES compliance protection estimate in the upgrade prompt"
+          }
+        ]
+      },
+      {
+        "path": "src/routes/api/billing/mpesa-upgrade/+server.ts",
+        "purpose": "M-Pesa STK push upgrade endpoint. Pre-populates the request with ledger stats, fires the Daraja STK push, and handles idempotency via an Upstash Redis key scoped to operator_id + plan_id.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "POST",
+            "description": "Exported POST handler must exist to receive upgrade requests and trigger STK push"
+          },
+          {
+            "type": "contains",
+            "pattern": "operator_id",
+            "description": "File must scope the idempotency key to operator_id"
+          },
+          {
+            "type": "contains",
+            "pattern": "plan_id",
+            "description": "File must include plan_id in the idempotency key"
+          },
+          {
+            "type": "contains",
+            "pattern": "daraja",
+            "description": "File must call the Daraja API to initiate the STK push"
+          },
+          {
+            "type": "contains",
+            "pattern": "ledger_event_count",
+            "description": "File must pre-populate the STK push request with ledger stats for context"
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "file": "apps/driver-pwa/src/lib/pingQueue.ts",
+        "name": "enqueuePing",
+        "required": true,
+        "signature": "enqueuePing(ping: GpsPingPayload): Promise<void>",
+        "logic": "Accepts a GpsPingPayload object containing latitude, longitude, accuracy, timestamp, device_token, vehicle_id, and cell_tower_fallback flag. Opens the 'ping_queue' IndexedDB object store and adds the payload as a new record with an auto-incremented key. If IndexedDB is unavailable, logs a warning and attempts an immediate POST to /api/gps/ping as a fallback. Returns a resolved Promise on success or rejects with an error on IndexedDB write failure."
+      },
+      {
+        "file": "apps/driver-pwa/src/lib/pingQueue.ts",
+        "name": "flushPingQueue",
+        "required": true,
+        "signature": "flushPingQueue(): Promise<{ flushed: number; failed: number }>",
+        "logic": "Opens the 'ping_queue' IndexedDB object store and reads all records in insertion order. For each record, POSTs the GpsPingPayload to /api/gps/ping with the device_token in the Authorization header. On a 2xx response, deletes the record from IndexedDB. On failure, leaves the record intact and increments the failed counter. Returns an object with flushed (number of successfully sent pings) and failed (number of pings that could not be delivered). Should be called whenever the online event fires on the window."
+      },
+      {
+        "file": "src/routes/api/gps/ping/+server.ts",
+        "name": "POST",
+        "required": true,
+        "signature": "POST({ request }: RequestEvent): Promise<Response>",
+        "logic": "Parses the JSON body to extract latitude, longitude, accuracy, timestamp, device_token, vehicle_id, and cell_tower_fallback. Validates device_token against the devices table in PostgreSQL; returns 401 if invalid. Inserts a row into trip_events with all ping fields plus org_id resolved from the device record. If this is the first ping for the org (no prior trip_events rows for org_id), calls cancelNudgeJobs(org_id) and emits a PostHog 'first_gps_ping_received' event. Enqueues a Hyperledger Fabric write job by calling writeTripEvent with the ping payload. Returns 200 with { success: true, trip_event_id } on success, or 500 with an error message on failure."
+      },
+      {
+        "file": "src/lib/server/fabric/writeTripEvent.ts",
+        "name": "writeTripEvent",
+        "required": true,
+        "signature": "writeTripEvent(ping: GpsPingPayload & { trip_event_id: string; org_id: string; route_corridor: string }): Promise<{ tx_id: string }>",
+        "logic": "Connects to the Hyperledger Fabric gateway using the configured MSP identity and channel. Constructs a ledger transaction payload with fields: trip_event_id, vehicle_id, org_id, route_corridor, latitude, longitude, accuracy, accuracy_flag (boolean: accuracy < 50m), timestamp, and cell_tower_fallback. Submits the transaction to the 'TripEventContract' chaincode via the submitTransaction method. On success, returns { tx_id } where tx_id is the Fabric transaction ID. On failure, throws an error with the Fabric error details so the caller can retry via the job queue. Does not swallow errors — the job queue handles retry logic."
+      },
+      {
+        "file": "src/lib/server/analytics/vehicleCoverage.ts",
+        "name": "computeVTRatio",
+        "required": true,
+        "signature": "computeVTRatio(vehicle_id: string, date: string, org_id: string): Promise<{ vehicle_id: string; date: string; vt_ratio: number; trip_count: number; expected_windows: number }>",
+        "logic": "Executes a DuckDB query over the trip_events table to count distinct trip windows (grouped by hour) for the given vehicle_id and date. Queries the expected_trip_windows table for the vehicle's scheduled windows on that date. Computes vt_ratio as trip_count / expected_windows, clamped to a maximum of 1.0. If expected_windows is 0, returns vt_ratio of null and logs a warning. Emits a PostHog server-side event 'vehicle_vt_ratio_updated' with properties { vehicle_id, org_id, date, vt_ratio, trip_count, expected_windows }. If vt_ratio < 0.5, adds a flag property 'below_threshold: true' to the PostHog event for downstream alerting. Returns the computed result object."
+      },
+      {
+        "file": "src/lib/server/jobs/gpsActivationNudge.ts",
+        "name": "enqueueActivationNudges",
+        "required": true,
+        "signature": "enqueueActivationNudges(org_id: string, phone_number: string, signup_at: Date): Promise<{ hour4_job_id: string; hour24_job_id: string }>",
+        "logic": "Creates two delayed jobs in Upstash Redis Queue. The first job fires at signup_at + 4 hours and sends an SMS to phone_number with a message framing GPS activation as a compliance requirement, including the org's onboarding link. The second job fires at signup_at + 24 hours with a stronger compliance-framed SMS referencing potential audit exposure. Both job IDs are stored in a Redis hash keyed by 'nudge:org:{org_id}' with fields 'hour4_job_id' and 'hour24_job_id'. Returns both job IDs so the caller can store them for later cancellation. If enqueue fails, throws an error — the caller should handle retry."
+      },
+      {
+        "file": "src/lib/server/jobs/gpsActivationNudge.ts",
+        "name": "cancelNudgeJobs",
+        "required": true,
+        "signature": "cancelNudgeJobs(org_id: string): Promise<{ cancelled: string[] }>",
+        "logic": "Looks up the Redis hash at 'nudge:org:{org_id}' to retrieve hour4_job_id and hour24_job_id. For each job ID that exists and has not yet fired, calls the Upstash Queue cancel API to remove the job from the queue. Deletes the Redis hash after cancellation. Returns { cancelled } array of successfully cancelled job IDs. If a job has already fired (Upstash returns 404), skips it silently. Idempotent — safe to call multiple times for the same org_id."
+      },
+      {
+        "file": "src/routes/api/billing/mpesa-upgrade/+server.ts",
+        "name": "POST",
+        "required": true,
+        "signature": "POST({ request, locals }: RequestEvent): Promise<Response>",
+        "logic": "Extracts operator_id and plan_id from the JSON body. Checks Upstash Redis for an existing key 'mpesa_upgrade:{operator_id}:{plan_id}' — if present, returns 409 with { message: 'Upgrade already in progress' } to enforce idempotency. Fetches the operator's current ledger_event_count and days_until_cap from the ledger_stats view. Constructs a Daraja STK push request pre-populated with the upgrade amount for the selected plan, the operator's phone number, and an account reference that includes ledger_event_count for context. Fires the Daraja API STK push. On success, sets the Redis idempotency key with a 10-minute TTL and returns 200 with { checkout_request_id }. On Daraja API failure, returns 502 with the error detail."
+      }
+    ],
+    "integrations": [
+      {
+        "type": "external_service",
+        "description": "Hyperledger Fabric network: GPS pings are written as ledger transactions via the TripEventContract chaincode. Each ping produces an immutable ledger entry with vehicle_id, route_corridor, accuracy_flag, and timestamp.",
+        "verification": "curl -X POST http://localhost:5173/api/gps/ping -H 'Content-Type: application/json' -d '{\"device_token\":\"test\",\"latitude\":-1.286389,\"longitude\":37.321,\"accuracy\":15,\"vehicle_id\":\"v1\",\"timestamp\":\"2024-01-01T00:00:00Z\"}' && echo 'Check Fabric explorer for tx_id in response'"
+      },
+      {
+        "type": "external_service",
+        "description": "Upstash Redis Queue: delayed SMS nudge jobs are enqueued at signup (T+4h, T+24h) and cancelled on first GPS ping. Idempotency keys for M-Pesa upgrade are also stored in Upstash Redis.",
+        "verification": "node -e \"const { Redis } = require('@upstash/redis'); const r = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }); r.hgetall('nudge:org:test_org').then(console.log)\""
+      },
+      {
+        "type": "external_service",
+        "description": "Daraja M-Pesa STK Push API: upgrade flow fires a Daraja STK push pre-populated with ledger stats. Idempotency is enforced via Upstash Redis key on operator_id + plan_id.",
+        "verification": "curl -X POST http://localhost:5173/api/billing/mpesa-upgrade -H 'Content-Type: application/json' -d '{\"operator_id\":\"op1\",\"plan_id\":\"pro\"}' | jq '.checkout_request_id'"
+      },
+      {
+        "type": "external_service",
+        "description": "PostHog server-side analytics: vehicle_vt_ratio_updated events are emitted on each V/T compute cycle. first_gps_ping_received event fires on first ping per org. Both feed the growth dashboard.",
+        "verification": "grep -r 'posthog.capture' src/lib/server/analytics/vehicleCoverage.ts src/routes/api/gps/ping/+server.ts && echo 'PostHog capture calls verified'"
+      },
+      {
+        "type": "api_endpoint",
+        "description": "GPS ping ingest endpoint at /api/gps/ping: accepts POST from driver PWA, validates device token, writes to trip_events, enqueues Fabric write, and cancels nudge jobs on first ping.",
+        "verification": "curl -X POST http://localhost:5173/api/gps/ping -H 'Authorization: Bearer <device_token>' -H 'Content-Type: application/json' -d '{\"latitude\":-1.286389,\"longitude\":37.321,\"accuracy\":12,\"vehicle_id\":\"v1\",\"timestamp\":\"2024-01-01T06:00:00Z\",\"cell_tower_fallback\":false}' | jq ."
+      },
+      {
+        "type": "ui_component",
+        "description": "FreeTierLedgerGate Svelte component: surfaces the compliance-framed upgrade prompt when ledger display retention reaches Day 28, showing ledger_event_count and KES compliance protection estimate.",
+        "verification": "grep -r 'FreeTierLedgerGate' src/routes && echo 'Component is imported and used in at least one route'"
+      }
+    ],
+    "telemetry": [
+      {
+        "type": "supabase",
+        "action_name": "gps_ping_ingested",
+        "table": "trip_events",
+        "operation": "INSERT",
+        "description": "Fires on every GPS ping successfully persisted to trip_events. This is the single most critical activation signal: it confirms the full broadcast path (driver PWA → ingest endpoint → PostgreSQL → Fabric queue) is functioning. The first INSERT per org_id marks Time-to-First-GPS-Ping, the primary success metric for this loop.",
+        "properties": [
+          "id",
+          "org_id",
+          "vehicle_id",
+          "latitude",
+          "longitude",
+          "accuracy",
+          "cell_tower_fallback",
+          "created_at"
+        ]
+      }
+    ]
+  },
+  "dependencies": [
+    "organization_invitation_system",
+    "m_pesa_payment_integration"
+  ],
+  "verification_commands": [
+    "cd /sec/root/SHFTCCONK && pnpm --filter driver-pwa build && ls -lh apps/driver-pwa/.svelte-kit/output/client/_app/immutable/chunks/*.js | awk '{print $5, $9}' | sort -rh | head -5",
+    "curl -X POST http://localhost:5173/api/gps/ping -H 'Content-Type: application/json' -H 'Authorization: Bearer $TEST_DEVICE_TOKEN' -d '{\"latitude\":-1.286389,\"longitude\":37.321,\"accuracy\":12,\"vehicle_id\":\"v_test_01\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"cell_tower_fallback\":false}' | jq '{success,trip_event_id}'",
+    "psql $DATABASE_URL -c \"SELECT org_id, count(*) as ping_count, min(created_at) as first_ping FROM trip_events GROUP BY org_id ORDER BY first_ping DESC LIMIT 10;\"",
+    "node -e \"const { Redis } = require('@upstash/redis'); const r = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }); r.hgetall('nudge:org:test_org_id').then(v => console.log('Nudge jobs:', v))\"",
+    "cd /sec/root/SHFTCCONK && npx ts-node -e \"import('./src/lib/server/analytics/vehicleCoverage.ts').then(m => m.computeVTRatio('v_test_01', '2024-01-01', 'org_test').then(console.log))\"",
+    "grep -rn 'writeTripEvent\\|cancelNudgeJobs\\|enqueueActivationNudges\\|computeVTRatio\\|FreeTierLedgerGate' /sec/root/SHFTCCONK/src --include='*.ts' --include='*.svelte' | wc -l",
+    "curl -X POST http://localhost:5173/api/billing/mpesa-upgrade -H 'Content-Type: application/json' -d '{\"operator_id\":\"op_test\",\"plan_id\":\"pro_monthly\"}' | jq '{checkout_request_id,status}'"
+  ],
+  "test_coverage": {
+    "unit_tests": [
+      "enqueuePing: verify IndexedDB record is created with correct GpsPingPayload fields including cell_tower_fallback flag",
+      "flushPingQueue: mock fetch to return 200 for first ping and 500 for second; verify flushed=1 and failed=1 and only the successful record is deleted from IndexedDB",
+      "flushPingQueue: verify that records are POSTed in insertion order (FIFO)",
+      "writeTripEvent: mock Fabric gateway submitTransaction; verify payload includes accuracy_flag=true when accuracy >= 50 and accuracy_flag=false when accuracy < 50",
+      "writeTripEvent: verify function throws (does not swallow) when Fabric submitTransaction rejects",
+      "computeVTRatio: mock DuckDB query returning trip_count=3 and expected_windows=4; verify vt_ratio=0.75 and PostHog event emitted with correct properties",
+      "computeVTRatio: verify vt_ratio is null and warning logged when expected_windows=0",
+      "computeVTRatio: verify below_threshold=true flag is added to PostHog event when vt_ratio < 0.5",
+      "enqueueActivationNudges: verify two Upstash jobs are created with correct delays (T+4h and T+24h) and Redis hash is set with both job IDs",
+      "cancelNudgeJobs: verify both job IDs are cancelled and Redis hash is deleted; verify 404 from Upstash is handled silently",
+      "cancelNudgeJobs: verify idempotency — calling twice for same org_id does not throw"
+    ],
+    "integration_tests": [
+      "POST /api/gps/ping with valid device_token: verify trip_events row inserted, Fabric write job enqueued, and 200 response with trip_event_id",
+      "POST /api/gps/ping with invalid device_token: verify 401 response and no trip_events row inserted",
+      "POST /api/gps/ping for first ping of org: verify cancelNudgeJobs is called and PostHog first_gps_ping_received event is emitted",
+      "POST /api/gps/ping with accuracy=60: verify cell_tower_fallback=true is persisted in trip_events and accuracy_flag=true in Fabric payload",
+      "POST /api/billing/mpesa-upgrade with duplicate operator_id+plan_id within 10 minutes: verify 409 response on second call",
+      "POST /api/billing/mpesa-upgrade: verify ledger_event_count is included in Daraja STK push account reference",
+      "enqueueActivationNudges followed by first GPS ping: verify both nudge jobs are cancelled in Upstash and Redis hash is deleted",
+      "FreeTierLedgerGate component: render with days_until_cap=2 and verify KES compliance estimate and upgrade CTA are visible",
+      "Full path integration: signup → enqueueActivationNudges → POST /api/gps/ping → verify trip_events row, Fabric tx_id, cancelled nudge jobs, and PostHog events in sequence"
+    ],
+    "manual_tests": [
+      "Open driver PWA on a Safaricom 3G connection (throttle in DevTools to 400kbps/400ms latency); verify page load completes in under 4 seconds and GPS watch starts",
+      "Enable GPS in driver PWA, verify a ping appears in trip_events within 30 seconds; check Fabric explorer for corresponding ledger transaction",
+      "Put device in airplane mode, move GPS position, re-enable network; verify IndexedDB queue flushed and all offline pings appear in trip_events in order",
+      "Move device to low-accuracy area (accuracy > 50m); verify cell_tower_fallback flag is shown in PWA UI and persisted in trip_events",
+      "Create a new operator account and wait 4 hours without emitting a GPS ping; verify Hour-4 SMS is received on the registered phone number",
+      "Create a new operator account, wait 1 hour, emit first GPS ping; verify no Hour-4 or Hour-24 SMS is received",
+      "Set an operator's ledger_event_count to trigger Day-28 cap condition; verify FreeTierLedgerGate renders with correct trip count and KES estimate",
+      "Click upgrade in FreeTierLedgerGate on a real Safaricom number; verify Daraja STK push arrives on the phone within 10 seconds",
+      "Run computeVTRatio for a vehicle with 2 actual trips out of 5 expected windows; verify PostHog event appears in PostHog dashboard with vt_ratio=0.4 and below_threshold=true",
+      "Verify PWA bundle size: run pnpm --filter driver-pwa build and confirm total JS payload is under 200KB using network tab in Chrome DevTools"
+    ]
+  },
+  "metrics": {
+    "data_actions": [
+      "gps_ping_ingested"
+    ],
+    "success_criteria": [
+      "Time to First GPS Ping < 48 hours for > 60% of new operator accounts, measured as time between org creation and first trip_events INSERT per org_id",
+      "V/T ratio > 0.75 across active fleet portfolio at Month 2, measured via vehicle_vt_ratio_updated PostHog events aggregated per org",
+      "Driver PWA load time < 4 seconds on Safaricom 3G (400kbps / 400ms RTT), verified via Lighthouse CI on each deploy",
+      "Zero GPS ping loss rate due to connectivity drop — IndexedDB queue flush must deliver 100% of queued pings on reconnect, verified by comparing enqueuePing call count vs trip_events INSERT count per device session",
+      "Hyperledger Fabric write success rate > 99.5% per GPS ping ingested, measured as Fabric tx_id present on > 99.5% of trip_events rows within 60 seconds of INSERT",
+      "Free-tier ledger gate upgrade conversion > 15% of operators who see the FreeTierLedgerGate prompt complete an M-Pesa STK push upgrade within 7 days",
+      "Hour-4 SMS nudge delivery rate > 95% for accounts with no GPS ping at T+4h",
+      "Hour-24 SMS nudge cancellation rate > 80% — meaning > 80% of nudge-eligible accounts emit their first ping before the Hour-24 job fires"
+    ]
+  },
+  "run_target": "supabase",
+  "_metadata": {
+    "source_plan_path": "/sec/root/SHFTCCONK/skene-context/growth-plan.md",
+    "saved_at": "2026-03-30T14:03:47.061305",
+    "run_target": "supabase"
+  }
+}
