@@ -112,10 +112,41 @@
   let sdkError = $state<string | null>(null)
   let capturedCaseId = $state<string | null>(null)
   let submitting = $state(false)
+  let alreadySubmitted = false; // 🔹 prevent double submission
 
   // Hidden form reference — submitted programmatically after SDK completes
   let submitForm: HTMLFormElement
 
+
+    async function handleBallerineComplete(event: CustomEvent) {
+    if (alreadySubmitted) return; // 🔹 skip if already submitted
+  alreadySubmitted = true;      // mark as submitted
+    const { caseId } = event.detail ?? {};
+    if (!caseId) return sdkError = "No case ID returned";
+
+    capturedCaseId = caseId;
+    sdkCompleted = true;
+    submitting = true;
+
+    try {
+        const res = await fetch('?/submitKyc', {
+            method: 'POST',
+            body: new URLSearchParams({ ballerineCaseId: caseId }),
+        });
+
+        submitting = false;
+
+        if (res.ok) {
+            // Navigate to pending page after successful submission
+            window.location.href = `/onboarding/${data.intent}/pending`;
+        } else {
+            sdkError = 'Failed to submit verification. Try again.';
+        }
+    } catch (err) {
+        submitting = false;
+        sdkError = 'Verification submission failed. Try again.';
+    }
+}
   onMount(() => {
     // Load Ballerine web component SDK
     const script = document.createElement("script")
@@ -137,20 +168,6 @@
       window.removeEventListener("ballerine.error", handleBallerineError)
     }
   })
-
-  function handleBallerineComplete(event: CustomEvent) {
-    const { caseId, workflowRunId } = event.detail ?? {}
-    if (!caseId) {
-      sdkError =
-        "Verification completed but no case ID was returned. Please try again."
-      return
-    }
-    capturedCaseId = caseId
-    sdkCompleted = true
-    // Auto-submit the form with the captured caseId
-    submitting = true
-    submitForm.requestSubmit()
-  }
 
   function handleBallerineError(event: CustomEvent) {
     sdkError =
