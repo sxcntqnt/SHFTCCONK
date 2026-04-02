@@ -22,7 +22,7 @@ export default defineConfig({
 
   server: {
     host: true, // listen on all network interfaces
-    allowedHosts: ["sxcntcnqunts.com","chat.sxcntcnqunts.com", "sentry.io"],
+    allowedHosts: ["sxcntcnqunts.org","chat.sxcntcnqunts.com", "sentry.io"],
     fs: {
       allow: [".."], // allow accessing files outside project root
     },
