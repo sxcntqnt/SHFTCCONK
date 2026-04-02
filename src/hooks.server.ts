@@ -172,7 +172,6 @@ const authGuardHandle: Handle = async ({ event, resolve }) => {
     "/onboarding",
     "/operator",
     "/org",
-    "/account",
   ]
 
   const isProtectedPage = protectedPagePrefixes.some(p => pathname.startsWith(p))

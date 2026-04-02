@@ -618,3 +618,36 @@ comment on column public.profiles.phone is
 create index if not exists idx_profiles_phone
   on public.profiles(phone)
   where phone is not null;
+
+
+-- migrations/20260327000007_profiles_enrichment_fields.sql
+-- =========================================================
+-- Adds profile enrichment columns collected during create_profile.
+-- These are stored as flat columns / jsonb arrays on profiles.
+-- All nullable — optional fields in the form.
+-- =========================================================
+
+alter table public.profiles
+  add column if not exists starting_locations    text,
+  add column if not exists destinations          text,
+  add column if not exists highway_corridors     text[],
+  add column if not exists routes_to_track       text[],
+  add column if not exists preferred_vehicle_type text[],
+  add column if not exists social_media_links    text,
+  add column if not exists emergency_contacts    text,
+  add column if not exists languages_spoken      text[],
+  add column if not exists time_zone             text default 'Africa/Nairobi',
+  add column if not exists working_hours_start   time,
+  add column if not exists working_hours_end     time;
+
+comment on column public.profiles.starting_locations    is 'Typical boarding locations for this user';
+comment on column public.profiles.destinations          is 'Common destinations for this user';
+comment on column public.profiles.highway_corridors     is 'Highway corridors this user operates on';
+comment on column public.profiles.routes_to_track       is 'Route IDs the user wants to follow';
+comment on column public.profiles.preferred_vehicle_type is 'e.g. [Matatu, Bus]';
+comment on column public.profiles.social_media_links    is 'LinkedIn, Twitter, etc.';
+comment on column public.profiles.emergency_contacts    is 'Comma-separated E.164 numbers';
+comment on column public.profiles.languages_spoken      is 'e.g. [English, Swahili]';
+comment on column public.profiles.time_zone             is 'IANA tz e.g. Africa/Nairobi';
+comment on column public.profiles.working_hours_start   is 'Preferred shift start (time)';
+comment on column public.profiles.working_hours_end     is 'Preferred shift end (time)';
