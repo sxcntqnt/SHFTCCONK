@@ -1,19 +1,10 @@
 <!-- src/routes/(auth)/onboarding/+layout.svelte -->
-<!--
-  Onboarding layout — full-viewport dark shell with atmospheric gradients.
-  
-  STYLE FIX: The <svelte:head> body styles were competing with app.css
-  and other layouts. Now we own the background via a wrapper div that
-  fills the viewport, and use :global() for minimal body overrides.
--->
 <script lang="ts">
   let { children } = $props()
 </script>
 
 <svelte:head>
   <style>
-    /* Minimal body override — just kill margins and set base background.
-       The wrapper div below handles the actual styling. */
     html,
     body {
       margin: 0;
@@ -24,9 +15,13 @@
 </svelte:head>
 
 <div class="onboard-shell">
-  <!-- Atmospheric gradients as child elements, not pseudo-elements on body -->
-  <div class="gradient gradient-warm"></div>
-  <div class="gradient gradient-cool"></div>
+  <!-- Layered atmospheric gradients -->
+  <div class="g g-warm-bl"></div>
+  <div class="g g-cool-tr"></div>
+  <div class="g g-mid"></div>
+
+  <!-- Subtle grid texture -->
+  <div class="grid-texture" aria-hidden="true"></div>
 
   <main class="onboard-main">
     {@render children()}
@@ -37,47 +32,79 @@
   .onboard-shell {
     position: relative;
     min-height: 100vh;
-    background: var(--ink, #0a0a14);
+    background: #09090f;
     overflow: hidden;
     isolation: isolate;
   }
 
   .onboard-main {
     position: relative;
-    z-index: 1;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    padding: 32px 20px;
+    padding: 40px 20px;
   }
 
-  /* Atmospheric gradients — positioned via divs instead of body pseudo-elements */
-  .gradient {
+  /* ── Atmospheric gradients ── */
+  .g {
     position: fixed;
     pointer-events: none;
     z-index: 0;
+    border-radius: 50%;
   }
-  .gradient-warm {
-    bottom: -120px;
-    left: -120px;
-    width: 500px;
-    height: 500px;
+  .g-warm-bl {
+    bottom: -160px;
+    left: -160px;
+    width: 600px;
+    height: 600px;
     background: radial-gradient(
       circle,
-      rgba(242, 101, 34, 0.07),
+      rgba(242, 101, 34, 0.1),
       transparent 65%
     );
   }
-  .gradient-cool {
-    top: -80px;
-    right: -80px;
-    width: 400px;
-    height: 400px;
+  .g-cool-tr {
+    top: -100px;
+    right: -100px;
+    width: 480px;
+    height: 480px;
     background: radial-gradient(
       circle,
-      rgba(0, 176, 155, 0.06),
+      rgba(0, 176, 155, 0.09),
       transparent 65%
+    );
+  }
+  .g-mid {
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 700px;
+    height: 300px;
+    background: radial-gradient(
+      ellipse,
+      rgba(242, 101, 34, 0.03),
+      transparent 70%
+    );
+  }
+
+  /* Subtle dot-grid texture */
+  .grid-texture {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.035) 1px,
+      transparent 1px
+    );
+    background-size: 28px 28px;
+    mask-image: radial-gradient(
+      ellipse 80% 80% at 50% 50%,
+      black 20%,
+      transparent 100%
     );
   }
 </style>

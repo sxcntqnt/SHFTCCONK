@@ -1,15 +1,15 @@
 <script lang="ts">
   import { WebsiteName } from "./../../config"
   import { onMount } from "svelte"
-  import { fade, fly, slide } from "svelte/transition"
+  import { fade, fly } from "svelte/transition"
   import { page } from "$app/state"
+
   interface Props {
     children?: import("svelte").Snippet
   }
 
   let { children = undefined }: Props = $props()
 
-  /* ── NAV CONFIG ── */
   const navSections = [
     {
       label: "Product",
@@ -23,7 +23,7 @@
         {
           label: "Route Planner",
           href: "/product/routes",
-          desc: "Optimized navigation",
+          desc: "Optimised navigation",
         },
         {
           label: "Fare Estimates",
@@ -79,7 +79,6 @@
     },
   ]
 
-  /* ── STATE ── */
   let activeMenu = $state<string | null>(null)
   let mobileOpen = $state(false)
   let scrolled = $state(false)
@@ -89,13 +88,11 @@
     if (hoverTimeout) clearTimeout(hoverTimeout)
     activeMenu = key
   }
-
   function closeMenu() {
     hoverTimeout = setTimeout(() => {
       activeMenu = null
-    }, 200)
+    }, 180)
   }
-
   function toggleMenu(key: string) {
     activeMenu = activeMenu === key ? null : key
   }
@@ -111,10 +108,9 @@
   let currentPath = $derived(page.url.pathname)
 </script>
 
-<!-- ═══════════════════════ NAVBAR ═══════════════════════ -->
-<nav class="topbar {scrolled ? 'scrolled' : ''}">
+<!-- ═══════════ NAVBAR ═══════════ -->
+<nav class="topbar" class:scrolled>
   <div class="nav-inner">
-    <!-- Logo -->
     <a href="/" class="logo">
       {WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span>
     </a>
@@ -128,13 +124,16 @@
           onmouseleave={closeMenu}
         >
           <button
-            class="nav-btn {activeMenu === section.key ? 'active' : ''}"
+            class="nav-btn"
+            class:active={activeMenu === section.key}
             onclick={() => toggleMenu(section.key)}
           >
             {section.label}
             <svg
-              width="14"
-              height="14"
+              class="chevron"
+              class:rotated={activeMenu === section.key}
+              width="12"
+              height="12"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -147,7 +146,7 @@
           {#if activeMenu === section.key}
             <div
               class="dropdown"
-              in:fade={{ duration: 150 }}
+              in:fade={{ duration: 130 }}
               onmouseenter={() => {
                 if (hoverTimeout) clearTimeout(hoverTimeout)
               }}
@@ -156,7 +155,7 @@
               {#each section.items as item}
                 <a
                   href={item.href}
-                  class={currentPath === item.href ? "active-link" : ""}
+                  class:active-link={currentPath === item.href}
                 >
                   <span class="d-label">{item.label}</span>
                   <span class="d-desc">{item.desc}</span>
@@ -171,16 +170,14 @@
 
       <a
         href="/docs"
-        class="nav-link-plain {currentPath.startsWith('/docs') ? 'active' : ''}"
+        class="nav-link-plain"
+        class:active={currentPath.startsWith("/docs")}>Docs</a
       >
-        Docs
-      </a>
       <a
         href="/blog"
-        class="nav-link-plain {currentPath.startsWith('/blog') ? 'active' : ''}"
+        class="nav-link-plain"
+        class:active={currentPath.startsWith("/blog")}>Blog</a
       >
-        Blog
-      </a>
       <a href="/login" class="btn-signin">Sign In</a>
     </div>
 
@@ -206,7 +203,7 @@
   </div>
 </nav>
 
-<!-- ═══════════════════════ MOBILE PANEL ═══════════════════════ -->
+<!-- ═══════════ MOBILE PANEL ═══════════ -->
 {#if mobileOpen}
   <div
     class="mobile-overlay"
@@ -215,14 +212,12 @@
   >
     <div
       class="mobile-panel"
-      onclick={(event) => {
-        event.stopPropagation() // ← Prevents clicks inside the panel from closing the menu
-      }}
+      onclick={(e) => e.stopPropagation()}
       transition:fly={{ x: 320, duration: 280 }}
     >
-      <button class="mobile-close" onclick={() => (mobileOpen = false)}>
-        ✕
-      </button>
+      <button class="mobile-close" onclick={() => (mobileOpen = false)}
+        >✕</button
+      >
 
       {#each navSections as section}
         <p class="mobile-section-title">{section.label}</p>
@@ -247,25 +242,21 @@
       <a
         href="/login"
         class="mobile-signin"
-        onclick={() => (mobileOpen = false)}
+        onclick={() => (mobileOpen = false)}>Sign In →</a
       >
-        Sign In →
-      </a>
     </div>
   </div>
 {/if}
 
-<!-- ═══════════════════════ MAIN CONTENT ═══════════════════════ -->
-<main>
-  {@render children?.()}
-</main>
+<!-- ═══════════ MAIN CONTENT ═══════════ -->
+<main>{@render children?.()}</main>
 
-<!-- ═══════════════════════ DUAL CTA ═══════════════════════ -->
+<!-- ═══════════ DUAL CTA ═══════════ -->
 <section class="cta-section">
   <div class="cta-grid">
-    <!-- Commuter CTA -->
-    <div class="cta-card">
-      <span class="cta-badge orange">For Riders</span>
+    <div class="cta-card cta-orange">
+      <div class="cta-card-glow orange-glow"></div>
+      <span class="cta-badge badge-orange">For Riders</span>
       <h3>Stop Guessing When Your Matatu Arrives</h3>
       <p>
         Live tracking, arrival predictions, and fare estimates — so every
@@ -279,17 +270,19 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
+          stroke-width="2.5"
         >
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
       </a>
     </div>
 
-    <!-- Operator CTA -->
-    <div class="cta-card">
-      <span class="cta-badge teal">For Operators</span>
+    <div class="cta-card cta-teal">
+      <div class="cta-card-glow teal-glow"></div>
+      <span class="cta-badge badge-teal">For Operators</span>
       <h3>Running a Sacco or Fleet?</h3>
       <p>
-        Real-time tracking, delay alerts, route analytics, and optimization
+        Real-time tracking, delay alerts, route analytics, and optimisation
         tools built for Nairobi roads.
       </p>
       <a href="/contact_us" class="btn-outline">
@@ -300,32 +293,31 @@
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
+          stroke-width="2.5"
         >
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
       </a>
     </div>
   </div>
 </section>
 
-<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<!-- ═══════════ FOOTER ═══════════ -->
 <footer>
   <div class="footer-inner">
-    <!-- Brand -->
+    <!-- Brand column -->
     <aside class="footer-brand">
-      <span class="footer-brand-name"
-        >{WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span></span
-      >
+      <span class="footer-logo">
+        {WebsiteName.slice(0, -2)}<span>{WebsiteName.slice(-2)}</span>
+      </span>
       <p class="footer-tagline">
         Real-time matatu tracking in Nairobi — predictable arrivals, smarter
         commutes, better operations.
       </p>
       <div class="footer-socials">
-        <a href="#" aria-label="Facebook" class="social-btn">f</a>
-        <a href="#" aria-label="WhatsApp" class="social-btn">w</a>
-        <a href="#" aria-label="X / Twitter" class="social-btn">𝕏</a>
-        <a href="#" aria-label="Instagram" class="social-btn">ig</a>
-        <a href="#" aria-label="TikTok" class="social-btn">tt</a>
-        <a href="#" aria-label="YouTube" class="social-btn">yt</a>
+        {#each [{ label: "Facebook", short: "f" }, { label: "WhatsApp", short: "w" }, { label: "X / Twitter", short: "𝕏" }, { label: "Instagram", short: "ig" }, { label: "TikTok", short: "tt" }, { label: "YouTube", short: "yt" }] as s}
+          <a href="#" aria-label={s.label} class="social-btn">{s.short}</a>
+        {/each}
       </div>
     </aside>
 
@@ -358,19 +350,17 @@
       <a href="/legal/gdpr">Legal</a>
       <a href="/legal/gdpr/structure">More Info</a>
     </div>
-    <!-- Resources -->
+
+    <!-- Resources — now a proper 5th column, same row -->
     <div class="footer-col">
-      <h6 style="margin-top:28px">Resources</h6>
+      <h6>Resources</h6>
       <a href="/docs">Documentation</a>
       <a href="/help">Help Center</a>
       <a href="/community">Community</a>
     </div>
 
-    <!-- Bottom bar -->
-    <div
-      class="footer-bottom"
-      style="border-top: 1px solid var(--rim); padding: 22px 0;"
-    >
+    <!-- Bottom bar spans all 5 columns -->
+    <div class="footer-bottom">
       <p>
         © {new Date().getFullYear()}
         {WebsiteName}. Designed for smarter urban mobility in Nairobi.
@@ -387,6 +377,9 @@
 <style>
   @import url("https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap");
 
+  /* ════════════════════════════════════
+     GLOBAL TOKENS
+  ════════════════════════════════════ */
   :global(*) {
     box-sizing: border-box;
     margin: 0;
@@ -395,14 +388,16 @@
 
   :global(:root) {
     --orange: #f26522;
-    --orange-dim: #f2652220;
+    --orange-dim: #f2652218;
     --orange-glow: #f2652240;
     --teal: #00b09b;
+    --teal-dim: #00b09b18;
+    --teal-glow: #00b09b38;
     --ink: #0a0a0c;
     --ink-2: #111115;
-    --ink-3: #18181f;
+    --ink-3: #17171f;
     --surface: #1a1a22;
-    --rim: #ffffff0f;
+    --rim: #ffffff0e;
     --rim-2: #ffffff18;
     --text-1: #f0eee8;
     --text-2: #9996a8;
@@ -419,7 +414,13 @@
     scroll-behavior: smooth;
   }
 
-  /* ── NAV ── */
+  :global(a) {
+    color: inherit;
+  }
+
+  /* ════════════════════════════════════
+     NAVBAR
+  ════════════════════════════════════ */
   nav.topbar {
     position: sticky;
     top: 0;
@@ -432,12 +433,12 @@
     border-bottom: 1px solid transparent;
   }
   nav.topbar.scrolled {
-    background: rgba(10, 10, 12, 0.85);
-    backdrop-filter: blur(24px) saturate(180%);
+    background: rgba(10, 10, 12, 0.88);
+    backdrop-filter: blur(28px) saturate(180%);
     border-bottom-color: var(--rim);
     box-shadow:
       0 1px 0 var(--rim),
-      0 8px 32px rgba(0, 0, 0, 0.5);
+      0 8px 40px rgba(0, 0, 0, 0.55);
   }
 
   .nav-inner {
@@ -456,12 +457,12 @@
     letter-spacing: -0.03em;
     color: var(--text-1);
     text-decoration: none;
-    transition: color 0.2s;
-  }
-  .logo span {
-    color: var(--orange);
+    transition: opacity 0.2s;
   }
   .logo:hover {
+    opacity: 0.85;
+  }
+  .logo span {
     color: var(--orange);
   }
 
@@ -478,8 +479,8 @@
   .nav-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
+    gap: 5px;
+    padding: 8px 15px;
     font-family: var(--font-body);
     font-size: 0.875rem;
     font-weight: 500;
@@ -499,11 +500,11 @@
     color: var(--text-1);
     background: var(--rim);
   }
-  .nav-btn svg {
+
+  .chevron {
     transition: transform 0.25s ease;
-    flex-shrink: 0;
   }
-  .nav-btn.active svg {
+  .chevron.rotated {
     transform: rotate(180deg);
   }
 
@@ -511,25 +512,38 @@
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    top: calc(100% + 12px);
-    width: 280px;
+    top: calc(100% + 14px);
+    width: 276px;
     background: var(--ink-3);
     border: 1px solid var(--rim-2);
-    border-radius: 16px;
+    border-radius: 18px;
     padding: 8px;
     box-shadow:
-      0 24px 60px rgba(0, 0, 0, 0.6),
+      0 28px 64px rgba(0, 0, 0, 0.65),
       0 0 0 1px var(--rim);
+  }
+  /* subtle arrow pointer */
+  .dropdown::before {
+    content: "";
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%) rotate(45deg);
+    width: 10px;
+    height: 10px;
+    background: var(--ink-3);
+    border-top: 1px solid var(--rim-2);
+    border-left: 1px solid var(--rim-2);
   }
 
   .dropdown a {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 12px 14px;
-    border-radius: 10px;
+    padding: 11px 14px;
+    border-radius: 11px;
     text-decoration: none;
-    transition: background 0.15s;
+    transition: background 0.14s;
   }
   .dropdown a:hover {
     background: var(--rim);
@@ -537,28 +551,29 @@
   .dropdown a.active-link {
     background: var(--orange-dim);
   }
-  .dropdown .d-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-1);
-  }
-  .dropdown .d-desc {
-    font-size: 0.78rem;
-    color: var(--text-3);
-  }
   .dropdown a.active-link .d-label {
     color: var(--orange);
   }
 
+  .d-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-1);
+  }
+  .d-desc {
+    font-size: 0.77rem;
+    color: var(--text-3);
+  }
+
   .nav-divider {
     width: 1px;
-    height: 20px;
+    height: 18px;
     background: var(--rim-2);
     margin: 0 8px;
   }
 
   .nav-link-plain {
-    padding: 8px 16px;
+    padding: 8px 15px;
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--text-2);
@@ -568,12 +583,10 @@
       color 0.2s,
       background 0.2s;
   }
-  .nav-link-plain:hover {
-    color: var(--text-1);
-    background: var(--rim);
-  }
+  .nav-link-plain:hover,
   .nav-link-plain.active {
     color: var(--text-1);
+    background: var(--rim);
   }
 
   .btn-signin {
@@ -589,29 +602,27 @@
     cursor: pointer;
     text-decoration: none;
     letter-spacing: 0.01em;
+    box-shadow: 0 0 0 0 var(--orange-glow);
     transition:
       background 0.2s,
       box-shadow 0.2s,
       transform 0.15s;
-    box-shadow: 0 0 0 0 var(--orange-glow);
   }
   .btn-signin:hover {
     background: #d95618;
-    box-shadow: 0 4px 24px var(--orange-glow);
+    box-shadow: 0 6px 28px var(--orange-glow);
     transform: translateY(-1px);
   }
-  .btn-signin:active {
-    transform: translateY(0);
-  }
 
-  /* ── HAMBURGER ── */
+  /* ════════════════════════════════════
+     HAMBURGER
+  ════════════════════════════════════ */
   .hamburger {
     display: none;
     background: none;
     border: none;
     cursor: pointer;
     color: var(--text-1);
-    font-size: 1.5rem;
     padding: 8px;
     border-radius: 10px;
     transition: background 0.2s;
@@ -620,13 +631,15 @@
     background: var(--rim);
   }
 
-  /* ── MOBILE PANEL ── */
+  /* ════════════════════════════════════
+     MOBILE PANEL
+  ════════════════════════════════════ */
   .mobile-overlay {
     position: fixed;
     inset: 0;
     z-index: 200;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(6px);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
   }
   .mobile-panel {
     position: absolute;
@@ -637,14 +650,14 @@
     background: var(--ink-2);
     border-left: 1px solid var(--rim-2);
     overflow-y: auto;
-    padding: 24px 20px 40px;
+    padding: 24px 20px 48px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
   }
   .mobile-close {
     align-self: flex-end;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     background: var(--rim);
     border: none;
     cursor: pointer;
@@ -661,14 +674,15 @@
   .mobile-close:hover {
     background: var(--rim-2);
   }
+
   .mobile-section-title {
     font-family: var(--font-display);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.13em;
     text-transform: uppercase;
     color: var(--text-3);
-    padding: 18px 12px 8px;
+    padding: 20px 12px 8px;
   }
   .mobile-link {
     display: block;
@@ -679,8 +693,8 @@
     text-decoration: none;
     border-radius: 10px;
     transition:
-      background 0.15s,
-      color 0.15s;
+      background 0.14s,
+      color 0.14s;
   }
   .mobile-link:hover {
     background: var(--rim);
@@ -703,12 +717,16 @@
     background: #d95618;
   }
 
-  /* ── MAIN ── */
+  /* ════════════════════════════════════
+     MAIN
+  ════════════════════════════════════ */
   main {
     min-height: 100vh;
   }
 
-  /* ── CTA SECTION ── */
+  /* ════════════════════════════════════
+     DUAL CTA
+  ════════════════════════════════════ */
   .cta-section {
     background: var(--ink-2);
     border-top: 1px solid var(--rim);
@@ -716,45 +734,61 @@
     position: relative;
     overflow: hidden;
   }
-  .cta-section::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(
-        ellipse 60% 50% at 20% 50%,
-        var(--orange-dim),
-        transparent
-      ),
-      radial-gradient(
-        ellipse 50% 60% at 80% 50%,
-        rgba(0, 176, 155, 0.06),
-        transparent
-      );
-    pointer-events: none;
-  }
   .cta-grid {
     max-width: 1100px;
     margin: 0 auto;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 20px;
   }
   .cta-card {
     background: var(--surface);
     border: 1px solid var(--rim);
-    border-radius: 24px;
-    padding: 52px 44px;
+    border-radius: 26px;
+    padding: 52px 46px;
     position: relative;
     overflow: hidden;
     transition:
       border-color 0.3s,
-      transform 0.3s;
+      transform 0.3s,
+      box-shadow 0.3s;
   }
   .cta-card:hover {
-    border-color: var(--rim-2);
     transform: translateY(-4px);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
   }
+  .cta-orange:hover {
+    border-color: rgba(242, 101, 34, 0.3);
+  }
+  .cta-teal:hover {
+    border-color: rgba(0, 176, 155, 0.3);
+  }
+
+  .cta-card-glow {
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .orange-glow {
+    background: radial-gradient(
+      circle,
+      rgba(242, 101, 34, 0.12),
+      transparent 70%
+    );
+  }
+  .teal-glow {
+    background: radial-gradient(
+      circle,
+      rgba(0, 176, 155, 0.12),
+      transparent 70%
+    );
+  }
+
+  /* top shimmer */
   .cta-card::before {
     content: "";
     position: absolute;
@@ -762,42 +796,63 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--rim-2), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
   }
+  .cta-orange::before {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(242, 101, 34, 0.6),
+      transparent
+    );
+  }
+  .cta-teal::before {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(0, 176, 155, 0.6),
+      transparent
+    );
+  }
+  .cta-card:hover::before {
+    opacity: 1;
+  }
+
   .cta-badge {
     display: inline-block;
-    margin-bottom: 20px;
-    padding: 4px 12px;
+    margin-bottom: 22px;
+    padding: 4px 13px;
     border-radius: 100px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.11em;
     text-transform: uppercase;
   }
-  .cta-badge.orange {
+  .badge-orange {
     background: var(--orange-dim);
     color: var(--orange);
     border: 1px solid var(--orange-glow);
   }
-  .cta-badge.teal {
-    background: rgba(0, 176, 155, 0.12);
+  .badge-teal {
+    background: var(--teal-dim);
     color: var(--teal);
-    border: 1px solid rgba(0, 176, 155, 0.25);
+    border: 1px solid var(--teal-glow);
   }
   .cta-card h3 {
     font-family: var(--font-display);
-    font-size: 1.45rem;
+    font-size: 1.48rem;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.28;
     color: var(--text-1);
     margin-bottom: 14px;
     letter-spacing: -0.02em;
   }
   .cta-card p {
     font-size: 0.95rem;
-    line-height: 1.65;
+    line-height: 1.7;
     color: var(--text-2);
-    margin-bottom: 32px;
+    margin-bottom: 34px;
   }
   .btn-primary {
     display: inline-flex;
@@ -810,11 +865,11 @@
     font-size: 0.9rem;
     border-radius: 100px;
     text-decoration: none;
+    box-shadow: 0 4px 20px var(--orange-glow);
     transition:
       background 0.2s,
       box-shadow 0.2s,
       transform 0.15s;
-    box-shadow: 0 4px 20px var(--orange-glow);
   }
   .btn-primary:hover {
     background: #d95618;
@@ -839,47 +894,61 @@
       transform 0.15s;
   }
   .btn-outline:hover {
-    background: rgba(0, 176, 155, 0.1);
+    background: var(--teal-dim);
     border-color: var(--teal);
     transform: translateY(-1px);
   }
 
-  /* ── FOOTER ── */
+  /* ════════════════════════════════════
+     FOOTER
+  ════════════════════════════════════ */
   footer {
     background: var(--ink);
     border-top: 1px solid var(--rim);
-    padding: 72px 2rem 0;
+    padding: 80px 2rem 0;
   }
+
+  /*
+    5 content columns: brand | product | company | legal | resources
+    + 1 bottom bar row that spans all 5
+  */
   .footer-inner {
     max-width: 1280px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 1.8fr 1fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
     gap: 48px;
-    padding-bottom: 64px;
+    padding-bottom: 0;
   }
-  .footer-brand-name {
+
+  .footer-brand {
+    grid-column: 1;
+  }
+
+  .footer-logo {
+    display: block;
     font-family: var(--font-display);
-    font-size: 1.6rem;
+    font-size: 1.55rem;
     font-weight: 800;
     letter-spacing: -0.03em;
     color: var(--text-1);
     margin-bottom: 14px;
-    display: block;
   }
-  .footer-brand-name span {
+  .footer-logo span {
     color: var(--orange);
   }
+
   .footer-tagline {
-    font-size: 0.9rem;
-    line-height: 1.7;
+    font-size: 0.875rem;
+    line-height: 1.72;
     color: var(--text-3);
-    max-width: 260px;
+    max-width: 240px;
     margin-bottom: 28px;
   }
   .footer-socials {
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .social-btn {
     width: 36px;
@@ -890,13 +959,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 600;
     text-decoration: none;
+    color: var(--text-2);
     transition:
       background 0.2s,
       border-color 0.2s,
+      color 0.2s,
       transform 0.15s;
-    color: var(--text-2);
   }
   .social-btn:hover {
     background: var(--orange-dim);
@@ -907,38 +978,41 @@
 
   .footer-col h6 {
     font-family: var(--font-display);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.13em;
     text-transform: uppercase;
     color: var(--text-3);
     margin-bottom: 20px;
   }
   .footer-col a {
     display: block;
-    margin-bottom: 12px;
+    margin-bottom: 11px;
     font-size: 0.875rem;
     color: var(--text-2);
     text-decoration: none;
-    transition: color 0.2s;
+    transition:
+      color 0.2s,
+      transform 0.15s;
   }
   .footer-col a:hover {
     color: var(--text-1);
   }
 
+  /* Full-width bottom bar */
   .footer-bottom {
-    border-top: 1px solid var(--rim);
-    padding: 22px 2rem;
-    max-width: 1280px;
-    margin: 0 auto;
+    grid-column: 1 / -1; /* spans all 5 columns */
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px;
+    padding: 24px 0 28px;
+    border-top: 1px solid var(--rim);
+    margin-top: 8px;
   }
   .footer-bottom p {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--text-3);
   }
   .footer-bottom-links {
@@ -946,7 +1020,7 @@
     gap: 20px;
   }
   .footer-bottom-links a {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--text-3);
     text-decoration: none;
     transition: color 0.2s;
@@ -955,7 +1029,16 @@
     color: var(--text-2);
   }
 
-  /* ── RESPONSIVE ── */
+  /* ════════════════════════════════════
+     RESPONSIVE
+  ════════════════════════════════════ */
+  @media (max-width: 1200px) {
+    .footer-inner {
+      grid-template-columns: 1.6fr 1fr 1fr 1fr 1fr;
+      gap: 32px;
+    }
+  }
+
   @media (max-width: 1024px) {
     .desktop-nav {
       display: none;
@@ -963,23 +1046,28 @@
     .hamburger {
       display: flex;
     }
+
     .cta-grid {
       grid-template-columns: 1fr;
     }
+
+    /* 3-col footer on tablet: brand spans 3, then cols pair up */
     .footer-inner {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 36px;
     }
     .footer-brand {
-      grid-column: span 2;
+      grid-column: 1 / -1;
     }
   }
+
   @media (max-width: 640px) {
     .footer-inner {
       grid-template-columns: 1fr 1fr;
+      gap: 28px;
     }
     .footer-brand {
-      grid-column: span 2;
+      grid-column: 1 / -1;
     }
     .cta-card {
       padding: 36px 28px;
