@@ -862,23 +862,7 @@ END;
 $$;
 
 
-CREATE POLICY contact_requests_insert
-ON public.contact_requests
-FOR INSERT
-WITH CHECK (
-    email IS NOT NULL AND message IS NOT NULL
-);
-
--- If using the Supabase service role:
-CREATE POLICY contact_requests_insert_service_role
-ON public.contact_requests
-FOR INSERT
-TO authenticated
-WITH CHECK (
-    email IS NOT NULL AND message IS NOT NULL
-);
-
-
+DROP TABLE IF EXISTS public.contact_requests;
 
 CREATE TABLE public.contact_requests (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -895,5 +879,44 @@ CREATE TABLE public.contact_requests (
 
 ALTER TABLE public.contact_requests ENABLE ROW LEVEL SECURITY;
 
+CREATE POLICY contact_requests_insert
+ON public.contact_requests
+FOR INSERT
+WITH CHECK (
+    email IS NOT NULL AND message IS NOT NULL
+);
+
+-- If using the Supabase service role:
+CREATE POLICY contact_requests_insert_service_role
+ON public.contact_requests
+FOR INSERT
+TO authenticated
+WITH CHECK (
+    email IS NOT NULL AND message IS NOT NULL
+);
 
 DROP TABLE IF EXISTS public.stripe_customers;
+
+
+
+
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS kyc_intent text;
+
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS onboarding_status text;
+-- Enable RLS (probably already enabled)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policy for self-updating intent and onboarding status
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Self update kyc_intent & onboarding_status"
+ON public.profiles
+FOR UPDATE
+USING (auth.uid() = id)
+WITH CHECK (
+  auth.uid() = id AND
+  kyc_intent IS NOT NULL AND
+  onboarding_status IS NOT NULL
+);
