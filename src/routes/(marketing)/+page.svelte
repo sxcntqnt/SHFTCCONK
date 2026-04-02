@@ -175,6 +175,13 @@
 
   /* step numbers */
   const steps = ["01", "02", "03"]
+
+  let towns = ["Nairobi", "Mombasa", "Kisumu", "Eldoret"]
+  let index = 0
+
+  setInterval(() => {
+    index = (index + 1) % towns.length
+  }, 10000) // change every 10 seconds
 </script>
 
 <svelte:head>
@@ -196,7 +203,7 @@
   <div class="hero-inner">
     <div class="hero-eyebrow">
       <span class="hero-eyebrow-dot"></span>
-      Now Live in Nairobi
+      Now Live in {towns[index]}
     </div>
 
     <h1>Never Wait Blindly<br />at the Stage <em>Again</em></h1>
