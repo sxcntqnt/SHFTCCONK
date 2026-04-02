@@ -651,3 +651,249 @@ comment on column public.profiles.languages_spoken      is 'e.g. [English, Swahi
 comment on column public.profiles.time_zone             is 'IANA tz e.g. Africa/Nairobi';
 comment on column public.profiles.working_hours_start   is 'Preferred shift start (time)';
 comment on column public.profiles.working_hours_end     is 'Preferred shift end (time)';
+
+
+
+
+
+
+-- ── Geofences table ─────────────────────────────────────────────
+create table if not exists public.geofences (
+  id uuid primary key default gen_random_uuid(),
+
+  name text not null,
+
+  -- [{ lat: number, lng: number }]
+  coords jsonb not null,
+
+  -- scope control
+  scope text not null default 'personal'
+    check (scope in ('personal', 'org')),
+
+  profile_id uuid references public.profiles(id) on delete cascade,
+  org_id uuid references public.organizations(id) on delete cascade,
+  vehicle_id uuid references public.vehicles(id) on delete set null,
+
+  created_at timestamptz default now()
+);
+
+-- ── Constraints ─────────────────────────────────────────────────
+alter table public.geofences
+  add constraint geofence_personal_needs_profile
+    check (scope != 'personal' or profile_id is not null),
+
+  add constraint geofence_org_needs_org
+    check (scope != 'org' or org_id is not null);
+
+-- ── Indexes ─────────────────────────────────────────────────────
+create index if not exists idx_geofences_profile
+  on public.geofences(profile_id);
+
+create index if not exists idx_geofences_org
+  on public.geofences(org_id);
+
+create index if not exists idx_geofences_created
+  on public.geofences(created_at desc);
+
+
+-- Enable RLS
+alter table public.geofences enable row level security;
+
+
+create policy "Users can view their geofences"
+on public.geofences for select
+using (
+  profile_id = auth.uid()
+  OR
+  org_id in (
+    select organization_id
+    from organization_members
+    where actor_id in (
+      select id from actors where profile_id = auth.uid()
+    )
+  )
+);
+
+
+
+create policy "Users can insert geofences"
+on public.geofences for insert
+with check (
+  profile_id = auth.uid()
+  OR
+  org_id in (
+    select organization_id
+    from organization_members
+    where actor_id in (
+      select id from actors where profile_id = auth.uid()
+    )
+  )
+);
+
+
+
+
+create policy "Users can delete their geofences"
+on public.geofences for delete
+using (
+  profile_id = auth.uid()
+  OR
+  org_id in (
+    select organization_id
+    from organization_members
+    where actor_id in (
+      select id from actors where profile_id = auth.uid()
+    )
+  )
+);
+
+
+
+DO $$
+BEGIN
+
+  -- personal → must have profile_id
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'geofence_personal_needs_profile'
+  ) THEN
+    ALTER TABLE public.geofences
+      ADD CONSTRAINT geofence_personal_needs_profile
+      CHECK (scope != 'personal' OR profile_id IS NOT NULL);
+  END IF;
+
+  -- org → must have org_id
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'geofence_org_needs_org'
+  ) THEN
+    ALTER TABLE public.geofences
+      ADD CONSTRAINT geofence_org_needs_org
+      CHECK (scope != 'org' OR org_id IS NOT NULL);
+  END IF;
+
+END $$;
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS public.mpesa_customers (
+  user_id uuid PRIMARY KEY
+    REFERENCES public.profiles(id) ON DELETE CASCADE,
+
+  phone_number text,
+  mpesa_customer_id text,
+  subscription_code text,
+
+  subscription_status text
+    CHECK (subscription_status IN ('active', 'inactive', 'pending', 'cancelled')),
+
+  updated_at timestamptz DEFAULT now()
+);
+
+
+
+CREATE INDEX IF NOT EXISTS idx_mpesa_customers_user_id
+ON public.mpesa_customers(user_id);
+
+
+CREATE OR REPLACE FUNCTION public.handle_org_news_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+
+
+CREATE OR REPLACE FUNCTION public.update_hlf_queue_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+
+
+CREATE OR REPLACE FUNCTION public.bump_permissions_version()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  target_profile_id uuid;
+  target_actor_id   uuid;
+BEGIN
+  target_actor_id := coalesce(
+    CASE tg_table_name
+      WHEN 'actor_permissions'   THEN coalesce(NEW.actor_id, OLD.actor_id)
+      WHEN 'actor_policy_groups' THEN coalesce(NEW.actor_id, OLD.actor_id)
+      WHEN 'actor_jurisdictions' THEN coalesce(NEW.actor_id, OLD.actor_id)
+      WHEN 'delegated_authority' THEN coalesce(
+        (row_to_json(NEW) ->> 'to_actor_id')::uuid,
+        (row_to_json(OLD) ->> 'to_actor_id')::uuid
+      )
+      ELSE NULL
+    END
+  );
+
+  SELECT a.profile_id INTO target_profile_id
+  FROM public.actors a
+  WHERE a.id = target_actor_id;
+
+  IF target_profile_id IS NOT NULL THEN
+    UPDATE public.profiles
+    SET permissions_version = permissions_version + 1
+    WHERE id = target_profile_id;
+  END IF;
+
+  RETURN coalesce(NEW, OLD);
+END;
+$$;
+
+
+CREATE POLICY contact_requests_insert
+ON public.contact_requests
+FOR INSERT
+WITH CHECK (
+    email IS NOT NULL AND message IS NOT NULL
+);
+
+-- If using the Supabase service role:
+CREATE POLICY contact_requests_insert_service_role
+ON public.contact_requests
+FOR INSERT
+TO authenticated
+WITH CHECK (
+    email IS NOT NULL AND message IS NOT NULL
+);
+
+
+
+CREATE TABLE public.contact_requests (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    first text NOT NULL,
+    last text NOT NULL,
+    email text NOT NULL,
+    phone text,
+    org text,
+    type text,
+    message text NOT NULL,
+    ip_address text NOT NULL,
+    created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE public.contact_requests ENABLE ROW LEVEL SECURITY;
+
+
+DROP TABLE IF EXISTS public.stripe_customers;
