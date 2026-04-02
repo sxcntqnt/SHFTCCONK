@@ -1,217 +1,1709 @@
 # Growth Plan: FLAM #
-**Generated:** 2026-03-30T13:56:40.204842
+**Generated:** 2026-03-31T17:46:39.922460
 
 ---
 
-### 1. The Growth Core
+### 1. Operator Agency & Event Booking
 
-**GLOBAL MAXIMUM: Real-Time Fleet Visibility as Operational Trust Infrastructure**
+## The Core Utility Identified
 
-The single highest-leverage utility in FLAM is not payments, not compliance, not seat reservations — it is **live GPS tracking as the shared source of truth** across every stakeholder in the matatu ecosystem. This is the compounding core because it is the only feature that simultaneously creates value for fleet operators (asset accountability), SACCOs (compliance evidence), drivers (dispute resolution), conductors (route adherence), regulators (audit trail), and passengers (arrival certainty) — all from one data stream.
-
-The compounding mechanism: every vehicle added to live tracking increases the fidelity of the network's operational picture. More vehicles tracked → more route patterns captured → more accurate ETAs → more passenger trust → more seat reservations → more M-Pesa transaction volume → more SACCO pressure on non-participating operators to join. This is a multi-sided network effect anchored to a physical asset (the matatu) that cannot be replicated by a competitor without re-enrolling the entire fleet.
-
-The blockchain audit trail via Hyperledger Fabric is not a feature — it is the **irreversibility layer** on top of this tracking core. Every GPS event that hits the ledger makes the operator's compliance record tamper-proof. Regulators who consume this data become structurally dependent on FLAM's ledger as the authoritative record. That is regulatory lock-in, which is the hardest moat in any transit market.
-
-**WHY TEAMS MISS THIS AND OPTIMIZE FOR LOCAL MAXIMA:**
-
-— *Local Maximum 1: M-Pesa Payment Conversion.* Teams over-index on payment flow optimization because it produces visible revenue events. But M-Pesa transactions are downstream of GPS-confirmed trips. Without live tracking establishing trip legitimacy, payments are just a billing layer that any competitor can replicate. Payments are the monetization of tracking, not the core.
-
-— *Local Maximum 2: Onboarding Checklist Completion Rate.* High-priority in the manifest, and correctly so for activation velocity — but it is a funnel metric, not a compounding asset. A completed checklist does not compound. A fleet with 30 vehicles actively broadcasting GPS does, because removal cost scales with fleet size and ledger history depth.
-
-— *Local Maximum 3: SACCO Compliance Dashboards.* Compliance reporting feels like the B2B anchor because SACCOs hold operator contracts. But compliance dashboards are a read layer on top of tracking data. They are valuable only insofar as the tracking data is live, dense, and trusted. Optimizing the dashboard without maximizing live vehicle enrollment is optimizing the report without filling the database.
-
-**THE COMPOUNDING ARCHITECTURE FROM THE GLOBAL MAXIMUM:**
-
-Activation (First GPS Session < 48 hours) is not a UX milestone — it is the moment FLAM's compounding clock starts. Every hour of live tracking data accumulated makes the operator's account more valuable to them and more costly to abandon. The product's entire lifecycle architecture must be reoriented around minimizing the distance between account creation and first sustained GPS session. Onboarding checklists, feature gates, M-Pesa flows, and invite systems are all acceleration mechanisms toward that single event. They are not co-equal growth levers; they are tributary systems feeding the primary compounding asset: a live, ledger-anchored, multi-stakeholder fleet visibility network that becomes more defensible with every kilometer tracked.
-
-### 2. The Playbook (What?)
-
-**The Invisible Playbook: Fleet Telemetry as a Self-Deepening Moat**
-
-The architectural shift is this: stop treating GPS tracking as a feature inside a SaaS product and start engineering it as a **data accumulation flywheel that makes every other product surface more valuable the longer it runs**. The moat is not the tracking itself — every competitor can buy a GPS module. The moat is the **depth of the ledger-anchored operational history per vehicle**, and the number of stakeholders whose workflows have been restructured around that history.
-
-**What the Playbook Actually Is:**
-
-FLAM's product architecture must be reoriented so that every user action — onboarding a vehicle, processing an M-Pesa fare, issuing a compliance report, reserving a seat — writes a timestamped, GPS-correlated event to the Hyperledger ledger. Not as an audit feature. As the **primary data model**. The ledger is not a log of what happened in FLAM; FLAM is the interface layer on top of the ledger. This inversion is the entire game.
-
-When this is true, three compounding dynamics activate simultaneously:
-
-*1. Per-Vehicle Switching Cost Scales Superlinearly.* A fleet operator with 6 months of ledger-anchored trip history, compliance records, and M-Pesa reconciliation tied to specific vehicle IDs cannot migrate to a competitor without forfeiting that history. At month 1, switching cost is low. At month 8, it is prohibitive — not because of contractual lock-in, but because the ledger record IS the operator's compliance standing with the SACCO and the regulator. Migrating means starting a new compliance identity from zero. No rational operator does this mid-audit cycle.
-
-*2. Regulator Dependency Creates Asymmetric Network Defense.* The moment a single NTSA inspector or SACCO compliance officer runs one official audit using FLAM's blockchain-verified trip data, FLAM becomes the de facto evidentiary standard for that route corridor. Competitors cannot produce equivalent tamper-proof records retroactively. This is not a sales advantage — it is a **structural foreclosure of the compliance market segment** in any corridor where FLAM achieves first-mover ledger depth. Average teams treat regulators as a sales channel. The Playbook treats them as an irreversibility mechanism.
-
-*3. Passenger-Side Data Densifies the Operator-Side Asset.* Every seat reservation tied to a GPS-confirmed trip adds a demand signal to a specific route, time window, and vehicle. Over 90 days, this produces a route-level demand model that no operator built from manual records. FLAM holds this model. The operator's ability to optimize scheduling, reduce deadhead kilometers, and negotiate SACCO route allocations becomes structurally dependent on FLAM's analytics layer — which is only as good as the GPS session density that feeds it. Passengers are not a separate growth surface; they are the sensor network that makes the operator's asset more valuable.
-
-**What the Moat Looks Like at Execution:**
-
-At 50 vehicles tracked across a single route corridor with 6+ months of ledger depth: FLAM owns the authoritative operational record for that corridor. The SACCO uses it. The regulator references it. The operator's insurance and financing conversations reference it. A competitor entering that corridor must convince every stakeholder to accept a parallel, unverified record as equivalent. They cannot. The moat is epistemological — FLAM's ledger is what happened. Everything else is a claim.
-
-**What Average Teams Do Instead:**
-
-Average teams build a GPS tracking feature, a payments feature, a compliance dashboard feature, and a community feature — and then run A/B tests on onboarding copy to improve checklist completion rates. They treat each surface as a conversion funnel to optimize independently. They celebrate M-Pesa payment volume as the north star metric because it maps cleanly to revenue. They build the regulator dashboard as a sales collateral tool rather than as a ledger consumption interface that creates institutional dependency. They never invert the architecture because inverting it requires accepting that the product's primary value is not in the UI — it is in the irreversible accumulation of verified operational history that the UI merely surfaces. That is a harder story to tell to a board. It is also why the moat, once built, is nearly impossible to replicate.
-
-### 3. The Average Trap (Why?)
-
-**The Divergence Point: Month 2, After the Onboarding Checklist Closes**
-
-Average teams building FLAM-class transit SaaS hit one precise fork in the road. They correctly identify that onboarding completion is low, correctly prioritize the guided checklist, and correctly celebrate when activation metrics tick upward. Then they make the fatal architectural decision: they treat activation as a destination rather than a starting condition. The checklist closes. The operator has added two vehicles. The dashboard looks populated. The team moves to the next funnel problem — M-Pesa conversion rates, SACCO invite flows, pricing page optimization. GPS tracking becomes a feature that is 'live' rather than a compounding asset that is 'deepening.' This is the exact moment the divergence begins, and it is invisible in the metrics for 90 to 120 days.
-
-**Why It Is Invisible: The Vanity Metric Trap**
-
-At Month 2, average teams are looking at the right numbers in the wrong frame. Activation Rate is above 45%. Time to First GPS Session is under 48 hours. Free-to-Paid Conversion is climbing toward 8%. Every lifecycle metric in the manifest is trending correctly. What is not being measured — because average teams never instrument it — is **ledger depth per vehicle per route corridor**. This is the metric that predicts switching cost at Month 8. It is not in any standard SaaS analytics template. PostHog does not surface it by default. No investor deck asks for it. So it goes unmeasured, which means it goes unmanaged, which means it quietly fails to accumulate while the team celebrates conversion rate improvements.
-
-The compounding logic that destroys average teams here is straightforward. Define V as the verified operational history depth in the Hyperledger ledger per active vehicle, measured in GPS-correlated trip events. Define T as time since first sustained GPS session. V/T is the rate at which switching cost is accumulating per vehicle. Average teams, by deprioritizing GPS session density after activation, produce a low V/T ratio. They have vehicles enrolled but not continuously broadcasting. They have operators who opened the dashboard, completed the checklist, processed one M-Pesa payment, and then reverted to manual operations for 60% of their trips because no mechanism in the product architecture compelled continuous GPS engagement beyond the initial activation event.
-
-At Month 2, a fleet with 10 vehicles and a V/T of 0.3 — meaning GPS sessions cover roughly 30% of actual trips — looks identical on a dashboard to a fleet with a V/T of 0.9. Revenue is similar. Activation is checked. Retention looks fine because the operator logs in weekly to check the compliance dashboard. But the ledger depth at Month 2 for the 0.3 fleet is one-third of what it should be. At Month 8, the 0.9 fleet has a switching cost that is structurally prohibitive. The 0.3 fleet has a switching cost that is merely inconvenient. A competitor with a lower price point can poach the 0.3 fleet. They cannot touch the 0.9 fleet.
-
-**The LTV/CAC Compounding Failure**
-
-Average teams model LTV as (Monthly Recurring Revenue × Gross Margin) / Churn Rate. This is correct for a linear SaaS product. It is catastrophically wrong for a ledger-anchored multi-sided platform. In FLAM's architecture, LTV is not a function of price plan — it is a function of ledger depth, stakeholder count per organization, and route corridor coverage. These three variables compound nonlinearly. An operator at Month 8 with deep ledger history, 4 SACCO compliance officers consuming their data, and coverage across 2 route corridors has an LTV that is 6 to 10 times higher than a same-revenue operator at Month 2 with shallow history and a single user. Average teams charge both operators the same subscription price and model them identically in LTV calculations.
-
-The CAC side compounds the error. Average teams, seeing that M-Pesa conversion is their clearest revenue signal, allocate acquisition spend toward operators who are most likely to convert to paid plans quickly. These operators are often smaller fleets — 3 to 5 vehicles — who hit the free tier limit fast and upgrade to avoid disruption. They convert well. They also churn at higher rates at Month 6 because their ledger depth is shallow, their SACCO integration is minimal, and a competitor's sales rep with a lower price point can close them in a single meeting. CAC was spent acquiring the most churn-prone segment because conversion velocity was mistaken for retention quality.
-
-The operators who are hardest to convert in Month 2 — larger SACCOs with existing manual processes, compliance officers who need convincing, 15-plus vehicle fleets with complex route structures — are the operators whose V/T ratio, once established, produces the deepest ledger history and the highest switching costs. Average teams under-invest in these accounts because the sales cycle is longer and the conversion metrics look worse in the short term. They are systematically acquiring the wrong cohort and calling it growth.
-
-**The Regulatory Dependency Failure: The Missed Irreversibility Window**
-
-There is a second divergence point that average teams hit at Month 4 to 6. By this point, a correctly-architected FLAM deployment would have begun positioning ledger-verified trip data as the evidentiary standard for at least one route corridor — one NTSA inspector, one SACCO compliance officer, running one official audit using blockchain-verified records. Average teams do not do this because it requires product work that does not map to any standard SaaS growth metric. It requires building a regulator-facing ledger consumption interface, training a compliance officer on tamper-proof record verification, and treating that interaction as a structural foreclosure event rather than a sales call.
-
-Instead, average teams build the compliance dashboard as a feature for operators — a way for operators to self-report and look organized. This is the local maximum trap identified in the Growth Core. The dashboard serves the operator's internal needs but creates zero institutional dependency in the regulator or SACCO. When the regulator runs their next audit, they use their own manual process because FLAM's output is a PDF export, not a blockchain-verified evidentiary record they have been trained to treat as authoritative. The irreversibility window — the 90-day period after a corridor achieves sufficient ledger depth to be credibly presented to a regulator — closes without being used. A competitor entering that corridor 12 months later faces no structural foreclosure. The moat was never built because the team was optimizing the compliance dashboard's UI instead of engineering the regulator's institutional dependency on the ledger.
-
-**The Compounding Arithmetic of Divergence**
-
-At Month 2: average team is 10% behind optimal trajectory. Metrics look fine. No alarm fires.
-At Month 6: churn in the early-converted small-fleet cohort begins. V/T ratios are low across the fleet portfolio. No regulator dependency has been established in any corridor. The team runs a win-back campaign and discounts annual plans. CAC rises. LTV model is revised downward.
-At Month 12: a competitor with lower pricing enters one corridor. The average team's operators in that corridor, with shallow ledger history and no SACCO structural dependency, are vulnerable. 20 to 30% of that corridor's fleet churns. The team responds with feature parity work — building what the competitor has — rather than deepening the ledger moat they failed to build in Months 2 through 6.
-At Month 18: the competitor has its own GPS tracking, its own M-Pesa integration, and a lower price point. The average team has a feature-equivalent product with no structural moat. The growth problem is now a competitive problem, and competitive problems at Month 18 are solved with capital, not product architecture. The divergence that began invisibly at Month 2 is now an existential funding question.
-
-The correctly-architected team at Month 18 has 3 route corridors with regulator-accepted ledger records, a fleet portfolio where the top quartile has V/T ratios above 0.85, and SACCO compliance officers who have restructured their audit workflows around FLAM's blockchain output. The competitor's lower price point is irrelevant to these accounts. Switching means abandoning the compliance identity the operator has built on the ledger. No rational operator does this. The moat is not a feature. It is the accumulated consequence of measuring and managing V/T from Month 1 instead of celebrating checklist completion rates and moving on.
-
-### 4. The Mechanics of Leverage (How?)
-
-**THE MECHANICS OF LEVERAGE: ENGINEERING THE LEDGER DEPTH FLYWHEEL**
-
-The four powers below are not independent levers. They are a single compounding system where each power feeds the next. The organizing principle across all four: every mechanic must either increase V/T (GPS session density per vehicle per unit time) or deepen stakeholder count per organization. Mechanics that do neither are cut regardless of their conversion optics.
+The Operator is a business-role actor — a fleet owner or route licensee operating vehicles as a revenue-generating asset. Their cognitive model is **asset scheduling and liability exposure**, not GPS telemetry. They do not think in pings; they think in: *which vehicles are committed, to what, for how long, and who bears the risk if something goes wrong.* The BUSINESS_RESERVATION ledger event is the mechanism that converts a verbal or informal booking commitment into an immutable, timestamped, cryptographically-anchored liability shield. This is the utility. Everything else compounds from it.
 
 ---
 
-**POWER 1: ONBOARDING — First-Action Friction Engineering**
+## Why Fleet Availability — Not GPS Telemetry — Is the Correct Mental Model
 
-The standard onboarding error is treating 'vehicle added' as the activation event. It is not. 'Vehicle added' is a database write. The activation event is the first sustained GPS broadcast from a physical matatu on an active route — the moment the ledger clock starts. Every onboarding mechanic must be engineered to collapse the distance between account creation and that specific physical event.
+GPS telemetry answers: *where is the vehicle right now?*
 
-*Control of DISCOVERY — The Hook:*
-Landing page architecture must surface a live corridor map — MapLibre rendering actual anonymized GPS tracks from consented active fleets — as the above-the-fold element. Not a feature list. Not a pricing table. A live operational picture of what FLAM's ledger already knows about Nairobi's routes. This does two things simultaneously: it signals to the operator that peers are already enrolled (social proof with geographic specificity), and it creates an immediate intuition for what their own fleet's absence from that map costs them in SACCO standing. The pricing page must be reached through a 'See Your Route' CTA that pre-filters the operator's likely corridor based on phone number prefix or self-reported SACCO — reducing the pricing page to a confirmation of value already demonstrated, not an introduction to it.
+Fleet availability answers: *can I commit this vehicle to a charter, and what happens if I do?*
 
-*Control of ONBOARDING — The Guide:*
-The onboarding checklist is restructured around a single north star: 'First Live Vehicle.' The checklist has exactly four steps, sequenced to eliminate every non-GPS action before the GPS action: (1) Add one vehicle — plate number, SACCO association, route corridor. (2) Assign a driver with a phone number that will receive the GPS broadcasting app link via SMS. (3) Initiate the first GPS session — the checklist does not advance until a live GPS ping is received from that vehicle's assigned device. (4) Invite one SACCO compliance officer to view the live track. Step 3 is the gate. The UI does not present Step 4 until the GPS ping lands. This is deliberate friction inversion: friction is placed after the GPS event to make that event feel like an unlock rather than a task. The compliance officer invite in Step 4 is not optional UX — it is the first stakeholder expansion event, engineered into the onboarding sequence before the operator has left the first session.
+The Operator's liability exposure is not spatial — it is contractual and temporal. A matatu operator who diverts a vehicle from its licensed route to serve a private charter without a recorded reservation faces:
+- NTSA route-deviation penalties
+- SACCO disciplinary action for unlogged vehicle absence
+- Passenger compensation claims with no exculpatory record
 
-The driver SMS in Step 2 contains a deep link to a lightweight PWA — not a native app requiring store approval — that begins GPS broadcasting on open. The PWA is sub-200KB, loads on 3G Safaricom connections in under 4 seconds, and requires zero account creation from the driver. The driver's only action is tapping 'Start Route.' This is the most critical friction removal in the entire product: the GPS broadcast path must be zero-auth for the driver, because drivers are not SaaS users — they are physical sensors. Any login friction at this step produces a V/T collapse that is invisible in the onboarding dashboard but fatal to ledger depth at Month 6.
-
-*Control of ACTIVATION — First Value:*
-The 'First Vehicle Added' milestone is instrumented in PostHog but is not celebrated in the UI. The UI celebration — confetti, completion state, share prompt — is reserved exclusively for the first GPS ping received. This is a deliberate behavioral anchor: the operator's emotional peak is tied to the ledger event, not the form submission. The 48-hour Time to First GPS Session metric is enforced by a Upstash Redis-backed job that fires an SMS to the operator's registered number at Hour 4 if no GPS ping has been received, containing the driver PWA link and a single instruction: 'Send this to your driver before tomorrow's first trip.' At Hour 24 with no ping, a second SMS fires with a different frame: 'Your vehicle is not yet on the FLAM network. Your SACCO compliance record starts when it is.' This is not a retention email — it is a compliance urgency signal, which is the correct motivational frame for a Kenyan matatu operator whose SACCO standing is a material business asset.
+The BUSINESS_RESERVATION ledger event solves all three by creating a pre-authorised, time-bounded deviation record anchored to Hyperledger Fabric before the vehicle moves. The Operator's calendar is therefore a **liability management interface**, not a scheduling convenience.
 
 ---
 
-**POWER 2: RETENTION — Habit Loop Architecture**
+## FleetBooking.svelte Component Scope
 
-The habit loop for a fleet operator must be anchored to a daily operational need, not a SaaS dashboard check. The daily operational need in the matatu ecosystem is route performance and driver accountability — both of which are answered by the GPS data stream. The product must manufacture a daily pull toward the FLAM interface that is triggered by operational anxiety, not by notification spam.
+### Data Model Surface
 
-*Control of ENGAGEMENT — Sticky Value:*
-At 6:00 AM EAT each operating day, every fleet operator with at least one active vehicle receives a WhatsApp message (via Twilio or Africa's Talking WhatsApp Business API) containing: (1) Number of vehicles currently broadcasting GPS. (2) Number of vehicles registered but not yet broadcasting. (3) Yesterday's total trip distance per vehicle, ranked. (4) One compliance flag if any vehicle missed a scheduled departure by more than 15 minutes. This is not a marketing message. It is an operational briefing that the operator would otherwise have to call three drivers to reconstruct manually. The WhatsApp delivery channel is critical — operators are in WhatsApp before they open any SaaS dashboard. The briefing contains a deep link back to the FLAM live map for any vehicle showing a compliance flag. This is the habit loop: operational anxiety (vehicle not broadcasting, compliance flag) → WhatsApp trigger → FLAM live map → operator action (calls driver, resolves flag) → GPS session resumes → ledger depth increases. The loop runs daily. V/T rises as a byproduct of the operator's existing behavioral pattern, not as a new behavior they must adopt.
+The component must operate against a `fleet_bookings` table with the following minimal schema contract:
 
-The in-app experience for operators who do open the dashboard must surface the ledger depth metric explicitly — not as a technical readout but as a 'Compliance Score' per vehicle: a 0-100 index derived from GPS session coverage rate (V/T), on-time departure rate, and M-Pesa fare reconciliation completeness. This score is visible to the operator and, critically, to any SACCO compliance officer who has been invited to the organization. The score creates a social accountability mechanism: operators whose vehicles have low Compliance Scores are visible to their SACCO. This is not gamification — it is the digitization of an accountability structure that already exists in the matatu ecosystem through manual SACCO inspections. FLAM makes it continuous and tamper-proof.
+```typescript
+interface FleetBooking {
+  id: string; // uuid
+  org_id: string; // tenant isolation
+  vehicle_id: string; // FK → vehicles
+  operator_id: string; // FK → profiles (OPERATOR role)
+  booking_type: 'CHARTER' | 'EVENT' | 'MAINTENANCE' | 'REGULATORY';
+  status: 'PENDING' | 'CONFIRMED' | 'LEDGER_ANCHORED' | 'CANCELLED';
+  starts_at: string; // ISO 8601
+  ends_at: string; // ISO 8601
+  client_name: string | null;
+  client_contact: string | null; // phone, M-Pesa linked
+  agreed_fare: number | null; // KES
+  mpesa_reference: string | null;
+  ledger_tx_id: string | null; // Hyperledger Fabric tx hash
+  route_deviation_authorised: boolean; // drives liability shield
+  created_at: string;
+  updated_at: string;
+}
+```
 
-*Control of RETENTION & EXPANSION — Network Lock-In:*
-At Month 2, the retention mechanic shifts from habit formation to switching cost crystallization. The product must surface, at the operator level, a 'Ledger History' view: a timeline of every GPS-correlated trip event written to the Hyperledger ledger, with a running count of total verified kilometers, total M-Pesa fares reconciled, and total compliance events recorded. This view is not analytics — it is a mirror of the operator's accumulated compliance identity on the ledger. The UI copy is explicit: 'This record is tamper-proof and portable to any NTSA audit or SACCO compliance review.' At Month 6, an operator with 4,000 verified trip events on the ledger is looking at a compliance asset they built on FLAM's infrastructure. The switching cost is not contractual. It is the impossibility of reconstructing that history on a competitor's ledger retroactively.
+The `ledger_tx_id` field is the trust anchor. A booking without it is a draft. A booking with it is a legal instrument.
 
-Expansion mechanics are triggered by fleet size thresholds, not time-based upsells. When an operator's fleet exceeds 5 active vehicles, the UI surfaces a 'Fleet Intelligence' unlock: route-level demand modeling derived from passenger seat reservation patterns cross-referenced with GPS trip timing. This is the passenger-side data densification described in the Playbook, surfaced as operator value at the exact moment the fleet is large enough to generate statistically meaningful demand signals. The upgrade prompt is not 'Upgrade to Pro' — it is 'Your Route 23 fleet has enough data to show you peak demand windows. Unlock Fleet Intelligence to see them.' The feature gate is tied to a specific data insight the operator can already see is accumulating, not to an abstract tier boundary.
+### Component Responsibilities
+
+**1. Availability Grid Rendering**
+
+The primary view is a multi-vehicle horizontal timeline — not a single-vehicle calendar. The Operator manages a fleet, not a single asset. The grid must render:
+- Each vehicle as a row, identified by plate number and current SACCO assignment
+- Time blocks colour-coded by booking type (charter = amber, maintenance = grey, regulatory = blue, event = purple)
+- Conflict zones highlighted in red when a proposed booking overlaps an existing confirmed block
+- A "ledger anchored" indicator (chain-link icon) on any block where `ledger_tx_id` is non-null
+
+This grid is powered by a Supabase realtime subscription on `fleet_bookings` filtered by `org_id`, so concurrent booking attempts by multiple operators in the same SACCO surface instantly without page refresh.
+
+**2. Booking Creation Flow**
+
+The creation flow is a right-side drawer, not a modal, preserving grid context during entry:
+
+- Step 1: Vehicle selection (filtered to vehicles the Operator owns or is assigned to — not org-wide)
+- Step 2: Time window selection with conflict detection against existing bookings (client-side, against the already-subscribed dataset)
+- Step 3: Booking type and client details (client name, phone for M-Pesa deposit collection)
+- Step 4: Fare agreement and optional M-Pesa STK push for deposit
+- Step 5: Ledger anchor trigger — this is the commitment point
+
+The ledger anchor step must be visually distinct. It is not a "save" button. It is a **"Lock & Protect"** action with explicit copy: *"This commits the vehicle and creates your route-deviation record. You are protected if this vehicle is off-route during this window."*
+
+**3. BUSINESS_RESERVATION Ledger Event Architecture**
+
+When the Operator triggers the ledger anchor:
+
+```typescript
+// POST /api/fleet/bookings/[id]/anchor-ledger
+// Server-side only — never expose Fabric SDK to client
+
+async function anchorBusinessReservation(bookingId: string, operatorId: string) {
+  const booking = await db.fleet_bookings.findUnique({ where: { id: bookingId } });
+
+  // Construct the ledger payload
+  const ledgerPayload = {
+    event_type: 'BUSINESS_RESERVATION',
+    booking_id: booking.id,
+    vehicle_id: booking.vehicle_id,
+    operator_id: booking.operator_id,
+    org_id: booking.org_id,
+    booking_type: booking.booking_type,
+    starts_at: booking.starts_at,
+    ends_at: booking.ends_at,
+    route_deviation_authorised: booking.route_deviation_authorised,
+    agreed_fare_kes: booking.agreed_fare,
+    mpesa_reference: booking.mpesa_reference,
+    anchored_at: new Date().toISOString(),
+  };
+
+  // Submit to Hyperledger Fabric chaincode
+  const fabricResult = await fabricGateway.submitTransaction(
+    'FleetBookingContract',
+    'CreateBusinessReservation',
+    JSON.stringify(ledgerPayload)
+  );
+
+  const txId = fabricResult.transactionId;
+
+  // Write tx hash back to PostgreSQL
+  await db.fleet_bookings.update({
+    where: { id: bookingId },
+    data: {
+      ledger_tx_id: txId,
+      status: 'LEDGER_ANCHORED',
+      route_deviation_authorised: true,
+    },
+  });
+
+  // PostHog event for monetisation instrumentation
+  await posthog.capture({
+    distinctId: operatorId,
+    event: 'business_reservation_ledger_anchored',
+    properties: {
+      booking_type: booking.booking_type,
+      vehicle_id: booking.vehicle_id,
+      duration_hours: durationHours(booking.starts_at, booking.ends_at),
+      has_mpesa_deposit: !!booking.mpesa_reference,
+    },
+  });
+
+  return { txId, status: 'LEDGER_ANCHORED' };
+}
+```
+
+The Fabric chaincode `CreateBusinessReservation` must enforce:
+- No overlapping BUSINESS_RESERVATION events for the same `vehicle_id` on the world state
+- Immutability of `starts_at`, `ends_at`, and `route_deviation_authorised` post-anchor
+- Queryability by `vehicle_id` + time range for regulator and SACCO audit access
+
+**4. Conflict Detection Logic**
+
+Conflict detection runs client-side against the Supabase realtime cache, but the ledger anchor endpoint performs a final server-side conflict check before Fabric submission. This dual-layer prevents race conditions where two Operators attempt to anchor overlapping bookings simultaneously:
+
+```typescript
+// Server-side conflict guard before Fabric submission
+async function assertNoConflict(vehicleId: string, startsAt: Date, endsAt: Date, excludeBookingId: string) {
+  const conflict = await db.fleet_bookings.findFirst({
+    where: {
+      vehicle_id: vehicleId,
+      id: { not: excludeBookingId },
+      status: { in: ['CONFIRMED', 'LEDGER_ANCHORED'] },
+      OR: [
+        { starts_at: { lt: endsAt }, ends_at: { gt: startsAt } },
+      ],
+    },
+  });
+
+  if (conflict) throw new ConflictError(`Vehicle committed to booking ${conflict.id} during this window`);
+}
+```
+
+**5. Operator-Scoped Vehicle Filtering**
+
+Critical to the user context directive: the Operator sees only vehicles they are assigned to or own. They do not see org-wide fleet. This is enforced at the RLS layer in Supabase:
+
+```sql
+-- RLS policy: operators see only their assigned vehicles
+CREATE POLICY operator_vehicle_scope ON fleet_bookings
+  FOR ALL
+  USING (
+    org_id = auth.jwt() ->> 'org_id'
+    AND (
+      operator_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM vehicle_operator_assignments voa
+        WHERE voa.vehicle_id = fleet_bookings.vehicle_id
+        AND voa.operator_id = auth.uid()
+        AND voa.is_active = true
+      )
+    )
+  );
+```
+
+The ORG_CHAIR sees all bookings. The Operator sees their slice. This distinction must be reflected in the component's data fetching layer — the query predicate changes based on the authenticated role surfaced from the Supabase JWT.
 
 ---
 
-**POWER 3: VIRALITY — Activation Referral Architecture**
+## Lifecycle Control Points
 
-Virality in a multi-sided transit platform is not a referral link. It is the structural spread of the ledger's authority across stakeholders who were not initially enrolled. Every virality mechanic must produce a new stakeholder whose workflows become dependent on FLAM's data — not a new signup who may or may not activate.
+**ONBOARDING — The Trust:**
+The FleetBooking interface is gated behind vehicle assignment. An Operator with no assigned vehicles sees an empty state with a single CTA: *"Request vehicle assignment from your SACCO admin."* This drives the Actor Request Flow (existing feature) and creates an immediate administrative touchpoint that pulls the ORG_CHAIR into the platform to approve the assignment — compounding SACCO-level activation.
 
-*Control of ADVOCACY — The Multiplier:*
-The primary viral vector is the Shareable Tracking Link — a public, real-time GPS track URL for a specific vehicle that any operator can generate and share with a passenger, SACCO officer, or regulator without requiring the recipient to create an account. This link is not a passenger-facing feature. It is a stakeholder acquisition mechanism. When a SACCO compliance officer clicks a shared tracking link and sees a live, GPS-verified vehicle position with a Hyperledger-anchored trip record beneath it, they experience FLAM's core value proposition without a sales call. The link contains a CTA: 'Request full compliance access for your SACCO.' This CTA initiates a SACCO onboarding flow, not an operator onboarding flow — a separate, role-specific path that ends with the compliance officer having a dashboard view of all FLAM-enrolled vehicles in their SACCO's route corridors.
+**ACTIVATION — The Magic Moment:**
+The first BUSINESS_RESERVATION ledger anchor is a secondary magic moment for the Operator persona — distinct from the GPS first-ping moment which belongs to the driver. The Operator's magic moment is the first time they see `status: LEDGER_ANCHORED` and the Fabric transaction hash rendered in the booking detail drawer. This is the moment the platform stops being a tracking tool and becomes a legal instrument. PostHog must capture this event with full booking metadata for funnel analysis.
 
-The second viral vector is the Compliance Score export. Operators can generate a PDF compliance report — GPS-verified, blockchain-anchored, NTSA-formatted — for any vehicle for any date range. This report is designed to be submitted to SACCO annual reviews and NTSA spot audits. Every time an operator submits this report to a regulator or SACCO, FLAM's ledger is implicitly presented as the evidentiary standard. The report footer contains: 'Verified by FLAM Hyperledger Fabric — Reference ID [ledger hash].' When the regulator or SACCO officer wants to verify the hash, they visit a FLAM verification portal that requires no account — just the hash — and returns the verified trip record. This is the regulatory dependency creation event described in the Playbook, engineered as a passive byproduct of the operator's normal compliance workflow rather than as a sales motion.
+**ENGAGEMENT — The Habit:**
+The fleet availability grid becomes the Operator's morning ritual: check which vehicles are committed today, identify gaps for opportunistic charter bookings, and review any pending bookings awaiting ledger anchor. A daily digest notification (Resend email or WhatsApp via the existing WhatsApp onboarding channel) surfaces the day's booking schedule and any vehicles with no bookings — framing idle assets as revenue loss, not neutral availability.
 
-The referral program for operators is structured as a SACCO-level incentive, not an individual incentive. When an operator refers a peer from the same SACCO and that peer achieves first GPS ping within 7 days, both operators receive a 30-day extension on their current plan tier. The SACCO itself receives a 'Network Coverage' badge on its FLAM profile — a visible signal that X% of its registered fleet is FLAM-enrolled. This badge is visible to any SACCO compliance officer who has been invited to the platform. The incentive structure means that operators are motivated to recruit peers within their own SACCO, which is the correct viral vector: it densifies ledger coverage within a single route corridor, which is exactly the condition required to make the regulator dependency argument credible.
+**MONETISATION — The Commitment:**
+The free tier caps BUSINESS_RESERVATION ledger anchors at 5 per calendar month. This is the correct gate — not a vehicle count gate, not a GPS gate. Charter operators who exceed 5 anchored bookings per month are running a commercial operation that justifies the paid tier. The upgrade prompt appears inline in the booking creation drawer at anchor step, with copy: *"You've used 5 of 5 protected bookings this month. Upgrade to continue anchoring route-deviation protection."* M-Pesa STK push is the payment path, consistent with the existing payment store.
 
-*Control of DISCOVERY — Referral Loop Closure:*
-Every new operator who arrives via a SACCO referral is pre-contextualized: they already know a peer in their SACCO is enrolled, they have likely seen a shared tracking link or compliance report, and they arrive at the landing page with the live corridor map showing their own SACCO's enrolled vehicles. The discovery-to-signup conversion for this cohort is structurally higher than cold traffic because the social proof is hyperlocal — it is their specific SACCO, their specific route corridor, their specific peers. The landing page detects referral source and renders the corridor map filtered to the referring SACCO's routes. This is not personalization for its own sake — it is the elimination of the operator's primary objection: 'Does this work for my specific route?'
+**RETENTION — The Stickiness:**
+Ledger depth compounds here. An Operator with 6 months of BUSINESS_RESERVATION history has an audit trail that is genuinely difficult to reconstruct outside the platform. NTSA compliance reviews, SACCO dispute resolution, and insurance claims all become easier with this record. The switching cost is not technical — it is evidentiary. The platform must surface this periodically: *"Your fleet has 47 anchored reservation records across 6 months. This history is your compliance record."*
+
+**EXPANSION — The Flywheel:**
+Operators who successfully use BUSINESS_RESERVATION records in a dispute resolution or regulatory interaction become the most credible referral vector for the SACCO-to-SACCO referral program. The referral share moment is not "this software is good" — it is "I showed NTSA my Hyperledger record and the case was closed in 20 minutes." That is a story that travels through WhatsApp groups without any product-side nudge. The referral program (existing opportunity) must capture this moment by triggering a share prompt immediately after a booking dispute is marked resolved in the platform.
 
 ---
 
-**POWER 4: FRICTION — Deliberate Removal and Deliberate Placement**
+## Implementation File Targets
 
-Friction removal and friction placement are a single architectural decision. The rule: remove friction on every path that increases V/T or stakeholder count. Place friction on every path that produces a database write without a corresponding GPS event or stakeholder dependency. This rule eliminates an entire category of 'growth' work — onboarding copy optimization, pricing page A/B tests, email drip sequence tuning — that produces conversion metric improvements without compounding ledger depth.
+```
+src/lib/components/fleet/FleetBooking.svelte          — primary grid + drawer component
+src/lib/components/fleet/BookingDrawer.svelte         — creation/edit drawer
+src/lib/components/fleet/BookingTimelineGrid.svelte   — multi-vehicle horizontal timeline
+src/lib/components/fleet/LedgerAnchorButton.svelte    — the commitment action, isolated for PostHog instrumentation
+src/routes/api/fleet/bookings/+server.ts              — CRUD endpoints with RLS-aware queries
+src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts — Fabric submission endpoint
+src/lib/stores/fleetBookings.ts                       — Supabase realtime subscription store
+src/lib/server/fabric/businessReservation.ts          — Fabric gateway abstraction
+src/lib/utils/bookingConflict.ts                      — client-side conflict detection utility
+```
 
-*Friction Removal — GPS Broadcast Path:*
-The driver PWA is the highest-priority friction removal surface in the entire product. It must work on any Android device running Chrome, on Safaricom 3G, with intermittent connectivity, without account creation, without app store installation, and without any action beyond tapping 'Start Route.' GPS pings must be queued locally in IndexedDB when connectivity drops and flushed to the backend when connection resumes — no trip data is lost due to network interruption. The PWA must handle the Nairobi urban canyon GPS drift problem: if the device GPS accuracy drops below 50 meters, the PWA switches to cell tower triangulation via the browser Geolocation API fallback and flags the ping as 'low-accuracy' in the ledger rather than dropping it. A low-accuracy ping with a flag is more valuable than no ping — it maintains the trip continuity record even in degraded signal conditions. This is not a nice-to-have — it is the engineering that separates a V/T of 0.9 from a V/T of 0.3 in practice.
+The `LedgerAnchorButton.svelte` is isolated specifically because it carries the highest instrumentation value. Every render state — idle, loading, success, error, quota-exceeded — must emit a distinct PostHog event. This button is the monetisation conversion point for the Operator persona and must be treated with the same instrumentation discipline as an M-Pesa STK push trigger.
 
-M-Pesa payment friction removal is downstream of GPS friction removal, not parallel to it. The M-Pesa STK push for fare payment must be pre-populated with the trip reference derived from the active GPS session — the conductor does not enter an amount or a reference manually. The STK push fires automatically when the conductor marks a passenger as 'boarded' in the conductor PWA, with the fare amount calculated from the route's standard fare schedule. The conductor's only action is confirming the passenger's phone number. This eliminates the conductor as a payment friction point and ties every M-Pesa transaction to a specific GPS-verified trip event in the ledger — which is the M-Pesa-to-ledger binding that makes financial reconciliation tamper-proof.
+### 2. Zero-Input Driver Onboarding
 
-*Friction Placement — Feature Gate Architecture:*
-The free tier limit is not a vehicle count cap. It is a ledger depth cap: operators on the free tier can track up to 3 vehicles but their ledger history is capped at 30 days of retention in the queryable interface (the full ledger record is preserved — this is a display cap, not a data deletion). At Day 28, the UI surfaces a 'Your compliance history is approaching its retention limit' warning with a specific count of trip events that will become non-queryable in 2 days. This is not a generic upgrade prompt — it is a compliance urgency signal tied to the operator's actual accumulated data. The operator is not being asked to upgrade for features. They are being asked to preserve a compliance record they have already built. The conversion psychology is loss aversion, not feature aspiration. This is the correct frame for the Kenyan matatu operator persona, whose primary relationship with compliance is risk avoidance, not optimization.
+## The Core Utility Identified
 
-The feature gate for Fleet Intelligence (route-level demand modeling) is placed at 5 active vehicles with 60+ days of GPS history. The gate is not a paywall — it is a data readiness threshold. The UI shows a progress indicator: 'Fleet Intelligence unlocks when your fleet reaches 5 active vehicles with 60 days of verified history. You are at 3 vehicles and 34 days.' This transforms the feature gate from a frustration point into a behavioral target. The operator knows exactly what actions — enrolling 2 more vehicles, maintaining GPS session continuity — will unlock a specific analytical capability. The gate is engineered to pull the operator toward the behaviors that increase V/T, not toward a credit card form.
+The Operator's liability exposure begins the moment a vehicle moves without a recorded operator. The gap between "vehicle assigned" and "driver actively broadcasting GPS" is not a UX problem — it is an uninsured interval. Every minute a vehicle operates without a linked driver identity is a minute the Operator cannot defend in a SACCO dispute or NTSA audit. The GENESIS_ENROLLMENT event collapses this interval to zero by making the driver's first GPS ping simultaneously the enrollment event, the device pairing confirmation, and the ledger genesis record. The Operator never touches a device setup screen. The driver never creates an account. The URL is the onboarding funnel.
 
-*Control of CONVERSION — The Upgrade:*
-The M-Pesa checkout flow for annual plan upgrade is a single-screen STK push. No credit card form. No Stripe redirect for M-Pesa users. The plan selection screen shows three numbers prominently: (1) Total verified trip events in the operator's ledger. (2) Estimated compliance record value (a calculated figure based on trip events × average NTSA fine avoided per non-compliant trip, surfaced as 'Your FLAM record has documented KES X in compliance protection'). (3) Annual plan cost. The conversion frame is ROI on compliance insurance, not SaaS subscription cost. The STK push fires to the operator's registered M-Pesa number immediately on plan selection — no intermediate confirmation screen. Upstash Redis handles idempotency to prevent double-charges on network retry. The entire flow from 'Upgrade' button to M-Pesa PIN entry is under 3 taps. Stripe handles non-M-Pesa payments for SACCO-level enterprise accounts billed in USD — a separate flow for a separate buyer persona, not a unified checkout.
+---
 
-*Control of ONBOARDING — Friction Placement on Non-GPS Paths:*
-The community hub, in-app chat, and compliance reporting features are gated behind first GPS ping. An operator who has created an account but has not yet received a GPS ping from any vehicle sees a single-focus UI: the four-step checklist ending at GPS activation. All navigation to other product surfaces is visible but locked with a tooltip: 'Available after your first vehicle goes live.' This is deliberate friction on non-GPS paths — not because those features are unimportant, but because any time an operator spends in the community hub before achieving first GPS ping is time spent not compounding ledger depth. The product's architecture must make the GPS activation path the path of least resistance, and every other path slightly more resistant, until the first ping lands.
+## Why the Operator Must Be Removed from Device Setup Entirely
+
+The existing mental model for fleet software onboarding assumes the Operator configures devices, assigns drivers, and then activates tracking. This is a three-step process with three failure modes: the Operator forgets to configure, the driver receives the wrong device, or the pairing silently fails and GPS data is attributed to the wrong vehicle. In the matatu context, Operators are not sitting at desks. They are at termini, on the phone, managing conductors, and arguing with SACCO officials. Any onboarding step that requires the Operator to be present at a device is a step that will be skipped.
+
+The correct model: the Operator's only action is sharing a URL. Everything else is self-executing.
+
+---
+
+## QR Code and Vehicle-ID Pairing Architecture
+
+### Token Generation at Vehicle Assignment
+
+When a vehicle is assigned to an Operator (or when a new vehicle is added to the fleet), the system generates a deterministic, vehicle-scoped pairing token. This token is not a session credential — it is a capability token that encodes the vehicle identity and expires on first successful GPS ping or after 72 hours, whichever comes first.
+
+```typescript
+// src/lib/server/auth/pairingToken.ts
+
+import { SignJWT, jwtVerify } from 'jose';
+import { PAIRING_TOKEN_SECRET } from '$env/static/private';
+
+const secret = new TextEncoder().encode(PAIRING_TOKEN_SECRET);
+
+export interface PairingTokenPayload {
+  vehicle_id: string;
+  org_id: string;
+  operator_id: string;
+  plate_number: string;
+  issued_at: string;
+  purpose: 'DRIVER_PAIRING';
+}
+
+export async function generatePairingToken(payload: PairingTokenPayload): Promise<string> {
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('72h')
+    .sign(secret);
+}
+
+export async function verifyPairingToken(token: string): Promise<PairingTokenPayload> {
+  const { payload } = await jwtVerify(token, secret);
+  return payload as unknown as PairingTokenPayload;
+}
+```
+
+The token is generated server-side at the moment of vehicle-operator assignment and stored in a `vehicle_pairing_tokens` table with a `consumed_at` column. The QR code encodes a URL of the form:
+
+```
+https://driver.flam.co.ke/pair?t={base64url_token}
+```
+
+This URL is the only artifact the Operator needs to share. It can be printed as a QR code on a laminated card affixed to the dashboard, sent via WhatsApp, or displayed on the Operator's dashboard for the driver to scan.
+
+### Driver PWA Auth Flow
+
+```typescript
+// apps/driver-pwa/src/lib/auth.ts
+
+import { verifyPairingToken, type PairingTokenPayload } from '$lib/server/auth/pairingToken';
+import { browser } from '$app/environment';
+import { writable, get } from 'svelte/store';
+
+const DRIVER_SESSION_KEY = 'flam_driver_session';
+
+export interface DriverSession {
+  vehicle_id: string;
+  org_id: string;
+  operator_id: string;
+  plate_number: string;
+  paired_at: string;
+  session_token: string; // short-lived, GPS-scoped credential
+}
+
+export const driverSession = writable<DriverSession | null>(null);
+
+/**
+ * Called on PWA load. Checks IndexedDB for an existing session,
+ * or processes a pairing token from the URL search params.
+ * No account creation. No password. No email.
+ */
+export async function initDriverAuth(searchParams: URLSearchParams): Promise<'PAIRED' | 'EXISTING_SESSION' | 'NO_AUTH'> {
+  // 1. Check for persisted session in IndexedDB
+  if (browser) {
+    const persisted = await loadPersistedSession();
+    if (persisted && !isSessionExpired(persisted)) {
+      driverSession.set(persisted);
+      return 'EXISTING_SESSION';
+    }
+  }
+
+  // 2. Check for pairing token in URL
+  const rawToken = searchParams.get('t');
+  if (!rawToken) return 'NO_AUTH';
+
+  // 3. Exchange pairing token for a GPS-scoped session credential
+  const response = await fetch('/api/driver/pair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pairing_token: rawToken }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    // Token consumed or expired — surface a human-readable error
+    // with a WhatsApp deep-link to request a new pairing URL from the Operator
+    throw new PairingError(error.code, error.message);
+  }
+
+  const session: DriverSession = await response.json();
+  driverSession.set(session);
+
+  if (browser) {
+    await persistSession(session);
+    // Strip the token from the URL to prevent re-use on refresh
+    window.history.replaceState({}, '', '/pair/success');
+  }
+
+  return 'PAIRED';
+}
+
+async function loadPersistedSession(): Promise<DriverSession | null> {
+  // IndexedDB via idb-keyval or equivalent
+  const { get: idbGet } = await import('idb-keyval');
+  return idbGet(DRIVER_SESSION_KEY) ?? null;
+}
+
+async function persistSession(session: DriverSession): Promise<void> {
+  const { set: idbSet } = await import('idb-keyval');
+  await idbSet(DRIVER_SESSION_KEY, session);
+}
+
+function isSessionExpired(session: DriverSession): boolean {
+  // GPS-scoped session tokens are valid for 30 days of inactivity
+  // Active pinging resets the expiry server-side
+  const paired = new Date(session.paired_at).getTime();
+  const now = Date.now();
+  return now - paired > 30 * 24 * 60 * 60 * 1000;
+}
+
+export class PairingError extends Error {
+  constructor(public code: 'TOKEN_CONSUMED' | 'TOKEN_EXPIRED' | 'VEHICLE_NOT_FOUND', message: string) {
+    super(message);
+  }
+}
+```
+
+### Pairing Exchange Endpoint
+
+```typescript
+// src/routes/api/driver/pair/+server.ts
+
+import type { RequestHandler } from './$types';
+import { json, error } from '@sveltejs/kit';
+import { verifyPairingToken } from '$lib/server/auth/pairingToken';
+import { db } from '$lib/server/db';
+import { generateDriverSessionToken } from '$lib/server/auth/driverSession';
+import { redis } from '$lib/server/redis';
+
+export const POST: RequestHandler = async ({ request }) => {
+  const { pairing_token } = await request.json();
+
+  let payload;
+  try {
+    payload = await verifyPairingToken(pairing_token);
+  } catch {
+    throw error(401, { code: 'TOKEN_EXPIRED', message: 'Pairing link has expired. Request a new one from your operator.' });
+  }
+
+  // Idempotency check — token can only be consumed once
+  const tokenRecord = await db.vehicle_pairing_tokens.findFirst({
+    where: { vehicle_id: payload.vehicle_id, consumed_at: null },
+  });
+
+  if (!tokenRecord) {
+    throw error(409, { code: 'TOKEN_CONSUMED', message: 'This pairing link has already been used.' });
+  }
+
+  // Mark token as consumed
+  await db.vehicle_pairing_tokens.update({
+    where: { id: tokenRecord.id },
+    data: { consumed_at: new Date().toISOString() },
+  });
+
+  // Generate GPS-scoped session credential
+  const sessionToken = await generateDriverSessionToken({
+    vehicle_id: payload.vehicle_id,
+    org_id: payload.org_id,
+    operator_id: payload.operator_id,
+  });
+
+  // Cache the session in Redis for sub-millisecond GPS ping auth
+  await redis.set(
+    `driver_session:${payload.vehicle_id}`,
+    JSON.stringify({ vehicle_id: payload.vehicle_id, org_id: payload.org_id, operator_id: payload.operator_id }),
+    { ex: 30 * 24 * 60 * 60 } // 30 days, reset on each ping
+  );
+
+  return json({
+    vehicle_id: payload.vehicle_id,
+    org_id: payload.org_id,
+    operator_id: payload.operator_id,
+    plate_number: payload.plate_number,
+    paired_at: new Date().toISOString(),
+    session_token: sessionToken,
+  });
+};
+```
+
+---
+
+## GENESIS_ENROLLMENT: The Self-Healing Trigger on First Ping
+
+The GENESIS_ENROLLMENT event is not a separate onboarding step. It is a side effect of the first GPS ping. The GPS ping ingestion endpoint inspects whether the vehicle has an existing `driver_enrollment` record. If it does not, it creates one atomically — no driver action required, no Operator action required.
+
+```typescript
+// src/routes/api/gps/ping/+server.ts (relevant excerpt)
+
+import { db } from '$lib/server/db';
+import { redis } from '$lib/server/redis';
+import { fabricGateway } from '$lib/server/fabric';
+import { posthog } from '$lib/server/posthog';
+
+export const POST: RequestHandler = async ({ request }) => {
+  const { vehicle_id, lat, lng, accuracy, timestamp, session_token } = await request.json();
+
+  // Validate session from Redis — no DB hit on hot path
+  const sessionRaw = await redis.get(`driver_session:${vehicle_id}`);
+  if (!sessionRaw) throw error(401, 'No active driver session for this vehicle.');
+  const session = JSON.parse(sessionRaw);
+
+  // Reset session TTL on each ping — active vehicles never expire
+  await redis.expire(`driver_session:${vehicle_id}`, 30 * 24 * 60 * 60);
+
+  // Check if this is the first ping for this vehicle
+  const existingEnrollment = await db.driver_enrollments.findFirst({
+    where: { vehicle_id, org_id: session.org_id },
+  });
+
+  const isGenesisEvent = !existingEnrollment;
+
+  if (isGenesisEvent) {
+    // GENESIS_ENROLLMENT: create enrollment record and anchor to Hyperledger Fabric
+    await triggerGenesisEnrollment({
+      vehicle_id,
+      org_id: session.org_id,
+      operator_id: session.operator_id,
+      first_ping_at: timestamp,
+      first_lat: lat,
+      first_lng: lng,
+    });
+  }
+
+  // Write ping to trip_events regardless
+  await db.trip_events.insert({
+    vehicle_id,
+    org_id: session.org_id,
+    operator_id: session.operator_id,
+    event_type: isGenesisEvent ? 'GENESIS_PING' : 'GPS_PING',
+    lat,
+    lng,
+    accuracy,
+    recorded_at: timestamp,
+  });
+
+  return json({ status: 'ok', genesis: isGenesisEvent });
+};
+
+async function triggerGenesisEnrollment(params: {
+  vehicle_id: string;
+  org_id: string;
+  operator_id: string;
+  first_ping_at: string;
+  first_lat: number;
+  first_lng: number;
+}) {
+  // 1. Write enrollment record to PostgreSQL
+  const enrollment = await db.driver_enrollments.create({
+    data: {
+      vehicle_id: params.vehicle_id,
+      org_id: params.org_id,
+      operator_id: params.operator_id,
+      enrolled_at: params.first_ping_at,
+      enrollment_method: 'QR_PAIRING',
+      genesis_lat: params.first_lat,
+      genesis_lng: params.first_lng,
+    },
+  });
+
+  // 2. Anchor GENESIS_ENROLLMENT event to Hyperledger Fabric
+  const fabricResult = await fabricGateway.submitTransaction(
+    'DriverEnrollmentContract',
+    'CreateGenesisEnrollment',
+    JSON.stringify({
+      event_type: 'GENESIS_ENROLLMENT',
+      enrollment_id: enrollment.id,
+      vehicle_id: params.vehicle_id,
+      org_id: params.org_id,
+      operator_id: params.operator_id,
+      enrolled_at: params.first_ping_at,
+      enrollment_method: 'QR_PAIRING',
+    })
+  );
+
+  // 3. Write Fabric tx hash back to PostgreSQL
+  await db.driver_enrollments.update({
+    where: { id: enrollment.id },
+    data: { ledger_tx_id: fabricResult.transactionId },
+  });
+
+  // 4. Cancel any pending Upstash Redis nudge jobs for this vehicle
+  // (Hour-4 and Hour-24 SMS nudges defined in the GPS Broadcast Flywheel)
+  await redis.del(`nudge:no_first_ping:${params.vehicle_id}`);
+
+  // 5. PostHog: genesis enrollment captured with full fleet context
+  await posthog.capture({
+    distinctId: params.operator_id,
+    event: 'genesis_enrollment_completed',
+    properties: {
+      vehicle_id: params.vehicle_id,
+      org_id: params.org_id,
+      enrollment_method: 'QR_PAIRING',
+      ledger_tx_id: fabricResult.transactionId,
+      first_ping_at: params.first_ping_at,
+    },
+  });
+
+  // 6. Notify Operator via Supabase realtime — no polling required
+  // The Operator's FleetBooking grid subscribes to driver_enrollments
+  // and will surface a 'Vehicle Now Active' badge without page refresh
+}
+```
+
+### Why "Self-Healing" Is the Correct Framing
+
+The term self-healing refers to the system's ability to recover from incomplete onboarding states without human intervention. If a pairing token was generated but the driver never opened the URL, the vehicle sits in a `PAIRED_NOT_ACTIVE` state. The moment the driver opens the URL — even days later — and emits a first ping, GENESIS_ENROLLMENT fires and the vehicle transitions to `ACTIVE`. No Operator re-configuration. No support ticket. No re-pairing ceremony.
+
+If the pairing token expired before the driver used it, the Operator's dashboard surfaces a single regenerate action. One tap generates a new 72-hour token. The Operator shares it via WhatsApp. The cycle repeats with zero platform friction.
+
+This self-healing property means the Operator's dashboard never shows a vehicle permanently stuck in a broken state. Every vehicle is either active, pending first ping, or needs a new pairing link — all three states are actionable without leaving the platform.
+
+---
+
+## Fleet Activation Speed: What This Architecture Delivers
+
+### The Funnel Collapse
+
+Traditional fleet software onboarding for a single vehicle:
+1. Operator logs in and navigates to device management
+2. Operator enters device IMEI or serial number
+3. Operator assigns the device to a vehicle
+4. Operator assigns a driver to the vehicle
+5. Driver downloads the app
+6. Driver creates an account with phone number
+7. Driver receives OTP and verifies
+8. Driver logs in and activates tracking
+
+Eight steps. Four of them require the driver. Two require the Operator to be at a computer. The failure rate compounds at each step.
+
+The QR + GENESIS_ENROLLMENT architecture:
+1. Operator shares a URL (WhatsApp, QR code, SMS — any channel)
+2. Driver opens the URL on any device with a browser
+3. Driver sees the GPS broadcast screen and taps "Start Broadcasting"
+4. First ping fires. GENESIS_ENROLLMENT anchors to Fabric. Vehicle is active.
+
+Four steps. One requires the Operator. One requires the driver. The fleet activation funnel collapses from eight steps to a single URL share.
+
+### Time-to-Active Projection
+
+For a 10-vehicle fleet, the Operator generates 10 pairing URLs from the fleet management dashboard in a single batch action. These are shared to a WhatsApp group containing all drivers. Each driver opens their URL independently. As each driver emits their first ping, the Operator's fleet grid transitions vehicles from grey (inactive) to green (active) in real time via Supabase realtime subscription. A 10-vehicle fleet can be fully activated in under 15 minutes from the moment the Operator shares the WhatsApp message — without the Operator being physically present at any vehicle.
+
+This is the correct benchmark for fleet activation speed in the matatu context: not "time from device pairing to first ping" measured in a controlled environment, but "time from Operator intent to full fleet activation" measured against the reality of drivers at different termini across Nairobi.
+
+### Operator Cognitive Load Reduction
+
+The Operator's mental model for device setup is now: *share a link, watch the grid go green.* Every vehicle that transitions to active in real time reinforces this model. The Operator does not need to understand GPS protocols, device pairing, or driver account creation. The platform's complexity is entirely absorbed into the pairing token and the GENESIS_ENROLLMENT trigger. What surfaces to the Operator is a fleet grid that becomes progressively more active as drivers open their URLs.
+
+This is the correct product experience for the Operator persona: the platform does the work, the Operator sees the outcome.
+
+---
+
+## Lifecycle Control Points
+
+**ONBOARDING — The Trust:**
+The vehicle_pairing_tokens table is populated at vehicle assignment — which happens inside the existing Actor Request Flow when an Operator claims a vehicle. The pairing URL is surfaced immediately in the vehicle detail view with a "Share Pairing Link" button that opens a WhatsApp deep-link pre-populated with the URL and the vehicle plate number. The Operator's first action after vehicle assignment is a WhatsApp share, not a device configuration screen.
+
+**ACTIVATION — The Magic Moment:**
+The GENESIS_ENROLLMENT ledger anchor is the Operator's confirmation that a vehicle is legally enrolled in the fleet record. The Operator's dashboard must render the Fabric transaction hash for each enrolled vehicle in the vehicle detail drawer — the same visual treatment as the BUSINESS_RESERVATION ledger anchor. The Operator sees: *this vehicle's enrollment is on the immutable record.* That is the activation moment for fleet-level compliance, not GPS telemetry.
+
+**ENGAGEMENT — The Habit:**
+The fleet grid's real-time activation sequence — vehicles going green as drivers open their URLs — creates a daily ritual around fleet readiness. The Operator checks the grid before the morning route departure window to confirm all vehicles are broadcasting. Any vehicle still grey at 05:30 triggers an automated WhatsApp nudge to the Operator: *"[Plate KBZ 123A] has not started broadcasting. Share the pairing link again?"* with a one-tap regenerate action embedded in the message via a signed URL.
+
+**MONETISATION — The Commitment:**
+The free tier caps active enrolled vehicles at 3. An Operator with a 10-vehicle fleet who uses the QR pairing flow to activate all 10 vehicles hits this cap at vehicle 4 and encounters the upgrade gate inline in the fleet grid — not in a settings page. The gate copy: *"3 of your vehicles are protected. Enroll the remaining 7 by upgrading your plan."* M-Pesa STK push is the payment path. The upgrade is triggered from the same WhatsApp-familiar context the Operator already used to share pairing links.
+
+**RETENTION — The Stickiness:**
+Each GENESIS_ENROLLMENT ledger record is a data asset the Operator cannot reconstruct outside the platform. An Operator with 18 months of enrollment history, route deviation records, and BUSINESS_RESERVATION anchors has an audit trail that represents genuine legal value. The switching cost is not the GPS software — it is the Hyperledger Fabric ledger history that cannot be migrated to a competitor. The platform must surface this periodically in the Operator's dashboard: *"Your fleet has 847 immutable records across 18 months. This is your compliance history."*
+
+**EXPANSION — The Flywheel:**
+Operators who activate their full fleet via QR pairing within 48 hours of SACCO onboarding are the highest-value referral vectors. They have experienced the zero-friction activation path and can describe it in a single sentence to other Operators: *"I sent a WhatsApp message and my whole fleet was tracking in 10 minutes."* The referral program must trigger a share prompt at the moment the last vehicle in the fleet goes green — when the Operator's emotional state is at peak satisfaction with the platform.
+
+### 3. V/T Ratio as Business Intelligence
+
+## The Core Utility Identified
+
+The V/T ratio — vehicles actively pinging divided by total enrolled vehicles — is not a system health metric. It is a remittance integrity signal. In the matatu context, a vehicle that is not broadcasting during an active shift window is a vehicle whose conductor is collecting fares with no accountability trail. The Operator's exposure is not technical downtime — it is cash leakage. Every hour a vehicle operates without GPS broadcast is an hour of fare collection that cannot be reconciled against a route record. The V/T ratio, reframed correctly, answers a single question the Operator cares about: *how much of today's revenue am I able to verify?*
+
+---
+
+## Why Remittance Integrity Is the Correct Frame
+
+The matatu revenue model is cash-first and conductor-mediated. The conductor collects fares, remits a fixed daily amount to the Operator, and keeps the surplus. This model is structurally adversarial: the conductor has every incentive to under-report trip count and over-report fuel costs. The Operator's only defence is a verifiable record of how many trips the vehicle completed and on which route segments.
+
+GPS broadcast coverage is the proxy for trip verifiability. A vehicle broadcasting continuously across a shift produces a route trace that can be reconciled against the expected fare yield for that route and distance. A vehicle broadcasting for only 40% of its shift produces a partial record — and the unrecorded 60% is the conductor's unaudited interval.
+
+The V/T ratio at the fleet level aggregates this exposure. A fleet with a V/T ratio of 0.6 at 09:00 on a weekday morning is not a fleet with a connectivity problem. It is a fleet where 40% of vehicles are generating unverifiable revenue — and the Operator is absorbing that risk in silence.
+
+---
+
+## vehicleCoverage.ts: The Remittance Intelligence Layer
+
+```typescript
+// src/lib/analytics/vehicleCoverage.ts
+
+import { db } from '$lib/server/db';
+import { redis } from '$lib/server/redis';
+import { posthog } from '$lib/server/posthog';
+
+export interface ShiftCoverageRecord {
+  vehicle_id: string;
+  plate_number: string;
+  operator_id: string;
+  shift_window_start: string;
+  shift_window_end: string;
+  total_shift_minutes: number;
+  broadcasting_minutes: number;
+  coverage_ratio: number; // 0.0 – 1.0
+  shift_honesty_band: 'VERIFIED' | 'PARTIAL' | 'UNVERIFIED' | 'ABSENT';
+  estimated_unverified_fare_kes: number | null;
+  last_ping_at: string | null;
+  trip_count_estimated: number | null;
+}
+
+export interface FleetVTSnapshot {
+  org_id: string;
+  snapshot_at: string;
+  shift_window: 'MORNING' | 'AFTERNOON' | 'EVENING';
+  total_enrolled_vehicles: number;
+  broadcasting_vehicles: number;
+  vt_ratio: number;
+  fleet_honesty_score: number; // weighted by route yield potential
+  vehicles: ShiftCoverageRecord[];
+  unverified_revenue_exposure_kes: number;
+}
+
+// Shift windows reflect Nairobi matatu operating patterns
+const SHIFT_WINDOWS = {
+  MORNING: { start_hour: 5, end_hour: 13 },
+  AFTERNOON: { start_hour: 13, end_hour: 20 },
+  EVENING: { start_hour: 20, end_hour: 24 },
+};
+
+// Thresholds derived from route yield data — not arbitrary
+// A vehicle on a high-density Nairobi route (e.g., CBD–Westlands)
+// completes approximately 8–12 trips in a morning shift at KES 50–80/passenger
+// with average occupancy of 12 passengers = KES 4,800–11,520 per shift
+// Unverified minutes translate to proportional fare exposure
+const AVERAGE_FARE_YIELD_PER_MINUTE_KES = 12; // conservative estimate, route-adjusted in production
+
+export async function computeFleetVTSnapshot(
+  orgId: string,
+  shiftWindow: keyof typeof SHIFT_WINDOWS
+): Promise<FleetVTSnapshot> {
+  const now = new Date();
+  const windowDef = SHIFT_WINDOWS[shiftWindow];
+  const shiftStart = new Date(now);
+  shiftStart.setHours(windowDef.start_hour, 0, 0, 0);
+  const shiftEnd = new Date(now);
+  shiftEnd.setHours(windowDef.end_hour, 0, 0, 0);
+  const totalShiftMinutes = (shiftEnd.getTime() - shiftStart.getTime()) / 60000;
+
+  // Fetch all enrolled vehicles for this org
+  const enrolledVehicles = await db.driver_enrollments.findMany({
+    where: { org_id: orgId },
+    include: { vehicle: { select: { plate_number: true, operator_id: true } } },
+  });
+
+  // Fetch ping density per vehicle within the shift window
+  const pingDensity = await db.$queryRaw<
+    { vehicle_id: string; broadcasting_minutes: number; last_ping_at: string; trip_count_estimated: number }[]
+  >`
+    SELECT
+      vehicle_id,
+      -- Broadcasting minutes: count distinct minute buckets with at least one ping
+      COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) AS broadcasting_minutes,
+      MAX(recorded_at) AS last_ping_at,
+      -- Trip count estimated from ping gap analysis:
+      -- gaps > 8 minutes between consecutive pings indicate a terminus stop
+      COUNT(*) FILTER (
+        WHERE recorded_at - LAG(recorded_at) OVER (PARTITION BY vehicle_id ORDER BY recorded_at) > INTERVAL '8 minutes'
+      ) + 1 AS trip_count_estimated
+    FROM trip_events
+    WHERE
+      org_id = ${orgId}
+      AND recorded_at BETWEEN ${shiftStart.toISOString()} AND ${now.toISOString()}
+      AND event_type IN ('GPS_PING', 'GENESIS_PING')
+    GROUP BY vehicle_id
+  `;
+
+  const pingMap = new Map(pingDensity.map(r => [r.vehicle_id, r]));
+
+  const vehicles: ShiftCoverageRecord[] = enrolledVehicles.map(enrollment => {
+    const pings = pingMap.get(enrollment.vehicle_id);
+    const broadcastingMinutes = pings ? Number(pings.broadcasting_minutes) : 0;
+    const elapsedShiftMinutes = Math.min(
+      (now.getTime() - shiftStart.getTime()) / 60000,
+      totalShiftMinutes
+    );
+    const coverageRatio = elapsedShiftMinutes > 0
+      ? Math.min(broadcastingMinutes / elapsedShiftMinutes, 1.0)
+      : 0;
+
+    const unverifiedMinutes = elapsedShiftMinutes - broadcastingMinutes;
+    const estimatedUnverifiedFareKes = unverifiedMinutes > 0
+      ? Math.round(unverifiedMinutes * AVERAGE_FARE_YIELD_PER_MINUTE_KES)
+      : 0;
+
+    return {
+      vehicle_id: enrollment.vehicle_id,
+      plate_number: enrollment.vehicle.plate_number,
+      operator_id: enrollment.vehicle.operator_id,
+      shift_window_start: shiftStart.toISOString(),
+      shift_window_end: shiftEnd.toISOString(),
+      total_shift_minutes: totalShiftMinutes,
+      broadcasting_minutes: broadcastingMinutes,
+      coverage_ratio: coverageRatio,
+      shift_honesty_band: classifyShiftHonesty(coverageRatio),
+      estimated_unverified_fare_kes: estimatedUnverifiedFareKes,
+      last_ping_at: pings?.last_ping_at ?? null,
+      trip_count_estimated: pings ? Number(pings.trip_count_estimated) : null,
+    };
+  });
+
+  const broadcastingCount = vehicles.filter(v => v.coverage_ratio > 0).length;
+  const vtRatio = enrolledVehicles.length > 0 ? broadcastingCount / enrolledVehicles.length : 0;
+  const totalUnverifiedExposure = vehicles.reduce(
+    (sum, v) => sum + (v.estimated_unverified_fare_kes ?? 0), 0
+  );
+
+  // Fleet honesty score weights coverage_ratio by route yield potential
+  // Vehicles on high-yield routes contribute more to the score
+  // In production, route_yield_weight comes from route analytics
+  const fleetHonestyScore = vehicles.length > 0
+    ? vehicles.reduce((sum, v) => sum + v.coverage_ratio, 0) / vehicles.length
+    : 0;
+
+  const snapshot: FleetVTSnapshot = {
+    org_id: orgId,
+    snapshot_at: now.toISOString(),
+    shift_window: shiftWindow,
+    total_enrolled_vehicles: enrolledVehicles.length,
+    broadcasting_vehicles: broadcastingCount,
+    vt_ratio: vtRatio,
+    fleet_honesty_score: fleetHonestyScore,
+    vehicles,
+    unverified_revenue_exposure_kes: totalUnverifiedExposure,
+  };
+
+  // Cache in Redis for dashboard reads — recomputed every 5 minutes
+  await redis.set(
+    `vt_snapshot:${orgId}:${shiftWindow}`,
+    JSON.stringify(snapshot),
+    { ex: 300 }
+  );
+
+  // PostHog fleet-level instrumentation
+  await posthog.capture({
+    distinctId: orgId,
+    event: 'fleet_vt_snapshot_computed',
+    properties: {
+      org_id: orgId,
+      shift_window: shiftWindow,
+      vt_ratio: vtRatio,
+      fleet_honesty_score: fleetHonestyScore,
+      total_enrolled: enrolledVehicles.length,
+      broadcasting: broadcastingCount,
+      unverified_exposure_kes: totalUnverifiedExposure,
+      absent_vehicle_count: vehicles.filter(v => v.shift_honesty_band === 'ABSENT').length,
+      unverified_vehicle_count: vehicles.filter(v => v.shift_honesty_band === 'UNVERIFIED').length,
+    },
+  });
+
+  return snapshot;
+}
+```
+
+---
+
+## Shift Honesty Classification: The Four Bands
+
+```typescript
+// src/lib/analytics/vehicleCoverage.ts (continued)
+
+export function classifyShiftHonesty(
+  coverageRatio: number
+): 'VERIFIED' | 'PARTIAL' | 'UNVERIFIED' | 'ABSENT' {
+  // These thresholds are not arbitrary — they map to remittance audit utility:
+  //
+  // VERIFIED (≥ 0.85):
+  //   85%+ of elapsed shift time has GPS coverage.
+  //   The route trace is dense enough to reconstruct trip count, route segments,
+  //   and fare yield with high confidence. Remittance dispute is defensible.
+  //   Operator can challenge a conductor's stated trip count against the GPS record.
+  //
+  // PARTIAL (0.50 – 0.84):
+  //   50–84% coverage. The record exists but has gaps.
+  //   Gaps may be legitimate (tunnel, device restart) or adversarial (broadcast suppression).
+  //   Operator should cross-reference against M-Pesa passenger receipts if available.
+  //   Remittance dispute is possible but not airtight.
+  //
+  // UNVERIFIED (0.01 – 0.49):
+  //   Less than half the shift is on record.
+  //   The conductor's remittance figure cannot be verified against a route trace.
+  //   Operator is absorbing unquantified revenue leakage.
+  //   This band triggers an automated WhatsApp alert to the Operator.
+  //
+  // ABSENT (0.00):
+  //   No pings received during the shift window.
+  //   Vehicle is either not operating, has a device failure, or the driver
+  //   has not opened the pairing URL. All three states require Operator action.
+  //   This is the highest-priority alert band.
+
+  if (coverageRatio >= 0.85) return 'VERIFIED';
+  if (coverageRatio >= 0.50) return 'PARTIAL';
+  if (coverageRatio > 0.00) return 'UNVERIFIED';
+  return 'ABSENT';
+}
+```
+
+The threshold logic is grounded in the remittance audit use case. A 50% coverage floor for PARTIAL is not a UX design choice — it is the minimum data density required to estimate trip count from ping gap analysis with acceptable confidence. Below 50%, the gap intervals are too long to distinguish a terminus stop from a broadcast suppression event. The Operator cannot use a sub-50% record in a remittance dispute because the gaps are as large as the data.
+
+---
+
+## The 6 AM WhatsApp Briefing: Operator Intelligence Delivery
+
+The briefing is not a notification. It is a pre-shift command briefing that the Operator reads before vehicles depart. It must be delivered at 06:00 EAT, before the morning shift window opens at 05:30 — which means it is computed against the previous evening shift's final V/T snapshot and the current morning shift's enrolled vehicle roster.
+
+```typescript
+// src/lib/jobs/morningBriefing.ts
+
+import { computeFleetVTSnapshot, classifyShiftHonesty } from '$lib/analytics/vehicleCoverage';
+import { redis } from '$lib/server/redis';
+import { db } from '$lib/server/db';
+import { sendWhatsAppMessage } from '$lib/server/whatsapp';
+
+export async function dispatchMorningBriefings(): Promise<void> {
+  // Fetch all orgs with at least one enrolled vehicle and an active operator with a phone number
+  const activeOrgs = await db.organisations.findMany({
+    where: {
+      driver_enrollments: { some: {} },
+      subscription_status: { in: ['ACTIVE', 'TRIALING'] },
+    },
+    include: {
+      operators: {
+        where: { role: 'OPERATOR', phone_number: { not: null } },
+        select: { id: true, phone_number: true, display_name: true },
+      },
+      driver_enrollments: {
+        include: { vehicle: { select: { plate_number: true } } },
+      },
+    },
+  });
+
+  for (const org of activeOrgs) {
+    // Pull the previous evening shift's final snapshot from Redis
+    const eveningSnapshotRaw = await redis.get(`vt_snapshot:${org.id}:EVENING`);
+    const eveningSnapshot = eveningSnapshotRaw ? JSON.parse(eveningSnapshotRaw) : null;
+
+    // Compute current morning roster — vehicles enrolled but not yet pinging
+    const morningSnapshot = await computeFleetVTSnapshot(org.id, 'MORNING');
+
+    for (const operator of org.operators) {
+      const message = composeMorningBriefing({
+        operatorName: operator.display_name,
+        morningSnapshot,
+        eveningSnapshot,
+        orgName: org.name,
+      });
+
+      await sendWhatsAppMessage({
+        to: operator.phone_number!,
+        message,
+      });
+
+      // PostHog: briefing dispatched
+      await posthog.capture({
+        distinctId: operator.id,
+        event: 'morning_briefing_dispatched',
+        properties: {
+          org_id: org.id,
+          vt_ratio: morningSnapshot.vt_ratio,
+          absent_count: morningSnapshot.vehicles.filter(v => v.shift_honesty_band === 'ABSENT').length,
+          unverified_exposure_kes: eveningSnapshot?.unverified_revenue_exposure_kes ?? 0,
+        },
+      });
+    }
+  }
+}
+
+function composeMorningBriefing(params: {
+  operatorName: string;
+  morningSnapshot: FleetVTSnapshot;
+  eveningSnapshot: FleetVTSnapshot | null;
+  orgName: string;
+}): string {
+  const { operatorName, morningSnapshot, eveningSnapshot, orgName } = params;
+
+  const absentVehicles = morningSnapshot.vehicles.filter(v => v.shift_honesty_band === 'ABSENT');
+  const verifiedVehicles = morningSnapshot.vehicles.filter(v => v.shift_honesty_band === 'VERIFIED');
+
+  // Evening shift remittance exposure — the number that makes Operators pay attention
+  const eveningExposure = eveningSnapshot?.unverified_revenue_exposure_kes ?? 0;
+  const eveningUnverifiedVehicles = eveningSnapshot
+    ? eveningSnapshot.vehicles.filter(v => ['UNVERIFIED', 'ABSENT'].includes(v.shift_honesty_band))
+    : [];
+
+  const lines: string[] = [];
+
+  lines.push(`*FLAM Morning Briefing — ${orgName}*`);
+  lines.push(`${new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'short' })} | 6:00 AM`);
+  lines.push('');
+
+  // Fleet readiness
+  lines.push(`*Fleet Readiness*`);
+  lines.push(`${morningSnapshot.broadcasting_vehicles}/${morningSnapshot.total_enrolled_vehicles} vehicles broadcasting`);
+
+  if (absentVehicles.length > 0) {
+    lines.push('');
+    lines.push(`*⚠️ Not Yet Broadcasting (${absentVehicles.length})*`);
+    absentVehicles.forEach(v => {
+      lines.push(`• ${v.plate_number} — share pairing link: https://driver.flam.co.ke/pair?v=${v.vehicle_id}`);
+    });
+  }
+
+  // Evening shift remittance intelligence — only shown if there was meaningful exposure
+  if (eveningExposure > 500 && eveningUnverifiedVehicles.length > 0) {
+    lines.push('');
+    lines.push(`*Yesterday Evening — Unverified Revenue*`);
+    lines.push(`KES ${eveningExposure.toLocaleString()} in fares collected without a GPS record.`);
+    eveningUnverifiedVehicles.forEach(v => {
+      lines.push(`• ${v.plate_number}: ${Math.round(v.coverage_ratio * 100)}% shift covered — KES ${(v.estimated_unverified_fare_kes ?? 0).toLocaleString()} unverified`);
+    });
+    lines.push(`Review remittance on FLAM before accepting today's payment from these conductors.`);
+  }
+
+  // Verified vehicles — positive reinforcement, not just alerts
+  if (verifiedVehicles.length > 0) {
+    lines.push('');
+    lines.push(`*✅ Fully Verified Yesterday*`);
+    lines.push(`${verifiedVehicles.length} vehicle${verifiedVehicles.length > 1 ? 's' : ''} with 85%+ shift coverage. Remittance defensible.`);
+  }
+
+  lines.push('');
+  lines.push(`View full fleet: https://app.flam.co.ke/fleet`);
+
+  return lines.join('\n');
+}
+```
+
+### Why 06:00 and Not 05:30
+
+The morning shift window opens at 05:30 in Nairobi's matatu ecosystem — that is when vehicles begin loading at termini. The briefing at 06:00 is intentionally 30 minutes into the shift. By 06:00, any vehicle that is going to broadcast has already emitted its first morning ping. Any vehicle that has not broadcast by 06:00 on a weekday is genuinely absent from the shift — not just slow to start. The briefing at 06:00 therefore surfaces only actionable absences, not false alarms from vehicles that were simply slow to depart.
+
+A 05:30 briefing would surface every vehicle as absent, creating alert fatigue. The 30-minute delay is a signal quality decision, not a convenience.
+
+---
+
+## V/T Ratio Thresholds as Monetisation Triggers
+
+The V/T ratio is not only an operational signal — it is a monetisation surface. The relationship between V/T ratio and upgrade conversion is direct: an Operator who sees KES 8,400 in unverified revenue exposure in a single evening shift briefing has a concrete, quantified reason to ensure every vehicle is broadcasting. The free tier's 3-vehicle cap means that an Operator with a 10-vehicle fleet can only verify 30% of their fleet's remittance exposure on the free plan. The upgrade prompt is not a feature gate — it is a revenue recovery tool.
+
+```typescript
+// src/lib/analytics/vtMonetisationTrigger.ts
+
+export interface VTMonetisationSignal {
+  should_trigger_upgrade_prompt: boolean;
+  trigger_reason: 'UNVERIFIED_EXPOSURE_THRESHOLD' | 'VT_RATIO_BELOW_FLOOR' | 'ABSENT_VEHICLE_AT_LIMIT' | null;
+  unverified_exposure_kes: number;
+  vehicles_beyond_free_tier: number;
+  upgrade_copy: string | null;
+}
+
+const FREE_TIER_VEHICLE_CAP = 3;
+const UNVERIFIED_EXPOSURE_TRIGGER_KES = 2000; // KES 2,000 unverified in a single shift
+const VT_RATIO_FLOOR = 0.5; // Below 50% fleet coverage triggers upgrade prompt
+
+export function evaluateVTMonetisationSignal(
+  snapshot: FleetVTSnapshot,
+  subscribedVehicleCount: number
+): VTMonetisationSignal {
+  const vehiclesBeyondFreeTier = Math.max(0, snapshot.total_enrolled_vehicles - FREE_TIER_VEHICLE_CAP);
+
+  // Trigger 1: Unverified revenue exposure exceeds KES 2,000 in a single shift
+  if (snapshot.unverified_revenue_exposure_kes >= UNVERIFIED_EXPOSURE_TRIGGER_KES) {
+    return {
+      should_trigger_upgrade_prompt: true,
+      trigger_reason: 'UNVERIFIED_EXPOSURE_THRESHOLD',
+      unverified_exposure_kes: snapshot.unverified_revenue_exposure_kes,
+      vehicles_beyond_free_tier: vehiclesBeyondFreeTier,
+      upgrade_copy: `KES ${snapshot.unverified_revenue_exposure_kes.toLocaleString()} in fares were collected without a GPS record last shift. Upgrade to verify your full fleet and close this gap.`,
+    };
+  }
+
+  // Trigger 2: Fleet V/T ratio below 50% floor
+  if (snapshot.vt_ratio < VT_RATIO_FLOOR && snapshot.total_enrolled_vehicles > FREE_TIER_VEHICLE_CAP) {
+    return {
+      should_trigger_upgrade_prompt: true,
+      trigger_reason: 'VT_RATIO_BELOW_FLOOR',
+      unverified_exposure_kes: snapshot.unverified_revenue_exposure_kes,
+      vehicles_beyond_free_tier: vehiclesBeyondFreeTier,
+      upgrade_copy: `Only ${Math.round(snapshot.vt_ratio * 100)}% of your fleet is verifiable. ${vehiclesBeyondFreeTier} vehicle${vehiclesBeyondFreeTier > 1 ? 's are' : ' is'} beyond your free plan. Upgrade to protect your full remittance record.`,
+    };
+  }
+
+  // Trigger 3: Operator has vehicles beyond the free tier cap
+  if (vehiclesBeyondFreeTier > 0 && subscribedVehicleCount <= FREE_TIER_VEHICLE_CAP) {
+    return {
+      should_trigger_upgrade_prompt: true,
+      trigger_reason: 'ABSENT_VEHICLE_AT_LIMIT',
+      unverified_exposure_kes: snapshot.unverified_revenue_exposure_kes,
+      vehicles_beyond_free_tier: vehiclesBeyondFreeTier,
+      upgrade_copy: `${vehiclesBeyondFreeTier} vehicle${vehiclesBeyondFreeTier > 1 ? 's are' : ' is'} enrolled but not protected. Your free plan covers 3 vehicles. Upgrade to verify every remittance.`,
+    };
+  }
+
+  return {
+    should_trigger_upgrade_prompt: false,
+    trigger_reason: null,
+    unverified_exposure_kes: snapshot.unverified_revenue_exposure_kes,
+    vehicles_beyond_free_tier: vehiclesBeyondFreeTier,
+    upgrade_copy: null,
+  };
+}
+```
+
+---
+
+## Lifecycle Control Points
+
+**ACTIVATION — The Magic Moment:**
+The first time an Operator opens the fleet dashboard and sees a vehicle in the UNVERIFIED or ABSENT band alongside an estimated KES figure, the platform stops being a GPS tool and becomes a financial control instrument. This moment — seeing a specific, quantified revenue exposure for the first time — is the Operator's activation event for the analytics layer. PostHog must capture `vt_intelligence_first_viewed` with the unverified exposure figure as a property, because this is the data point that predicts upgrade conversion with highest confidence.
+
+**ENGAGEMENT — The Habit:**
+The 06:00 WhatsApp briefing is the daily ritual anchor. The Operator does not need to open the app — the intelligence comes to them. But every briefing that surfaces an unverified exposure figure contains a deep-link back to the fleet dashboard, and the dashboard's V/T ratio panel is the first element above the fold. The briefing creates the habit; the dashboard deepens it. An Operator who opens the fleet dashboard after reading their morning briefing is exhibiting the engagement pattern that predicts long-term retention — the briefing is the trigger, the dashboard is the reward.
+
+**MONETISATION — The Commitment:**
+The `evaluateVTMonetisationSignal` function is called on every fleet dashboard load and every morning briefing dispatch. The upgrade prompt is not a modal — it is an inline banner in the V/T ratio panel with the specific KES exposure figure and the vehicle count beyond the free tier. The copy is always quantified: not 'upgrade for more features' but 'KES 6,200 in unverified fares last week — upgrade to close this gap.' The M-Pesa STK push is initiated from the banner without navigating away from the fleet view.
+
+**RETENTION — The Stickiness:**
+An Operator who has used the V/T ratio and morning briefing to challenge a conductor's remittance figure — and won — has experienced the platform's core value proposition in the most visceral way possible. This event must be capturable: a 'Remittance Dispute Resolved' action in the platform that records which vehicle's GPS data was used as evidence. The accumulation of resolved disputes is the stickiest retention signal in the Operator persona's lifecycle. The platform must surface this: 'You have used FLAM records to resolve 4 remittance disputes. Your verified remittance history is 9 months deep.'
+
+**EXPANSION — The Flywheel:**
+Operators who share their morning briefing screenshot in SACCO WhatsApp groups — which they will, because the KES unverified exposure figure is a socially provocative data point among peers — are the organic distribution channel for the V/T intelligence layer. The briefing is designed to be screenshot-worthy: a clean, numbered list with a specific KES figure and a platform attribution line. No Operator who sees another Operator's briefing showing KES 8,400 in unverified exposure will accept that their own fleet is operating without this visibility. The referral is not a feature — it is a competitive anxiety trigger dressed as a morning briefing.
+
+### 4. Compliance Monetization & Ledger Gate
+
+## The Core Utility Identified
+
+The Operator's operating license is a depreciating asset. Every undocumented route deviation, every unanchored private-hire booking, every shift with a sub-50% V/T ratio is a liability accumulation event — not a neutral operational gap. The NTSA can revoke a PSV license on the basis of a single undefended deviation complaint. A SACCO can suspend a member operator for an unlogged vehicle absence. An insurance underwriter can deny a claim for a trip that has no GPS record. The Operator is not buying software. They are buying an evidentiary record that keeps their license alive and their insurance valid. The FreeTierLedgerGate and the per-event escrow flow are both expressions of the same underlying value: compliance as legal insurance, priced at a fraction of the liability it offsets.
+
+---
+
+## Why Flat Subscription and Per-Event Revenue Are Not Competing Models
+
+The instinct in SaaS monetisation is to collapse everything into a subscription. For cost-sensitive SACCO owners, a flat monthly fee is a fixed liability that feels like overhead — especially in months where charter bookings are sparse. The per-event escrow model inverts this: the Operator pays only when they generate revenue from a private-hire booking, and the payment is extracted from the booking fare itself, not from the Operator's operating capital. The platform takes a percentage of the agreed fare at the moment the M-Pesa deposit is collected, before the Operator ever touches the money. This is not a fee — it is a revenue share on a transaction that would not have been legally defensible without the BUSINESS_RESERVATION ledger anchor.
+
+The two models serve different Operator archetypes:
+
+- **Subscription (Starter/Pro/Business):** The Operator with a stable fleet running licensed routes daily. Their compliance exposure is continuous, their V/T ratio is the primary risk signal, and a flat monthly fee is justified by the daily operational intelligence the platform delivers.
+- **Per-event escrow:** The Operator who runs primarily on licensed routes but takes occasional private-hire bookings — school runs, corporate transfers, event charters. Their compliance exposure is episodic, not continuous. A flat subscription feels like paying for a service they only need intermittently. The per-event model captures revenue from these Operators without forcing a subscription commitment they will resist.
+
+The two models compound rather than cannibalise: per-event Operators who exceed 5 anchored bookings per month — the free tier cap — encounter the FreeTierLedgerGate and convert to subscription because the per-event fee on 6+ bookings exceeds the monthly subscription cost. The gate is not a punishment; it is a natural economic conversion point.
+
+---
+
+## FreeTierLedgerGate: Architecture and Copy
+
+### The Gate Trigger
+
+The free tier permits 5 BUSINESS_RESERVATION ledger anchors per calendar month per organisation. This cap is tracked in a `ledger_anchor_usage` table with a monthly reset:
+
+```typescript
+// src/lib/server/billing/ledgerGate.ts
+
+import { db } from '$lib/server/db';
+import { redis } from '$lib/server/redis';
+
+export interface LedgerGateStatus {
+  org_id: string;
+  current_month_anchors: number;
+  free_tier_cap: number;
+  is_gated: boolean;
+  anchors_remaining: number;
+  reset_date: string; // First day of next calendar month
+  subscription_tier: 'FREE' | 'STARTER' | 'PRO' | 'BUSINESS';
+  per_event_eligible: boolean; // True if org has M-Pesa linked and booking has agreed_fare
+}
+
+const FREE_TIER_CAP = 5;
+const TIER_CAPS: Record<string, number> = {
+  FREE: 5,
+  STARTER: 30,
+  PRO: 150,
+  BUSINESS: Infinity,
+};
+
+export async function getLedgerGateStatus(orgId: string): Promise<LedgerGateStatus> {
+  // Redis cache for hot-path reads — invalidated on each anchor write
+  const cached = await redis.get(`ledger_gate:${orgId}`);
+  if (cached) return JSON.parse(cached);
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const [org, anchorCount] = await Promise.all([
+    db.organisations.findUnique({
+      where: { id: orgId },
+      select: { subscription_tier: true, mpesa_account_linked: true },
+    }),
+    db.fleet_bookings.count({
+      where: {
+        org_id: orgId,
+        status: 'LEDGER_ANCHORED',
+        created_at: { gte: monthStart.toISOString(), lt: monthEnd.toISOString() },
+      },
+    }),
+  ]);
+
+  const tier = (org?.subscription_tier ?? 'FREE') as keyof typeof TIER_CAPS;
+  const cap = TIER_CAPS[tier] ?? FREE_TIER_CAP;
+  const isGated = anchorCount >= cap;
+
+  const status: LedgerGateStatus = {
+    org_id: orgId,
+    current_month_anchors: anchorCount,
+    free_tier_cap: cap,
+    is_gated: isGated,
+    anchors_remaining: Math.max(0, cap - anchorCount),
+    reset_date: monthEnd.toISOString(),
+    subscription_tier: tier as LedgerGateStatus['subscription_tier'],
+    per_event_eligible: !!org?.mpesa_account_linked,
+  };
+
+  await redis.set(`ledger_gate:${orgId}`, JSON.stringify(status), { ex: 300 });
+  return status;
+}
+
+export async function assertLedgerNotGated(
+  orgId: string,
+  bookingFareKes: number | null
+): Promise<{ permitted: boolean; route: 'SUBSCRIPTION' | 'PER_EVENT' | 'BLOCKED' }> {
+  const gate = await getLedgerGateStatus(orgId);
+
+  if (!gate.is_gated) return { permitted: true, route: 'SUBSCRIPTION' };
+
+  // Gated but has a fare and M-Pesa linked — eligible for per-event escrow
+  if (gate.per_event_eligible && bookingFareKes && bookingFareKes > 0) {
+    return { permitted: true, route: 'PER_EVENT' };
+  }
+
+  // Gated, no per-event path available — hard block with upgrade prompt
+  return { permitted: false, route: 'BLOCKED' };
+}
+```
+
+### The LedgerAnchorButton Gate State
+
+The `LedgerAnchorButton.svelte` component already tracks five render states (idle, loading, success, error, quota-exceeded) for PostHog instrumentation. The gate introduces a sixth state: `PER_EVENT_OFFER` — displayed when the Operator is gated on subscription anchors but the booking has an agreed fare that qualifies for per-event escrow.
+
+```svelte
+<!-- src/lib/components/fleet/LedgerAnchorButton.svelte (gate state additions) -->
+
+<script lang="ts">
+  import type { LedgerGateStatus } from '$lib/server/billing/ledgerGate';
+  import { posthog } from '$lib/client/posthog';
+
+  export let bookingId: string;
+  export let agreedFareKes: number | null;
+  export let gateStatus: LedgerGateStatus;
+
+  type ButtonState = 'IDLE' | 'LOADING' | 'SUCCESS' | 'ERROR' | 'QUOTA_EXCEEDED' | 'PER_EVENT_OFFER';
+
+  let state: ButtonState = deriveInitialState(gateStatus);
+
+  function deriveInitialState(gate: LedgerGateStatus): ButtonState {
+    if (!gate.is_gated) return 'IDLE';
+    if (gate.per_event_eligible && agreedFareKes && agreedFareKes > 0) return 'PER_EVENT_OFFER';
+    return 'QUOTA_EXCEEDED';
+  }
+
+  // Per-event fee: 2.5% of agreed fare, minimum KES 50
+  $: perEventFeeKes = agreedFareKes
+    ? Math.max(50, Math.round(agreedFareKes * 0.025))
+    : null;
+
+  async function handleAnchor(route: 'SUBSCRIPTION' | 'PER_EVENT') {
+    state = 'LOADING';
+    posthog.capture('ledger_anchor_initiated', {
+      booking_id: bookingId,
+      route,
+      per_event_fee_kes: route === 'PER_EVENT' ? perEventFeeKes : null,
+      anchors_remaining: gateStatus.anchors_remaining,
+    });
+
+    try {
+      const res = await fetch(`/api/fleet/bookings/${bookingId}/anchor-ledger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ route }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        if (err.code === 'LEDGER_GATE_BLOCKED') {
+          state = 'QUOTA_EXCEEDED';
+          posthog.capture('ledger_anchor_gate_hit', { booking_id: bookingId, gate_reason: err.reason });
+          return;
+        }
+        throw new Error(err.message);
+      }
+
+      state = 'SUCCESS';
+      posthog.capture('ledger_anchor_completed', { booking_id: bookingId, route });
+    } catch (e) {
+      state = 'ERROR';
+      posthog.capture('ledger_anchor_error', { booking_id: bookingId, error: String(e) });
+    }
+  }
+</script>
+
+{#if state === 'IDLE'}
+  <button
+    class="ledger-anchor-btn ledger-anchor-btn--idle"
+    on:click={() => handleAnchor('SUBSCRIPTION')}
+  >
+    🔒 Lock &amp; Protect
+    <span class="ledger-anchor-btn__sub">
+      {gateStatus.anchors_remaining} protected booking{gateStatus.anchors_remaining !== 1 ? 's' : ''} remaining this month
+    </span>
+  </button>
+
+{:else if state === 'PER_EVENT_OFFER'}
+  <!-- Gated on subscription but per-event path available -->
+  <div class="ledger-gate-per-event">
+    <p class="ledger-gate-per-event__headline">
+      You've used all 5 protected bookings this month.
+    </p>
+    <p class="ledger-gate-per-event__body">
+      This booking can still be anchored to the compliance ledger for a single-booking fee of
+      <strong>KES {perEventFeeKes?.toLocaleString()}</strong>
+      (2.5% of KES {agreedFareKes?.toLocaleString()}).
+      The fee is deducted from the M-Pesa deposit before it reaches your account.
+      Your route-deviation protection applies immediately on anchor.
+    </p>
+    <div class="ledger-gate-per-event__actions">
+      <button
+        class="ledger-anchor-btn ledger-anchor-btn--per-event"
+        on:click={() => handleAnchor('PER_EVENT')}
+      >
+        Anchor for KES {perEventFeeKes?.toLocaleString()}
+      </button>
+      <a href="/billing/upgrade" class="ledger-gate-per-event__upgrade-link">
+        Or upgrade for unlimited anchors from KES 1,200/month
+      </a>
+    </div>
+  </div>
+
+{:else if state === 'QUOTA_EXCEEDED'}
+  <!-- Gated, no per-event path — hard block with upgrade prompt -->
+  <div class="ledger-gate-blocked">
+    <p class="ledger-gate-blocked__headline">
+      5 of 5 protected bookings used this month.
+    </p>
+    <p class="ledger-gate-blocked__body">
+      Without a ledger anchor, this booking has no route-deviation protection.
+      If NTSA or your SACCO audits this vehicle during this window, you have no record.
+      Upgrade to continue anchoring protection — or add a client fare to unlock the per-booking option.
+    </p>
+    <a href="/billing/upgrade" class="ledger-gate-blocked__cta">
+      Upgrade — from KES 1,200/month
+    </a>
+    <p class="ledger-gate-blocked__reset">
+      Free tier resets {new Date(gateStatus.reset_date).toLocaleDateString('en-KE', { day: 'numeric', month: 'long' })}
+    </p>
+  </div>
+
+{:else if state === 'SUCCESS'}
+  <div class="ledger-anchor-success">
+    ✅ Booking anchored. Route-deviation protection active.
+  </div>
+
+{:else if state === 'LOADING'}
+  <button class="ledger-anchor-btn ledger-anchor-btn--loading" disabled>
+    Anchoring to ledger…
+  </button>
+
+{:else if state === 'ERROR'}
+  <button
+    class="ledger-anchor-btn ledger-anchor-btn--error"
+    on:click={() => handleAnchor('SUBSCRIPTION')}
+  >
+    Anchor failed — tap to retry
+  </button>
+{/if}
+```
+
+---
+
+## Per-Event Escrow: M-Pesa Billing Route
+
+The per-event escrow flow is architecturally distinct from the subscription M-Pesa STK push. The subscription STK push is initiated by the Operator against their own M-Pesa number for a flat monthly amount. The per-event escrow is initiated against the client's M-Pesa number (the charter customer) and splits the incoming payment before it settles — the platform fee is extracted at the point of collection, not as a separate charge to the Operator.
+
+```typescript
+// src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts
+
+import type { RequestHandler } from './$types';
+import { json, error } from '@sveltejs/kit';
+import { db } from '$lib/server/db';
+import { assertLedgerNotGated, getLedgerGateStatus } from '$lib/server/billing/ledgerGate';
+import { anchorBusinessReservation } from '$lib/server/fabric/businessReservation';
+import { initiatePerEventEscrow } from '$lib/server/billing/perEventEscrow';
+import { redis } from '$lib/server/redis';
+import { posthog } from '$lib/server/posthog';
+
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+  const { id: bookingId } = params;
+  const { route } = await request.json() as { route: 'SUBSCRIPTION' | 'PER_EVENT' };
+  const operatorId = locals.session.user.id;
+  const orgId = locals.session.org_id;
+
+  const booking = await db.fleet_bookings.findUnique({
+    where: { id: bookingId, org_id: orgId, operator_id: operatorId },
+  });
+
+  if (!booking) throw error(404, 'Booking not found or not accessible.');
+  if (booking.status === 'LEDGER_ANCHORED') throw error(409, 'Booking already anchored.');
+
+  // Server-side gate evaluation — client state is advisory only
+  const { permitted, route: resolvedRoute } = await assertLedgerNotGated(orgId, booking.agreed_fare);
+
+  if (!permitted) {
+    throw error(402, {
+      code: 'LEDGER_GATE_BLOCKED',
+      reason: 'FREE_TIER_EXHAUSTED',
+      message: 'Monthly anchor limit reached. Upgrade or add a booking fare to unlock per-event anchoring.',
+    });
+  }
+
+  // Route mismatch guard — client requested per-event but server resolved subscription (or vice versa)
+  if (route !== resolvedRoute) {
+    // Accept the server-resolved route — do not fail, just use the correct path
+  }
+
+  if (resolvedRoute === 'PER_EVENT') {
+    // Per-event escrow: collect fee from client M-Pesa before anchoring
+    const escrowResult = await initiatePerEventEscrow({
+      bookingId,
+      orgId,
+      operatorId,
+      agreedFareKes: booking.agreed_fare!,
+      clientPhone: booking.client_contact!,
+      vehicleId: booking.vehicle_id,
+    });
+
+    if (!escrowResult.collection_initiated) {
+      throw error(502, 'M-Pesa STK push to client failed. Verify the client phone number and retry.');
+    }
+
+    // Return immediately — anchor fires in the M-Pesa callback once payment confirmed
+    return json({
+      status: 'ESCROW_PENDING',
+      mpesa_checkout_request_id: escrowResult.checkout_request_id,
+      per_event_fee_kes: escrowResult.platform_fee_kes,
+      message: 'M-Pesa payment request sent to client. Ledger anchor will fire automatically on payment confirmation.',
+    });
+  }
+
+  // Subscription route — anchor immediately
+  const result = await anchorBusinessReservation(bookingId, operatorId);
+
+  // Invalidate Redis gate cache so next anchor check reflects updated count
+  await redis.del(`ledger_gate:${orgId}`);
+
+  return json({ status: 'LEDGER_ANCHORED', ledger_tx_id: result.txId });
+};
+```
+
+```typescript
+// src/lib/server/billing/perEventEscrow.ts
+
+import { db } from '$lib/server/db';
+import { mpesa } from '$lib/server/mpesa';
+import { redis } from '$lib/server/redis';
+
+export interface EscrowInitResult {
+  collection_initiated: boolean;
+  checkout_request_id: string | null;
+  platform_fee_kes: number;
+  operator_net_kes: number;
+}
+
+const PLATFORM_FEE_RATE = 0.025; // 2.5%
+const MINIMUM_FEE_KES = 50;
+
+export async function initiatePerEventEscrow(params: {
+  bookingId: string;
+  orgId: string;
+  operatorId: string;
+  agreedFareKes: number;
+  clientPhone: string;
+  vehicleId: string;
+}): Promise<EscrowInitResult> {
+  const platformFeeKes = Math.max(MINIMUM_FEE_KES, Math.round(params.agreedFareKes * PLATFORM_FEE_RATE));
+  const operatorNetKes = params.agreedFareKes - platformFeeKes;
+
+  // STK push to client phone for the full agreed fare
+  // The split happens at the Daraja API B2B settlement layer, not at collection
+  // For MVP: collect full fare to platform paybill, settle operator net via B2B transfer
+  const stkResult = await mpesa.stkPush({
+    phone: params.clientPhone,
+    amount: params.agreedFareKes,
+    account_reference: `FLAM-${params.bookingId.slice(0, 8).toUpperCase()}`,
+    transaction_desc: `Charter booking deposit — ${params.vehicleId}`,
+    callback_url: `${process.env.PUBLIC_BASE_URL}/api/mpesa/callbacks/per-event-escrow`,
+  });
+
+  if (!stkResult.success) {
+    return { collection_initiated: false, checkout_request_id: null, platform_fee_kes: platformFeeKes, operator_net_kes: operatorNetKes };
+  }
+
+  // Store escrow intent in Redis — callback handler reads this to know what to do on confirmation
+  await redis.set(
+    `escrow_intent:${stkResult.checkout_request_id}`,
+    JSON.stringify({
+      booking_id: params.bookingId,
+      org_id: params.orgId,
+      operator_id: params.operatorId,
+      vehicle_id: params.vehicleId,
+      agreed_fare_kes: params.agreedFareKes,
+      platform_fee_kes: platformFeeKes,
+      operator_net_kes: operatorNetKes,
+    }),
+    { ex: 600 } // 10-minute window for STK push completion
+  );
+
+  // Record pending escrow in PostgreSQL for audit trail
+  await db.per_event_escrow_records.create({
+    data: {
+      booking_id: params.bookingId,
+      org_id: params.orgId,
+      operator_id: params.operatorId,
+      agreed_fare_kes: params.agreedFareKes,
+      platform_fee_kes: platformFeeKes,
+      operator_net_kes: operatorNetKes,
+      mpesa_checkout_request_id: stkResult.checkout_request_id,
+      status: 'PENDING',
+    },
+  });
+
+  return {
+    collection_initiated: true,
+    checkout_request_id: stkResult.checkout_request_id,
+    platform_fee_kes: platformFeeKes,
+    operator_net_kes: operatorNetKes,
+  };
+}
+```
+
+```typescript
+// src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts
+
+import type { RequestHandler } from './$types';
+import { json } from '@sveltejs/kit';
+import { redis } from '$lib/server/redis';
+import { db } from '$lib/server/db';
+import { anchorBusinessReservation } from '$lib/server/fabric/businessReservation';
+import { posthog } from '$lib/server/posthog';
+
+export const POST: RequestHandler = async ({ request }) => {
+  const callback = await request.json();
+  const { CheckoutRequestID, ResultCode, ResultDesc } = callback.Body.stkCallback;
+
+  const intentRaw = await redis.get(`escrow_intent:${CheckoutRequestID}`);
+  if (!intentRaw) {
+    // Callback arrived after Redis TTL — log and return 200 to prevent M-Pesa retry storm
+    console.error(`Escrow intent not found for CheckoutRequestID: ${CheckoutRequestID}`);
+    return json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
+
+  const intent = JSON.parse(intentRaw);
+
+  if (ResultCode !== 0) {
+    // Payment failed or cancelled — update escrow record, do not anchor
+    await db.per_event_escrow_records.update({
+      where: { mpesa_checkout_request_id: CheckoutRequestID },
+      data: { status: 'FAILED', failure_reason: ResultDesc },
+    });
+
+    await redis.del(`escrow_intent:${CheckoutRequestID}`);
+
+    posthog.capture({
+      distinctId: intent.operator_id,
+      event: 'per_event_escrow_payment_failed',
+      properties: { booking_id: intent.booking_id, result_desc: ResultDesc },
+    });
+
+    return json({ ResultCode: 0, ResultDesc: 'Accepted' });
+  }
+
+  // Payment confirmed — anchor the booking to Hyperledger Fabric
+  const anchorResult = await anchorBusinessReservation(intent.booking_id, intent.operator_id);
+
+  // Update escrow record with M-Pesa reference and anchor confirmation
+  const mpesaRef = callback.Body.stkCallback.CallbackMetadata?.Item?.find(
+    (i: { Name: string }) => i.Name === 'MpesaReceiptNumber'
+  )?.Value;
+
+  await db.per_event_escrow_records.update({
+    where: { mpesa_checkout_request_id: CheckoutRequestID },
+    data: {
+      status: 'SETTLED',
+      mpesa_receipt_number: mpesaRef,
+      ledger_tx_id: anchorResult.txId,
+      settled_at: new Date().toISOString(),
+    },
+  });
+
+  // Update the booking record with M-Pesa reference
+  await db.fleet_bookings.update({
+    where: { id: intent.booking_id },
+    data: { mpesa_reference: mpesaRef },
+  });
+
+  // Invalidate Redis gate cache — per-event anchors do not count against the free tier cap
+  // The gate tracks subscription-route anchors only; per-event is a separate revenue stream
+  // No redis.del needed here — per-event does not increment the monthly counter
+
+  await redis.del(`escrow_intent:${CheckoutRequestID}`);
+
+  // Notify operator via Supabase realtime — booking is now LEDGER_ANCHORED
+  // The FleetBooking grid subscribes to fleet_bookings and will update without page refresh
+
+  posthog.capture({
+    distinctId: intent.operator_id,
+    event: 'per_event_escrow_settled',
+    properties: {
+      booking_id: intent.booking_id,
+      agreed_fare_kes: intent.agreed_fare_kes,
+      platform_fee_kes: intent.platform_fee_kes,
+      operator_net_kes: intent.operator_net_kes,
+      ledger_tx_id: anchorResult.txId,
+    },
+  });
+
+  return json({ ResultCode: 0, ResultDesc: 'Accepted' });
+};
+```
+
+---
+
+## Compliance Segments as Legal Insurance: The Framing Architecture
+
+The upgrade pricing page and all in-app upgrade prompts must frame each tier against a specific legal exposure scenario, not against a feature list. Feature lists are evaluated by price-sensitive SACCO owners as overhead. Legal exposure scenarios are evaluated as risk mitigation — a fundamentally different cognitive frame.
+
+### Tier Framing by Legal Exposure
+
+**Free Tier — 5 anchored bookings/month:**
+Framed as: *Proof of concept for operators running occasional private hires.* The copy does not say 'limited features.' It says: *'5 route-deviation protection records per month. Enough to cover occasional charters. Not enough for a commercial operation.'* The implicit message: if you are running more than 5 private hires per month, you are running a commercial operation and you need commercial protection.
+
+**Starter — KES 1,200/month, 30 anchored bookings:**
+Framed as: *NTSA audit readiness for single-operator fleets.* The copy: *'30 anchored records per month — enough to cover a 10-vehicle fleet running 3 private hires per vehicle monthly. Every deviation is on the immutable record. NTSA route deviation complaints are answered with a Hyperledger transaction hash, not a verbal explanation.'*
+
+The KES 1,200 price point is not positioned against competitor software. It is positioned against the cost of a single NTSA route deviation penalty, which ranges from KES 5,000 to KES 50,000 depending on severity. The copy: *'One NTSA penalty costs more than 4 months of Starter. The ledger record is cheaper than the fine it prevents.'*
+
+**Pro — KES 3,500/month, 150 anchored bookings:**
+Framed as: *SACCO dispute immunity for multi-operator fleets.* The copy: *'150 anchored records per month. Full V/T ratio intelligence. Morning briefings with remittance exposure figures. When a SACCO dispute goes to arbitration, your Hyperledger audit trail is the evidence. Pro operators have resolved 4 disputes on average using FLAM records in the past 6 months.'*
+
+The social proof figure — 4 disputes resolved — is pulled from the `remittance_dispute_resolved` PostHog event and rendered dynamically. It is not marketing copy; it is a live metric from the platform's own data, updated monthly.
+
+**Business — KES 8,000/month, unlimited anchored bookings:**
+Framed as: *Insurance underwriter compliance for fleet financing.* The copy: *'Unlimited ledger anchors. Transit Data API access for regulators and insurers. Fleet operators seeking PSV insurance renewals or SACCO-backed vehicle financing use FLAM Business records as evidence of operational compliance. Your Hyperledger history is a financial instrument.'*
+
+This tier targets SACCO chairs and fleet owners with 15+ vehicles who are in active dialogue with insurance underwriters or development finance institutions (DFIs) for fleet expansion financing. The compliance record is not just a legal shield — it is a credit signal.
+
+### The Upgrade Prompt Hierarchy
+
+Upgrade prompts are surfaced in three contexts, each with distinct copy:
+
+**1. LedgerAnchorButton — inline in the booking drawer (highest intent):**
+The Operator is in the act of creating a booking. They have already entered the vehicle, time window, client details, and agreed fare. They are at the commitment point. The gate copy at this moment must be the most direct: *'You've used 5 of 5 protected bookings this month. This booking has no route-deviation protection until you upgrade. One NTSA complaint about this vehicle during this window and you have no record.'*
+
+The M-Pesa STK push is initiated from this prompt without navigating away from the drawer. The Operator does not leave the booking context.
+
+**2. Fleet Dashboard V/T Panel — contextual, data-driven (medium intent):**
+The `evaluateVTMonetisationSignal` function surfaces the upgrade prompt inline in the V/T ratio panel when unverified revenue exposure exceeds KES 2,000. The copy is always quantified against the Operator's own data: *'KES 6,200 in fares collected without a GPS record last shift. Upgrade to verify your full fleet.'*
+
+**3. Morning WhatsApp Briefing — ambient, habit-forming (low intent, high frequency):**
+The briefing does not contain a hard upgrade CTA. It contains the unverified exposure figure and a deep-link to the fleet dashboard. The upgrade prompt is encountered when the Operator follows the deep-link and lands on the V/T panel. The briefing plants the cognitive seed; the dashboard closes the conversion.
+
+---
+
+## Lifecycle Control Points
+
+**ACTIVATION — The Magic Moment:**
+The first time an Operator encounters the `PER_EVENT_OFFER` state in the LedgerAnchorButton — and completes a per-event escrow payment — is the activation moment for the monetisation layer. The Operator has experienced the full compliance-to-payment loop: booking created, client charged via M-Pesa, ledger anchored, route-deviation protection active. PostHog must capture `per_event_escrow_first_completed` with the agreed fare and platform fee as properties. This event predicts subscription conversion with higher confidence than any other single action in the Operator lifecycle.
+
+**MONETISATION — The Commitment:**
+The economic conversion point is the moment an Operator's per-event fees in a single month exceed the Starter subscription cost of KES 1,200. At 2.5% per event, this occurs when the Operator anchors bookings with a combined fare of KES 48,000 — approximately 6 bookings at KES 8,000 each. The platform must surface this calculation explicitly: *'You've paid KES 1,440 in per-event fees this month. A Starter subscription would have cost KES 1,200 and covered 30 anchors. Upgrade now and save KES 240 — plus 24 more protected bookings this month.'* This is not a upsell; it is a financial optimisation the Operator would reach independently given enough data. The platform surfaces it before they do the arithmetic themselves.
+
+**RETENTION — The Stickiness:**
+The per-event escrow records in `per_event_escrow_records` are a financial history the Operator cannot reconstruct outside the platform. Each record contains the M-Pesa receipt number, the Hyperledger transaction hash, the client phone, and the agreed fare. This is simultaneously a compliance record and an accounts receivable ledger. An Operator with 18 months of escrow records has a complete charter revenue history — verifiable, immutable, and linked to client M-Pesa identities. The switching cost is not the GPS software; it is the financial audit trail.
+
+**EXPANSION — The Flywheel:**
+SACCO chairs who observe member operators using BUSINESS_RESERVATION ledger anchors to resolve disputes — and winning — become the acquisition channel for the Business tier. The SACCO chair's incentive is not individual compliance; it is collective SACCO liability reduction. A SACCO whose member operators all have anchored deviation records is a SACCO that cannot be sanctioned for unlogged route violations at the fleet level. The upgrade path from member operator Starter accounts to a SACCO-wide Business account is the highest-value expansion motion in the platform — and it is triggered by a dispute resolution event, not a sales conversation.
 
 ### 5. Technical Execution
 
 **Overview**
-Building the GPS broadcast path and ledger depth flywheel: driver PWA with zero-auth GPS broadcasting, V/T instrumentation, and the compliance-framed upgrade gate. Confidence: 92%.
+Building the Compliance Monetisation & Ledger Gate system: a FreeTierLedgerGate that blocks BUSINESS_RESERVATION anchors at 5/month on free tier, surfaces a per-event M-Pesa escrow path at 2.5% of agreed fare, and drives subscription conversion via quantified revenue-exposure copy. Confidence: 93%.
 
 **What We're Building**
-1. Zero-auth driver PWA (sub-200KB, 3G-tolerant, IndexedDB queue, cell tower fallback)
-2. V/T ratio instrumentation layer in PostHog with per-vehicle GPS session coverage tracking
-3. Upstash Redis job for Hour-4 and Hour-24 SMS nudges keyed to absence of first GPS ping
-4. Hyperledger Fabric event writer binding every GPS ping to a ledger transaction with trip reference
-5. Compliance-framed free tier gate: 30-day ledger display cap with loss-aversion upgrade prompt
+1. LedgerGateStatus computation and Redis-cached gate evaluation
+2. LedgerAnchorButton six-state UI (IDLE, LOADING, SUCCESS, ERROR, QUOTA_EXCEEDED, PER_EVENT_OFFER)
+3. Per-event M-Pesa STK push escrow flow with Redis intent store and Daraja callback handler
+4. Anchor-ledger API endpoint routing between SUBSCRIPTION and PER_EVENT paths
+5. Inline upgrade prompt with operator-specific KES exposure figures and M-Pesa STK push initiation
 
 **Technical Tasks**
-1. Scaffold driver PWA at /apps/driver-pwa — SvelteKit static adapter, Geolocation API with IndexedDB queue flush on reconnect, cell tower fallback flag on accuracy < 50m
-2. Create GPS ping ingest endpoint at src/routes/api/gps/ping/+server.ts — validates device token, writes to PostgreSQL trip_events table, enqueues Hyperledger Fabric write via job queue
-3. Implement Hyperledger Fabric event writer in src/lib/server/fabric/writeTripEvent.ts — maps GPS ping payload to ledger transaction, stamps with vehicle_id, route_corridor, timestamp, accuracy_flag
-4. Add V/T ratio computation to src/lib/server/analytics/vehicleCoverage.ts — DuckDB query over trip_events per vehicle per day against expected_trip_windows, emit PostHog event vehicle_vt_ratio_updated on each compute cycle
-5. Create Upstash Redis delayed jobs in src/lib/server/jobs/gpsActivationNudge.ts — enqueue at signup: fire SMS at T+4h and T+24h if no ping received for org, cancel on first ping received
-6. Build compliance gate UI component at src/lib/components/FreeTierLedgerGate.svelte — queries ledger_event_count and days_until_cap, renders loss-aversion prompt with trip event count and KES compliance protection estimate
-7. Wire STK push upgrade flow in src/routes/api/billing/mpesa-upgrade/+server.ts — pre-populate with ledger stats, fire Daraja STK push, handle idempotency via Upstash Redis key on operator_id + plan_id
+1. Implement getLedgerGateStatus + assertLedgerNotGated with Redis cache invalidation → src/lib/server/billing/ledgerGate.ts
+2. Implement initiatePerEventEscrow with STK push, Redis intent store, and per_event_escrow_records insert → src/lib/server/billing/perEventEscrow.ts
+3. Implement anchor-ledger POST endpoint routing SUBSCRIPTION vs PER_EVENT with server-side gate assertion → src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts
+4. Implement M-Pesa callback handler: read Redis intent, call anchorBusinessReservation, update escrow record and fleet_booking → src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts
+5. Build LedgerAnchorButton.svelte with all six states, deriveInitialState from gateStatus prop, and PostHog capture on every state transition → src/lib/components/fleet/LedgerAnchorButton.svelte
+6. Add per_event_escrow_records table migration and ledger_anchor_usage monthly count query → supabase/migrations/add_per_event_escrow.sql
 
 **Data Triggers**
-- Account created with no GPS ping after 4 hours → Hour-4 SMS nudge
-- Account created with no GPS ping after 24 hours → Hour-24 compliance-framed SMS
-- First GPS ping received → cancel nudge jobs, unlock full nav, trigger UI celebration, write ledger genesis event
-- Operator ledger display retention reaches Day 28 → surface FreeTierLedgerGate upgrade prompt
-- Fleet active vehicle count crosses 5 AND ledger history >= 60 days → unlock Fleet Intelligence gate UI
-- V/T ratio computed below 0.5 for any vehicle → flag in operator 6AM WhatsApp briefing
+- fleet_bookings anchor attempt with org monthly anchor count >= tier cap → gate evaluation
+- assertLedgerNotGated resolves PER_EVENT when agreed_fare > 0 and mpesa_account_linked
+- M-Pesa STK push ResultCode === 0 in callback → anchorBusinessReservation fires
+- per_event fees in month exceed KES 1,200 → inline subscription conversion prompt
+- vt_snapshot unverified_revenue_exposure_kes >= 2000 → upgrade banner in V/T panel
 
 **Success Metrics**
-- Time to First GPS Ping < 48h for > 60% of new operator accounts
-- V/T ratio > 0.75 across active fleet portfolio at Month 2
-- Driver PWA load time < 4s on Safaricom 3G
-- Zero GPS ping loss rate due to connectivity drop (IndexedDB queue flush confirms)
-- Free-tier ledger gate upgrade conversion > 15% on prompt display
-- Hyperledger write success rate > 99.5% per GPS ping ingested
+- per_event_escrow_first_completed rate > 40% of operators who hit QUOTA_EXCEEDED with a fare-bearing booking
+- Subscription conversion within 30 days of first QUOTA_EXCEEDED event > 25%
+- Anchor-ledger endpoint p95 latency < 800ms on SUBSCRIPTION path, < 1200ms on PER_EVENT path
+- M-Pesa callback → ledger anchor completion rate > 95% (measures escrow reliability)
+- Monthly per-event fee total exceeding Starter cost surfaced to operator within same billing period: conversion lift target > 15pp vs control
 
 ## Todo
 
-- [ ] **Scaffold the zero-auth driver PWA at `/apps/driver-pwa`** using SvelteKit static adapter; implement Geolocation API with IndexedDB offline queue (flush on reconnect), cell tower fallback flagging pings as `low-accuracy` when GPS accuracy < 50m, sub-200KB bundle targeting < 4s load on Safaricom 3G, single "Start Route" tap with no account creation required.
-
-- [ ] **Create the GPS ping ingest endpoint at `src/routes/api/gps/ping/+server.ts`** and Hyperledger Fabric event writer at `src/lib/server/fabric/writeTripEvent.ts`; validate device token, write to PostgreSQL `trip_events` table, enqueue ledger transaction stamped with `vehicle_id`, `route_corridor`, `timestamp`, and `accuracy_flag`, targeting > 99.5% write success rate.
-
-- [ ] **Implement V/T ratio computation at `src/lib/server/analytics/vehicleCoverage.ts`** using DuckDB queries over `trip_events` per vehicle per day against `expected_trip_windows`; emit `vehicle_vt_ratio_updated` PostHog event each compute cycle and flag ratios below 0.5 for the 6AM WhatsApp briefing.
-
-- [ ] **Build the GPS activation nudge jobs at `src/lib/server/jobs/gpsActivationNudge.ts`** using Upstash Redis delayed jobs; enqueue on signup to fire compliance-framed SMS at T+4h and T+24h if no ping received, cancel both jobs on first ping received, and trigger UI celebration + full nav unlock + ledger genesis event write on that first ping.
-
-- [ ] **Build the compliance-framed upgrade gate component at `src/lib/components/FreeTierLedgerGate.svelte`** and wire the STK push flow at `src/routes/api/billing/mpesa-upgrade/+server.ts`; gate renders loss-aversion prompt at Day 28 showing trip event count and KES compliance protection estimate; upgrade flow pre-populates Daraja STK push from ledger stats, completes in ≤ 3 taps, and uses Upstash Redis idempotency keyed on `operator_id + plan_id`.
-
-- [ ] **Manual end-to-end test:** Create a new operator account, assign a vehicle and driver, open the driver PWA on a real Android device on Safaricom 3G, tap "Start Route", and verify: first GPS ping lands in < 48h, UI celebration fires and full navigation unlocks, ledger genesis event is written to Hyperledger Fabric with correct `vehicle_id` and `route_corridor`, PostHog emits `vehicle_vt_ratio_updated`, and the T+4h SMS is cancelled; then simulate 28 days of ledger cap approach and confirm the `FreeTierLedgerGate` prompt renders with correct trip count and KES estimate, and that the STK push upgrade flow completes end-to-end.
+- [ ] Create database schema and server-side billing/gate logic: add `per_event_escrow_records` table and `vehicle_pairing_tokens` migration (`supabase/migrations/`), implement `getLedgerGateStatus` + `assertLedgerNotGated` with Redis caching (`src/lib/server/billing/ledgerGate.ts`), implement `initiatePerEventEscrow` with M-Pesa STK push and Redis intent store (`src/lib/server/billing/perEventEscrow.ts`), and implement Fabric gateway abstraction for `BUSINESS_RESERVATION` and `GENESIS_ENROLLMENT` events (`src/lib/server/fabric/businessReservation.ts`)
+- [ ] Create backend API endpoints: CRUD + RLS-aware fleet bookings (`src/routes/api/fleet/bookings/+server.ts`), anchor-ledger POST routing `SUBSCRIPTION` vs `PER_EVENT` with server-side conflict guard and gate assertion (`src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts`), M-Pesa escrow callback handler that reads Redis intent and fires ledger anchor (`src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts`), driver pairing token exchange and Redis session creation (`src/routes/api/driver/pair/+server.ts`), and GPS ping ingestion with `GENESIS_ENROLLMENT` side-effect trigger (`src/routes/api/gps/ping/+server.ts`)
+- [ ] Create analytics and intelligence layer: `computeFleetVTSnapshot` with shift-window ping-density SQL, `classifyShiftHonesty` four-band logic, and `evaluateVTMonetisationSignal` upgrade triggers (`src/lib/analytics/vehicleCoverage.ts`, `src/lib/analytics/vtMonetisationTrigger.ts`); implement `dispatchMorningBriefings` 06:00 job with WhatsApp message composition and PostHog instrumentation (`src/lib/jobs/morningBriefing.ts`); implement pairing token generation/verification (`src/lib/server/auth/pairingToken.ts`)
+- [ ] Build fleet UI components: multi-vehicle horizontal timeline grid with Supabase realtime subscription and conflict highlighting (`src/lib/components/fleet/BookingTimelineGrid.svelte`), right-side booking creation drawer with 5-step flow (`src/lib/components/fleet/BookingDrawer.svelte`), `LedgerAnchorButton.svelte` with all six states (`IDLE`, `LOADING`, `SUCCESS`, `ERROR`, `QUOTA_EXCEEDED`, `PER_EVENT_OFFER`), `deriveInitialState` from `gateStatus` prop, per-event fee display, and PostHog capture on every state transition (`src/lib/components/fleet/LedgerAnchorButton.svelte`), and the parent `FleetBooking.svelte` orchestrating role-scoped data fetching and V/T upgrade banner (`src/lib/components/fleet/FleetBooking.svelte`)
+- [ ] Create driver PWA auth and client-side stores: `initDriverAuth` with IndexedDB session persistence, pairing token URL exchange, and `PairingError` handling (`apps/driver-pwa/src/lib/auth.ts`); Supabase realtime subscription store for fleet bookings (`src/lib/stores/fleetBookings.ts`); and client-side booking conflict detection utility (`src/lib/utils/bookingConflict.ts`)
+- [ ] Manual end-to-end test — success criteria: (1) Operator generates a pairing URL, driver opens it, first GPS ping fires and `GENESIS_ENROLLMENT` ledger anchor appears with Fabric tx hash in the fleet grid within 30 seconds; (2) Operator creates a charter booking, clicks "Lock & Protect," booking transitions to `LEDGER_ANCHORED` with tx hash visible; (3) after 5 anchors, the `LedgerAnchorButton` renders `PER_EVENT_OFFER` for a fare-bearing booking, M-Pesa STK push reaches the client phone, callback fires, and booking anchors automatically; (4) a gated booking with no fare renders `QUOTA_EXCEEDED` with upgrade CTA and correct reset date; (5) the 06:00 morning briefing WhatsApp message contains correct absent vehicle count and KES unverified exposure figure matching the fleet dashboard V/T panel
