@@ -16,8 +16,8 @@
 //   initFleet(supabase, orgId). This server route is for API consumers and
 //   server-side load functions that need fleet data without the reactive store.
 
-import { json }               from "@sveltejs/kit"
-import type { RequestHandler }  from "./$types"
+import { json } from "@sveltejs/kit"
+import type { RequestHandler } from "./$types"
 import {
   type Vehicle,
   type VehicleStatus,
@@ -29,30 +29,40 @@ import {
 function mapVehicle(row: Record<string, unknown>): Vehicle {
   const meta = (row.metadata as Record<string, unknown> | null) ?? {}
 
-  const rawCompliance = (
-    row.compliance_status ?? row.complianceStatus ?? meta.compliance ?? null
-  ) as Record<string, boolean> | null
+  const rawCompliance = (row.compliance_status ??
+    row.complianceStatus ??
+    meta.compliance ??
+    null) as Record<string, boolean> | null
 
   return {
-    id:               String(row.id ?? ""),
-    regNumber:        String(row.reg_number   ?? row.regNumber   ?? ""),
-    ownerId:          String(row.owner_id     ?? row.ownerId     ?? ""),
-    organizationId:   String(row.organization_id ?? row.organizationId ?? ""),
-    route:            String(row.route        ?? ""),
-    routeId:          row.route_id ? String(row.route_id) : undefined,
-    gpsLat:           Number(row.gps_lat      ?? row.gpsLat      ?? 0),
-    gpsLng:           Number(row.gps_lng      ?? row.gpsLng      ?? 0),
-    status:           (row.status as VehicleStatus) ?? "ACTIVE",
-    active:           Boolean(row.active      ?? true),
-    capacity:         Number(row.capacity     ?? 0),
-    insuranceExpiry:  String(row.insurance_expiry  ?? meta.insurance_expiry ?? "") || undefined,
-    lastMaintenance:  String(row.last_maintenance  ?? meta.last_maintenance ?? "") || undefined,
+    id: String(row.id ?? ""),
+    regNumber: String(row.reg_number ?? row.regNumber ?? ""),
+    ownerId: String(row.owner_id ?? row.ownerId ?? ""),
+    organizationId: String(row.organization_id ?? row.organizationId ?? ""),
+    route: String(row.route ?? ""),
+    routeId: row.route_id ? String(row.route_id) : undefined,
+    gpsLat: Number(row.gps_lat ?? row.gpsLat ?? 0),
+    gpsLng: Number(row.gps_lng ?? row.gpsLng ?? 0),
+    status: (row.status as VehicleStatus) ?? "ACTIVE",
+    active: Boolean(row.active ?? true),
+    capacity: Number(row.capacity ?? 0),
+    insuranceExpiry:
+      String(row.insurance_expiry ?? meta.insurance_expiry ?? "") || undefined,
+    lastMaintenance:
+      String(row.last_maintenance ?? meta.last_maintenance ?? "") || undefined,
     complianceStatus: {
-      insuranceValid:  rawCompliance?.insuranceValid  ?? rawCompliance?.insurance_valid  ?? false,
-      inspectionValid: rawCompliance?.inspectionValid ?? rawCompliance?.inspection_valid ?? false,
-      licenseValid:    rawCompliance?.licenseValid    ?? rawCompliance?.license_valid    ?? false,
+      insuranceValid:
+        rawCompliance?.insuranceValid ??
+        rawCompliance?.insurance_valid ??
+        false,
+      inspectionValid:
+        rawCompliance?.inspectionValid ??
+        rawCompliance?.inspection_valid ??
+        false,
+      licenseValid:
+        rawCompliance?.licenseValid ?? rawCompliance?.license_valid ?? false,
     },
-    metadata:   row.metadata as Record<string, unknown> | undefined,
+    metadata: row.metadata as Record<string, unknown> | undefined,
     created_at: row.created_at as string | undefined,
     updated_at: row.updated_at as string | undefined,
   }
@@ -70,13 +80,13 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   const supabase = locals.supabase
 
   // ── Query params ──────────────────────────────────────────────────────────
-  const orgId     = url.searchParams.get("orgId")
+  const orgId = url.searchParams.get("orgId")
   const vehicleId = url.searchParams.get("id")
-  const status    = url.searchParams.get("status") as VehicleStatus | null
-  const search    = url.searchParams.get("search")?.trim() ?? null
+  const status = url.searchParams.get("status") as VehicleStatus | null
+  const search = url.searchParams.get("search")?.trim() ?? null
   const activeOnly = url.searchParams.get("active") === "true"
-  const limit     = Math.min(Number(url.searchParams.get("limit")  ?? 100), 500)
-  const offset    = Number(url.searchParams.get("offset") ?? 0)
+  const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 500)
+  const offset = Number(url.searchParams.get("offset") ?? 0)
 
   if (!orgId) {
     return json({ error: "orgId is required" }, { status: 400 })
@@ -103,7 +113,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       .from("vehicles")
       .select("*")
       .eq("id", vehicleId)
-      .eq("organization_id", orgId)   // enforce org scope — can't fetch another org's vehicle
+      .eq("organization_id", orgId) // enforce org scope — can't fetch another org's vehicle
       .maybeSingle()
 
     if (error) {
@@ -126,11 +136,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     .order("reg_number", { ascending: true })
     .range(offset, offset + limit - 1)
 
-  if (status)     query = query.eq("status", status)
+  if (status) query = query.eq("status", status)
   if (activeOnly) query = query.eq("active", true)
-  if (search)     query = query.or(
-    `reg_number.ilike.%${search}%,route.ilike.%${search}%`,
-  )
+  if (search)
+    query = query.or(`reg_number.ilike.%${search}%,route.ilike.%${search}%`)
 
   const { data: rows, count, error } = await query
 
@@ -143,11 +152,11 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
   // ── Summary counts ────────────────────────────────────────────────────────
   const summary = {
-    total:         count ?? 0,
-    active:        fleet.filter((v) => v.active && v.status === "ACTIVE").length,
-    maintenance:   fleet.filter((v) => v.status === "MAINTENANCE").length,
-    nonCompliant:  fleet.filter((v) => v.status === "NON_COMPLIANT").length,
-    suspended:     fleet.filter((v) => v.status === "SUSPENDED").length,
+    total: count ?? 0,
+    active: fleet.filter((v) => v.active && v.status === "ACTIVE").length,
+    maintenance: fleet.filter((v) => v.status === "MAINTENANCE").length,
+    nonCompliant: fleet.filter((v) => v.status === "NON_COMPLIANT").length,
+    suspended: fleet.filter((v) => v.status === "SUSPENDED").length,
   }
 
   return json({
@@ -155,7 +164,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     fleet,
     summary,
     pagination: {
-      total:  count ?? 0,
+      total: count ?? 0,
       limit,
       offset,
       hasMore: offset + fleet.length < (count ?? 0),

@@ -30,11 +30,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     }
 
     const vehiclesWithGps = (events ?? [])
-      .filter(
-        (e) =>
-          e.metadata?.gpsLat != null &&
-          e.metadata?.gpsLng != null
-      )
+      .filter((e) => e.metadata?.gpsLat != null && e.metadata?.gpsLng != null)
       .map((e) => ({
         vehicleId: e.vehicleId,
         severity: e.severity,

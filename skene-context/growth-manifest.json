@@ -23,12 +23,7 @@
   },
   "industry": {
     "primary": "TransportTech",
-    "secondary": [
-      "B2B2C",
-      "SaaS",
-      "Marketplace",
-      "GovTech"
-    ],
+    "secondary": ["B2B2C", "SaaS", "Marketplace", "GovTech"],
     "confidence": 0.82,
     "evidence": [
       "Presence of MapLibre, GPS ping ingestion, and route analytics strongly indicates a fleet/transit management platform",
@@ -54,9 +49,7 @@
         "Add an 'I'm not sure' path that asks qualifying questions and recommends an intent, reducing wrong-role registrations",
         "Track intent-to-activation rate: what % of users who select 'operator' actually complete their first GPS ping"
       ],
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": []
     },
     {
@@ -73,13 +66,8 @@
         "Implement Upstash Redis job to send SMS renewal reminder 3 days before plan expiry",
         "Track STK push abandonment rate in PostHog (pending \u2192 failed vs pending \u2192 completed) to measure payment friction"
       ],
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "Profile Enrichment & Actor Request Flow",
@@ -95,9 +83,7 @@
         "Track which orgIds are most frequently requested via upsertActorRequest to identify high-demand SACCOs for proactive outreach",
         "Add WhatsApp-based profile setup flow as alternative to web form for operators who prefer mobile-first interaction"
       ],
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": []
     },
     {
@@ -114,10 +100,7 @@
         "Track which KPI cards receive the most interaction in PostHog to prioritize dashboard improvements",
         "Add CSV export of the 7-day revenue sparkline data for SACCO managers who reconcile in spreadsheets"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": []
     },
     {
@@ -134,10 +117,7 @@
         "Add CSV export of network analytics for compliance reporting \u2014 a key retention driver for SACCO managers",
         "Implement SMS alert when a monitored route's congestion score exceeds a user-configured threshold to drive daily active use without requiring login"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": []
     },
     {
@@ -154,10 +134,7 @@
         "Add bulk verification send capability (select multiple unverified actors, send all at once) to reduce admin friction",
         "Track verification method success rates (SMS vs email) in PostHog to optimize the default method recommendation"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": []
     },
     {
@@ -174,10 +151,7 @@
         "Add bulk activation capability for orgs that pass automated criteria (e.g. has at least one verified member)",
         "Implement a SACCO health score per org card (vehicles added, GPS pings emitted, revenue recorded) to prioritize support outreach"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
       "loop_ids": []
     },
     {
@@ -194,10 +168,7 @@
         "Add a 'Request access to another SACCO' CTA in the picker for users who want to join additional organizations",
         "Implement a default org preference setting so frequent switchers don't see the picker on every login"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": []
     },
     {
@@ -214,9 +185,7 @@
         "Add a verification status page at /verify/status so users can check if their code is still valid before submitting",
         "Track OTP entry error rate in PostHog to identify if code delivery issues (wrong phone, SMS delay) are causing verification abandonment"
       ],
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": []
     },
     {
@@ -233,10 +202,7 @@
         "Implement a post-sign-in survey for new users (first 3 logins) asking 'What brought you here today?' to capture intent signal",
         "Add a persistent 'Continue where you left off' CTA for returning users who have incomplete onboarding steps"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
       "loop_ids": []
     },
     {
@@ -253,14 +219,8 @@
         "Implement an email preference center beyond binary unsubscribe \u2014 allow users to opt out of marketing but keep transactional alerts",
         "Add re-engagement email for operators who have not emitted a GPS ping in 7 days with a direct link to the driver PWA"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["onboarding", "retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "Server-Side PostHog Analytics Client",
@@ -276,13 +236,8 @@
         "Track the join-sacco funnel server-side: page_loaded \u2192 org_selected \u2192 form_submitted \u2192 request_approved \u2192 org_activated",
         "Add PostHog dashboards for key growth metrics: daily activation rate, time-to-first-GPS-ping, free-to-paid conversion rate"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["engagement", "retention"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "M-Pesa Provider (STK Push, B2C, B2B)",
@@ -298,13 +253,8 @@
         "Implement subscription auto-renewal reminders via SMS 3 days before expiry using Upstash Redis delayed jobs",
         "Add payment analytics capturing STK push success rate, average time-to-approval, and failure reason distribution in PostHog"
       ],
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "Revenue Distribution Config Engine",
@@ -320,10 +270,7 @@
         "Add audit logging for revenue config changes to the skene_growth event_log for compliance trail",
         "Track actual vs projected revenue per org using DuckDB aggregations to surface variance as a dashboard KPI"
       ],
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": []
     },
     {
@@ -340,14 +287,8 @@
         "Add per-org rate limiting on GPS ping ingestion to prevent tracker misconfiguration from causing billing anomalies",
         "Use Redis as a presence store for real-time 'operators currently online' count to surface engagement metrics in the admin dashboard"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["onboarding", "retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "Trip Score & Route Store with IndexedDB Offline Queuing",
@@ -363,10 +304,7 @@
         "Add push notifications when a saved route has a vehicle available matching the user's preferred departure time",
         "Implement a 'Route Report Card' weekly email showing the user's average commute score vs platform average to drive habitual re-engagement"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": []
     },
     {
@@ -383,10 +321,7 @@
         "Track time-to-resolution for compliance events in PostHog to measure operational responsiveness as a platform health metric",
         "Create a compliance digest email (weekly for LOW/MEDIUM, immediate for HIGH) to drive re-engagement without requiring login"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": []
     },
     {
@@ -403,13 +338,8 @@
         "Create a real-time admin dashboard widget showing event_log throughput (events/minute) as a platform health indicator",
         "Use event_log as the source of truth for PostHog group analytics \u2014 emit org-level aggregates (weekly GPS pings, revenue collected) as group properties"
       ],
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ]
+      "growth_pillars": ["engagement", "retention"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"]
     },
     {
       "feature_name": "Route Guard & Context Activation System",
@@ -425,10 +355,7 @@
         "Implement a 'Request role upgrade' flow accessible from the denied state so users can self-serve the actor request process",
         "Add a breadcrumb trail showing the user's current context (org name, role) in the navigation to reduce confusion for multi-role users"
       ],
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": []
     },
     {
@@ -445,9 +372,7 @@
         "Remove the Stripe test card FAQ entry from the pricing page to eliminate trust-eroding inconsistency",
         "If fully migrating to M-Pesa, remove Stripe SDK dependency to reduce bundle size and eliminate confusion for future developers"
       ],
-      "growth_pillars": [
-        "retention"
-      ],
+      "growth_pillars": ["retention"],
       "loop_ids": []
     }
   ],
@@ -456,140 +381,97 @@
       "feature_name": "WhatsApp-Native Operator Onboarding Flow",
       "description": "The majority of Kenyan matatu operators are mobile-first users who communicate primarily via WhatsApp. There is currently no WhatsApp-based onboarding path \u2014 all registration requires navigating a web form. Building a WhatsApp Business API flow (using Firebase Cloud Messaging or a WhatsApp BSP) that guides operators through profile creation, SACCO selection, and vehicle registration via conversational messages would dramatically reduce onboarding friction. The flow would emit the same PostHog events and Supabase inserts as the web path, making it a parallel channel rather than a replacement. This directly extends the existing GPS flywheel by removing the web-form barrier that prevents operators from reaching their first GPS ping.",
       "priority": "high",
-      "growth_pillars": [
-        "onboarding"
-      ]
+      "growth_pillars": ["onboarding"]
     },
     {
       "feature_name": "Contextual In-App Feature Gate Component with Upgrade Modal",
       "description": "Free tier limits (vehicles, geofences, route alerts, seats) exist only as marketing copy \u2014 there is no enforcement or contextual upgrade prompt anywhere in the codebase. A reusable Svelte FeatureGate component should wrap any action that exceeds tier limits and render an upgrade modal with: (1) the specific limit hit, (2) what the next tier unlocks, (3) a one-tap M-Pesa STK push CTA. This is the single highest-leverage free-to-paid conversion mechanism in product-led growth and is entirely absent. It is complementary to the existing GPS flywheel (which focuses on Day-28 compliance gate) by capturing upgrade intent at the moment of value realization across all features, not just GPS history depth.",
       "priority": "high",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ]
+      "growth_pillars": ["onboarding", "retention"]
     },
     {
       "feature_name": "SACCO-to-SACCO Referral Program with WhatsApp Share",
       "description": "The matatu SACCO ecosystem is a tight-knit, trust-based network where word-of-mouth from a respected ORG_CHAIR carries more weight than any marketing channel. There is currently no referral mechanism. Building a referral program where ORG_CHAIRs earn one month free on their current plan for each referred SACCO that completes its first M-Pesa subscription payment would create a viral acquisition loop native to the market. The referral link should be shareable directly via WhatsApp from the org dashboard, and the funnel tracked end-to-end in PostHog. This is entirely distinct from the GPS broadcast flywheel and addresses top-of-funnel acquisition rather than activation and retention.",
       "priority": "high",
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ]
+      "growth_pillars": ["onboarding", "engagement"]
     },
     {
       "feature_name": "Passenger Trip Score Sharing & WhatsApp Viral Loop",
       "description": "The tripScore store already computes a 0-100 commute quality score per trip but it is never surfaced to passengers in a shareable format. Adding a post-trip summary card with the trip score, route name, and a pre-composed WhatsApp share message ('My Nairobi CBD \u2192 Westlands commute scored 91/100 on FLAM \u2014 book smarter matatus') would create a zero-cost viral acquisition channel. Each share exposes the platform to the sharer's WhatsApp contacts (typically dozens of commuters on the same routes). This is a complementary passenger-side growth loop entirely separate from the operator-focused GPS broadcast flywheel, targeting a different user segment and growth motion.",
       "priority": "high",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     },
     {
       "feature_name": "Operator Activation Checklist with Progress Persistence",
       "description": "New operators currently have no guided path from account creation to first GPS ping. There is no checklist, no progress indicator, and no persistence if they abandon mid-onboarding. A role-specific activation checklist (Add vehicle \u2192 Pair GPS tracker \u2192 Add driver \u2192 View first trip \u2192 Enable compliance alerts) stored in Supabase and surfaced prominently in the operator dashboard would dramatically reduce the time-to-first-GPS-ping metric that the GPS flywheel depends on. Progress should persist across sessions and resume automatically on re-login. Incomplete checklist steps should trigger Upstash Redis delayed SMS nudges at Hour-24 and Day-3. This extends and accelerates the existing GPS flywheel without duplicating it.",
       "priority": "high",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ]
+      "growth_pillars": ["onboarding", "retention"]
     },
     {
       "feature_name": "Weekly SACCO Performance Digest Email",
       "description": "ORG_CHAIRs currently must log in to see KPI trends. There is no automated outbound engagement that brings them back to the platform. A weekly Resend email digest delivering top-line metrics (total fleet revenue, on-time %, top-performing route, vehicles with compliance alerts, week-over-week change) with deep links to the relevant dashboard sections would drive re-engagement without requiring login. The Resend infrastructure is already in the stack. This is a retention mechanism for the operator segment that is orthogonal to the GPS ping flywheel \u2014 it targets already-activated operators and reinforces the value of maintaining their paid subscription by making platform value visible in their inbox.",
       "priority": "high",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     },
     {
       "feature_name": "Compliance PDF/CSV Export for NTSA Submissions",
       "description": "SACCO operators are legally required to submit compliance reports to NTSA (Kenya's transport regulator). The platform already captures rich compliance event data (severity, timestamps, resolution status, vehicle IDs) but offers no export capability. A one-click PDF or CSV export of compliance events, formatted to match NTSA submission requirements, would be a high-value retention feature that makes the platform operationally indispensable. Gating this export behind Pro+ tier creates a clear, compliance-driven upgrade incentive. This is a distinct retention mechanism from the GPS ledger compliance gate \u2014 it targets the reporting workflow rather than the GPS history depth narrative.",
       "priority": "high",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ]
+      "growth_pillars": ["retention", "engagement"]
     },
     {
       "feature_name": "Post-Trip Passenger Tipping Screen",
       "description": "The M-Pesa B2C payout infrastructure (sendB2CPayment) and an 80% platform tip share are already configured in the revenue engine, but there is no in-app tipping UI anywhere in the passenger-facing flow. Building a post-trip tipping screen with quick-select amounts (KES 20, 50, 100) triggered after a reservation is marked complete would activate an entirely dormant revenue stream. Even 10% tip adoption at an average KES 40 tip would meaningfully increase platform revenue. This is a net-new monetization surface that does not overlap with subscription billing or the GPS flywheel.",
       "priority": "medium",
-      "growth_pillars": [
-        "engagement"
-      ]
+      "growth_pillars": ["engagement"]
     },
     {
       "feature_name": "Passenger Booking Streak & Loyalty Badge System",
       "description": "Passenger retention is currently driven only by route quality (tripScore) with no explicit loyalty mechanism. A streak system \u2014 where passengers who book via the app for 5 consecutive weekdays earn a visible loyalty badge on their profile, and 20-trip milestones unlock a small M-Pesa cashback credit \u2014 would create habitual return behavior. Streaks reset on missed days, creating loss-aversion that drives daily opens. Badge visibility on the passenger profile creates social proof for the platform. This is a passenger-segment retention loop entirely separate from the operator-focused GPS flywheel.",
       "priority": "medium",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     },
     {
       "feature_name": "SACCO Health Score & Benchmarking Widget",
       "description": "ORG_CHAIRs currently see their own KPIs in isolation with no external reference point. Adding a SACCO Health Score (0-100, derived from GPS ping frequency, fleet uptime, compliance event resolution rate, and revenue collection consistency) alongside anonymized percentile benchmarks ('Your fleet is in the top 30% of SACCOs on this platform') creates social comparison motivation and makes improvement visible. Benchmarks also serve as a subtle upgrade nudge \u2014 top-quartile metrics are only achievable with Pro-tier features like advanced analytics and route optimization. This is a retention and expansion feature distinct from the GPS flywheel's compliance framing.",
       "priority": "medium",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     },
     {
       "feature_name": "Anonymized Transit Data API for Urban Planners & Regulators",
       "description": "The platform accumulates uniquely valuable anonymized GPS traces, passenger volume patterns, route adherence data, and compliance event distributions that urban planners, government regulators (NTSA, county governments), and transport researchers would pay for. A 'Transit Data API' subscription product targeting PLANNER and REGULATOR roles at KES 20,000-50,000/month would create a high-margin B2G revenue stream with near-zero marginal cost, leveraging DuckDB (already in stack) for aggregation. This is a net-new revenue segment (B2G) that does not compete with or overlap with the operator SaaS subscription model.",
       "priority": "medium",
-      "growth_pillars": [
-        "retention"
-      ]
+      "growth_pillars": ["retention"]
     },
     {
       "feature_name": "14-Day Pro Trial with Time-Gated Downgrade Warning",
       "description": "New signups can currently remain on the free tier indefinitely with no time pressure or urgency to convert. A 14-day Pro trial automatically activated on account creation \u2014 with a countdown banner in the dashboard, Resend email nudges at day 7 and day 12, and a final 'Your Pro trial ends tomorrow' SMS on day 13 \u2014 would expose all operators to the full platform value before the conversion decision. The trial should use the existing plan state management in the M-Pesa payments store and require no new infrastructure. This is a top-of-funnel conversion mechanism that complements the GPS flywheel's Day-28 compliance gate by creating an earlier, broader conversion opportunity.",
       "priority": "medium",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ]
+      "growth_pillars": ["onboarding", "retention"]
     },
     {
       "feature_name": "Admin Activation SLA Dashboard & Alert System",
       "description": "Operator activation latency (time from org creation to admin approval) is a direct churn trigger \u2014 operators who wait more than 24 hours for activation have significantly higher abandonment rates. There is currently no visibility into this metric for the admin team. An internal admin dashboard widget showing median activation time, queue depth, and SLA breach alerts (orgs waiting >12 hours) with an automated Resend email to the admin team when queue depth exceeds 5 would reduce activation latency and recover operators who would otherwise churn before experiencing the platform. This is an operational efficiency feature that accelerates the top of the GPS flywheel funnel.",
       "priority": "medium",
-      "growth_pillars": [
-        "onboarding"
-      ]
+      "growth_pillars": ["onboarding"]
     },
     {
       "feature_name": "Route Congestion SMS Alert Subscription",
       "description": "The network analytics dashboard already computes real-time congestion scores per route, but this data is only accessible to users who actively log in and navigate to the analytics tab. A configurable SMS alert subscription \u2014 where operators and passengers can set a congestion threshold per route and receive an SMS when it is exceeded \u2014 would create a daily active use driver that operates entirely outside the app. Using Upstash Redis delayed jobs and the existing SMS infrastructure, this feature would drive habitual re-engagement for both operator and passenger segments. Gating threshold configuration (e.g., more than 2 monitored routes) behind Starter+ tier creates a clear upgrade incentive.",
       "priority": "medium",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     },
     {
       "feature_name": "Compliance Module Add-On for Regulators & Compliance Officers",
       "description": "REGULATOR, COMPLIANCE_OFFICER, and PLANNER roles have dedicated dashboard surfaces but are lumped into the same pricing tiers as operators, with no role-specific value proposition or pricing. A 'Compliance Module' add-on at KES 5,000-15,000/month targeting these institutional roles would package: NTSA-formatted compliance report exports, multi-org fleet oversight views, audit trail downloads from the Hyperledger Fabric ledger, and anomaly detection alerts. These roles work within organizations with procurement budgets and are willing to pay for specialized tooling. This opens a B2G revenue segment entirely separate from the operator SaaS model.",
       "priority": "low",
-      "growth_pillars": [
-        "retention"
-      ]
+      "growth_pillars": ["retention"]
     },
     {
       "feature_name": "In-App Operator Community Feed & Route Announcements",
       "description": "Matatu operators and SACCO managers currently have no platform-native communication channel \u2014 coordination happens via WhatsApp groups outside the platform, reducing stickiness. A lightweight community feed within the org dashboard \u2014 where ORG_CHAIRs can post route announcements, schedule changes, and compliance reminders visible to all org members \u2014 would increase daily active use and embed the platform into existing operational workflows. Push notifications via Firebase (already in stack) would drive re-engagement. This is a community/engagement feature with no overlap with the GPS broadcast or compliance flywheel.",
       "priority": "low",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ]
+      "growth_pillars": ["engagement", "retention"]
     }
   ],
   "revenue_leakage": [

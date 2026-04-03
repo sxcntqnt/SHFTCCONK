@@ -42,27 +42,22 @@ import type { App } from "../app"
 
 type SafeSessionResult = {
   session: Session | null
-  user:    User | null
-  amr:     AuthenticatorAssuranceLevelEntry[] | null
+  user: User | null
+  amr: AuthenticatorAssuranceLevelEntry[] | null
 }
 
 // Paths where userStateHandle must NOT run —
 // either because there is no session yet, or because redirecting
 // from these paths would cause an infinite loop.
-const PUBLIC_PATHS = [
-  '/login',
-  '/verify',
-  '/auth/callback',
-  '/auth/confirm',
-]
+const PUBLIC_PATHS = ["/login", "/verify", "/auth/callback", "/auth/confirm"]
 
 // Paths that authenticated users are allowed on regardless of
 // onboarding_status — without this, the onboarding flow itself
 // would be redirect-looped by the guest trap.
-const ONBOARDING_PREFIX = '/onboarding'
+const ONBOARDING_PREFIX = "/onboarding"
 
 const isPublicPath = (pathname: string): boolean =>
-  PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
 const isOnboardingPath = (pathname: string): boolean =>
   pathname.startsWith(ONBOARDING_PREFIX)
@@ -74,9 +69,9 @@ const isOnboardingPath = (pathname: string): boolean =>
 const supabaseHandle: Handle = async ({ event, resolve }) => {
   // Initialize ALL locals to null — prevents undefined on public routes.
   // Matches app.d.ts type contract (all fields are T | null, never undefined).
-  event.locals.session      = null
-  event.locals.user         = null
-  event.locals.userState    = null
+  event.locals.session = null
+  event.locals.user = null
+  event.locals.userState = null
   event.locals.activeContext = null
 
   // ─── User-scoped client (anon key + user JWT from cookies) ──
@@ -89,8 +84,8 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
         getAll: () => event.cookies.getAll(),
         setAll: (
           cookiesToSet: {
-            name:    string
-            value:   string
+            name: string
+            value: string
             options: CookieOptions
           }[],
         ) => {
@@ -111,7 +106,7 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
     {
       auth: {
         autoRefreshToken: false,
-        persistSession:   false,
+        persistSession: false,
       },
     },
   )
@@ -174,18 +169,20 @@ const authGuardHandle: Handle = async ({ event, resolve }) => {
     "/org",
   ]
 
-  const isProtectedPage = protectedPagePrefixes.some(p => pathname.startsWith(p))
-  const isProtectedApi  = pathname.startsWith("/api")
+  const isProtectedPage = protectedPagePrefixes.some((p) =>
+    pathname.startsWith(p),
+  )
+  const isProtectedApi = pathname.startsWith("/api")
 
   if (isProtectedPage || isProtectedApi) {
     const { session, user } = await event.locals.safeGetSession()
 
     if (!session || !user) {
       if (isProtectedApi) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { "Content-Type": "application/json" } },
-        )
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        })
       }
 
       const loginUrl = new URL("/login/sign_in", event.url.origin)
@@ -194,7 +191,7 @@ const authGuardHandle: Handle = async ({ event, resolve }) => {
     }
 
     event.locals.session = session
-    event.locals.user    = user
+    event.locals.user = user
   }
 
   return resolve(event)
@@ -237,83 +234,76 @@ const userStateHandle: Handle = async ({ event, resolve }) => {
     const state = await resolveUserState(event.locals.supabase, user.id)
     event.locals.userState = state
 
+    // ── 2. GUEST TRAP ─────────────────────────────────────────────────────────
+    // isGuest = no active actors OR onboarding_status = 'GUEST'.
+    // Allow through if already on any /onboarding path.
+    if (state.isGuest && !isOnboardingPath(pathname)) {
+      const kycIntent = (state.profile as any).kyc_intent as string | null
 
-// ── 2. GUEST TRAP ─────────────────────────────────────────────────────────
-// isGuest = no active actors OR onboarding_status = 'GUEST'.
-// Allow through if already on any /onboarding path.
-if (state.isGuest && !isOnboardingPath(pathname)) {
-  const kycIntent = (state.profile as any).kyc_intent as string | null
+      // If they have a kyc_intent already set, they picked a role previously
+      // but navigated away — send them back to their specific intent flow.
+      // Otherwise send to the intent picker.
+      if (kycIntent) {
+        throw redirect(303, `/onboarding/${kycIntent}`)
+      }
+      throw redirect(303, "/onboarding")
+    }
 
-  // If they have a kyc_intent already set, they picked a role previously
-  // but navigated away — send them back to their specific intent flow.
-  // Otherwise send to the intent picker.
-  if (kycIntent) {
-    throw redirect(303, `/onboarding/${kycIntent}`)
-  }
-  throw redirect(303, '/onboarding')
-}
+    // ── 3. KYC TRAP ───────────────────────────────────────────────────────────
+    // User has chosen an intent and submitted to Ballerine but webhook
+    // hasn't fired yet (kyc_status = 'pending' or 'AWAITING_KYC').
+    const onboardingStatus = (state.profile as any).onboarding_status as
+      | string
+      | null
+    const kycIntent = (state.profile as any).kyc_intent as string | null
+    const kycStatus = (state.profile as any).kyc_status as string | null
 
-// ── 3. KYC TRAP ───────────────────────────────────────────────────────────
-// User has chosen an intent and submitted to Ballerine but webhook
-// hasn't fired yet (kyc_status = 'pending' or 'AWAITING_KYC').
-const onboardingStatus = (state.profile as any).onboarding_status as string | null
-const kycIntent        = (state.profile as any).kyc_intent        as string | null
-const kycStatus        = (state.profile as any).kyc_status        as string | null
+    // Lock to /onboarding/[intent] while KYC is in flight
+    if (
+      onboardingStatus === "AWAITING_KYC" &&
+      kycStatus === "pending" &&
+      !isOnboardingPath(pathname)
+    ) {
+      throw redirect(303, `/onboarding/${kycIntent ?? "passenger"}`)
+    }
 
-// Lock to /onboarding/[intent] while KYC is in flight
-if (
-  onboardingStatus === 'AWAITING_KYC' &&
-  kycStatus === 'pending' &&
-  !isOnboardingPath(pathname)
-) {
-  throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}`)
-}
-
-// KYC was rejected — send back to retry
-if (kycStatus === 'rejected' && !isOnboardingPath(pathname)) {
-  throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}?retry=true`)
-}
+    // KYC was rejected — send back to retry
+    if (kycStatus === "rejected" && !isOnboardingPath(pathname)) {
+      throw redirect(303, `/onboarding/${kycIntent ?? "passenger"}?retry=true`)
+    }
 
     // ── 4. Runtime context activation ─────────────────────────────────────────
     // Read the preferred context from the cookie set by the Context Switcher.
     // Falls back to 'passenger' if no cookie is set.
-    const preferredContext = (
-      event.cookies.get('active_context') ?? 'passenger'
-    ) as App.ContextType
+    const preferredContext = (event.cookies.get("active_context") ??
+      "passenger") as App.ContextType
 
-    const preferredOrgId = event.cookies.get('active_org_id') ?? undefined
+    const preferredOrgId = event.cookies.get("active_org_id") ?? undefined
 
     // activateXContext returns null if the user no longer has the required
     // actor (e.g. a role was revoked since the cookie was set).
-    let activeContext = activateXContext(
-      state,
-      preferredContext,
-      { orgId: preferredOrgId },
-    )
+    let activeContext = activateXContext(state, preferredContext, {
+      orgId: preferredOrgId,
+    })
 
     // ── 5. Fallback to passenger ──────────────────────────────────────────────
     // If the preferred context is invalid, drop back to passenger.
     // This handles revoked roles, expired delegations, and stale cookies.
     if (!activeContext) {
-      activeContext = activateXContext(state, 'passenger')
+      activeContext = activateXContext(state, "passenger")
     }
 
     event.locals.activeContext = activeContext
-
   } catch (err) {
     // Re-throw SvelteKit redirects — swallow everything else.
     // A resolver failure should not break the whole request.
     // The page will receive null userState + activeContext and can
     // handle the degraded state gracefully.
-    if (
-      err instanceof Error &&
-      'status' in err &&
-      'location' in err
-    ) {
+    if (err instanceof Error && "status" in err && "location" in err) {
       throw err
     }
 
-    console.error('[hooks:userStateHandle] Resolution failed:', err)
+    console.error("[hooks:userStateHandle] Resolution failed:", err)
   }
 
   return resolve(event)
@@ -346,28 +336,27 @@ const posthogProxy: Handle = async ({ event, resolve }) => {
     return resolve(event)
   }
 
-  const isStatic  = pathname.startsWith("/ingest/static/")
+  const isStatic = pathname.startsWith("/ingest/static/")
   const targetHost = isStatic ? "eu-assets.i.posthog.com" : "eu.i.posthog.com"
 
-  const targetUrl      = new URL(event.request.url)
-  targetUrl.protocol   = "https:"
-  targetUrl.hostname   = targetHost
-  targetUrl.port       = "443"
-  targetUrl.pathname   = pathname.replace(/^\/ingest/, "")
+  const targetUrl = new URL(event.request.url)
+  targetUrl.protocol = "https:"
+  targetUrl.hostname = targetHost
+  targetUrl.port = "443"
+  targetUrl.pathname = pathname.replace(/^\/ingest/, "")
 
   const headers = new Headers(event.request.headers)
   headers.set("host", targetHost)
   headers.delete("accept-encoding")
 
   const clientIp =
-    event.request.headers.get("x-forwarded-for") ??
-    event.getClientAddress()
+    event.request.headers.get("x-forwarded-for") ?? event.getClientAddress()
   if (clientIp) headers.set("x-forwarded-for", clientIp)
 
   return fetch(targetUrl.toString(), {
-    method:  event.request.method,
+    method: event.request.method,
     headers,
-    body:    event.request.body,
+    body: event.request.body,
     // @ts-expect-error — Node.js fetch duplex support
     duplex: "half",
   })
@@ -378,12 +367,12 @@ const posthogProxy: Handle = async ({ event, resolve }) => {
 ============================================================ */
 
 export const handle = sequence(
-  Sentry.sentryHandle(),  // error reporting + tracing — must be first
-  cloudflareHttpsFix,     // fix protocol before any URL inspection
-  posthogProxy,           // proxy analytics before auth touches cookies
-  supabaseHandle,         // clients + safeGetSession + null-initialize locals
-  authGuardHandle,        // session existence guard → /login or 401
-  userStateHandle,        // domain resolution → resolveUserState + activateXContext
+  Sentry.sentryHandle(), // error reporting + tracing — must be first
+  cloudflareHttpsFix, // fix protocol before any URL inspection
+  posthogProxy, // proxy analytics before auth touches cookies
+  supabaseHandle, // clients + safeGetSession + null-initialize locals
+  authGuardHandle, // session existence guard → /login or 401
+  userStateHandle, // domain resolution → resolveUserState + activateXContext
 )
 
 /* ============================================================
@@ -396,12 +385,12 @@ export const handleError: HandleServerError = Sentry.handleErrorWithSentry(
 
     posthog.capture({
       distinctId: "server",
-      event:      "server_error",
+      event: "server_error",
       properties: {
-        error:   error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : String(error),
         status,
         message,
-        stack:   error instanceof Error ? error.stack : undefined,
+        stack: error instanceof Error ? error.stack : undefined,
       },
     })
 

@@ -10,27 +10,27 @@ PostHog has been fully integrated into the Matatu Pulse SvelteKit application. B
 
 ### New files
 
-| File | Purpose |
-|------|---------|
-| `src/lib/server/posthog.ts` | Server-side PostHog singleton using `posthog-node`. Shared by all server routes. |
-| `src/hooks.client.ts` | Client-side PostHog init (EU host, `/ingest` proxy, `capture_exceptions: true`). Also exports `handleError` for unhandled client errors. |
-| `.posthog-events.json` | Event plan — all 10 events with descriptions, files, and rationale. |
+| File                        | Purpose                                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/server/posthog.ts` | Server-side PostHog singleton using `posthog-node`. Shared by all server routes.                                                         |
+| `src/hooks.client.ts`       | Client-side PostHog init (EU host, `/ingest` proxy, `capture_exceptions: true`). Also exports `handleError` for unhandled client errors. |
+| `.posthog-events.json`      | Event plan — all 10 events with descriptions, files, and rationale.                                                                      |
 
 ### Modified files
 
-| File | Change |
-|------|--------|
-| `src/hooks.server.ts` | Added `posthogProxy` handle (routes `/ingest/*` to `eu.i.posthog.com`) and `handleError` for server-side error capture. |
-| `svelte.config.js` | Added `paths.relative: false` — required for PostHog session replay with SSR. |
-| `src/routes/(marketing)/login/sign_in/+page.svelte` | `posthog.identify()` + `posthog.capture('user_signed_in')` after successful bootstrap. |
-| `src/routes/(marketing)/login/sign_up/+page.svelte` | `posthog.identify()` + `posthog.capture('user_signed_up')` on `SIGNED_UP` auth event. |
-| `src/routes/(admin)/account/sign_out/+page.svelte` | `posthog.capture('user_signed_out')` + `posthog.reset()` before Supabase sign-out. |
-| `src/routes/(marketing)/login/invite/[token]/+page.svelte` | `posthog.identify()` + `posthog.capture('invite_redeemed')` after successful invite redemption. |
-| `src/routes/feed/+page.svelte` | `posthog.capture('matatu_selected_from_feed')` when a passenger clicks Reserve. |
-| `src/routes/reserve/[matatuId]/+page.svelte` | `posthog.capture('seat_reservation_initiated')` when the M-Pesa modal opens. |
-| `src/routes/reserve/pay/+server.ts` | `posthog.capture('seat_reservation_completed')` on success; `posthog.capture('seat_reservation_failed')` on error. |
-| `src/routes/(marketing)/contact_us/+page.server.ts` | `posthog.capture('contact_form_submitted')` after successful DB insert. |
-| `src/routes/(admin)/account/subscribe/[slug]/+page.server.ts` | `posthog.capture('subscription_checkout_started')` before Stripe redirect. |
+| File                                                          | Change                                                                                                                  |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `src/hooks.server.ts`                                         | Added `posthogProxy` handle (routes `/ingest/*` to `eu.i.posthog.com`) and `handleError` for server-side error capture. |
+| `svelte.config.js`                                            | Added `paths.relative: false` — required for PostHog session replay with SSR.                                           |
+| `src/routes/(marketing)/login/sign_in/+page.svelte`           | `posthog.identify()` + `posthog.capture('user_signed_in')` after successful bootstrap.                                  |
+| `src/routes/(marketing)/login/sign_up/+page.svelte`           | `posthog.identify()` + `posthog.capture('user_signed_up')` on `SIGNED_UP` auth event.                                   |
+| `src/routes/(admin)/account/sign_out/+page.svelte`            | `posthog.capture('user_signed_out')` + `posthog.reset()` before Supabase sign-out.                                      |
+| `src/routes/(marketing)/login/invite/[token]/+page.svelte`    | `posthog.identify()` + `posthog.capture('invite_redeemed')` after successful invite redemption.                         |
+| `src/routes/feed/+page.svelte`                                | `posthog.capture('matatu_selected_from_feed')` when a passenger clicks Reserve.                                         |
+| `src/routes/reserve/[matatuId]/+page.svelte`                  | `posthog.capture('seat_reservation_initiated')` when the M-Pesa modal opens.                                            |
+| `src/routes/reserve/pay/+server.ts`                           | `posthog.capture('seat_reservation_completed')` on success; `posthog.capture('seat_reservation_failed')` on error.      |
+| `src/routes/(marketing)/contact_us/+page.server.ts`           | `posthog.capture('contact_form_submitted')` after successful DB insert.                                                 |
+| `src/routes/(admin)/account/subscribe/[slug]/+page.server.ts` | `posthog.capture('subscription_checkout_started')` before Stripe redirect.                                              |
 
 ---
 
@@ -60,18 +60,18 @@ Implemented in `src/hooks.server.ts` as `posthogProxy` handle, inserted before t
 
 ## Events Captured
 
-| Event | Where | Trigger | Key Properties |
-|-------|-------|---------|----------------|
-| `user_signed_in` | Client | Supabase `SIGNED_IN` + bootstrap RPC | `role`, `sacco` |
-| `user_signed_up` | Client | Supabase `SIGNED_UP` | `email`, `provider` |
-| `user_signed_out` | Client | `onMount` before Supabase `signOut()` | — |
-| `invite_redeemed` | Client | After `redeem_invite` RPC succeeds | `role`, `organization` |
-| `matatu_selected_from_feed` | Client | Passenger clicks "Reserve a Seat" | `matatu_id`, `route`, `sacco`, `status`, `eta_minutes`, `occupancy`, `price_per_seat` |
-| `seat_reservation_initiated` | Client | M-Pesa payment modal opens | `matatu_id`, `route`, `sacco`, `seat_count`, `amount` |
-| `seat_reservation_completed` | Server | `/reserve/pay` API succeeds | `seat_count`, `amount`, `matatu_id`, `mpesa_request_id` |
-| `seat_reservation_failed` | Server | `/reserve/pay` API errors | `reason`, `amount`, `expected`, `seat_count` |
-| `contact_form_submitted` | Server | Contact form DB insert succeeds | `contact_type`, `has_org`, `has_phone` |
-| `subscription_checkout_started` | Server | Stripe checkout session created | `plan_id`, `stripe_customer_id` |
+| Event                           | Where  | Trigger                               | Key Properties                                                                        |
+| ------------------------------- | ------ | ------------------------------------- | ------------------------------------------------------------------------------------- |
+| `user_signed_in`                | Client | Supabase `SIGNED_IN` + bootstrap RPC  | `role`, `sacco`                                                                       |
+| `user_signed_up`                | Client | Supabase `SIGNED_UP`                  | `email`, `provider`                                                                   |
+| `user_signed_out`               | Client | `onMount` before Supabase `signOut()` | —                                                                                     |
+| `invite_redeemed`               | Client | After `redeem_invite` RPC succeeds    | `role`, `organization`                                                                |
+| `matatu_selected_from_feed`     | Client | Passenger clicks "Reserve a Seat"     | `matatu_id`, `route`, `sacco`, `status`, `eta_minutes`, `occupancy`, `price_per_seat` |
+| `seat_reservation_initiated`    | Client | M-Pesa payment modal opens            | `matatu_id`, `route`, `sacco`, `seat_count`, `amount`                                 |
+| `seat_reservation_completed`    | Server | `/reserve/pay` API succeeds           | `seat_count`, `amount`, `matatu_id`, `mpesa_request_id`                               |
+| `seat_reservation_failed`       | Server | `/reserve/pay` API errors             | `reason`, `amount`, `expected`, `seat_count`                                          |
+| `contact_form_submitted`        | Server | Contact form DB insert succeeds       | `contact_type`, `has_org`, `has_phone`                                                |
+| `subscription_checkout_started` | Server | Stripe checkout session created       | `plan_id`, `stripe_customer_id`                                                       |
 
 ---
 
@@ -100,9 +100,9 @@ Implemented in `src/hooks.server.ts` as `posthogProxy` handle, inserted before t
 
 ### Insights
 
-| Insight | Type | URL |
-|---------|------|-----|
-| User Acquisition — Sign Ups & Sign Ins | Trends (line) | [SkSEe8dI](https://eu.posthog.com/project/133646/insights/SkSEe8dI) |
+| Insight                                            | Type                    | URL                                                                 |
+| -------------------------------------------------- | ----------------------- | ------------------------------------------------------------------- |
+| User Acquisition — Sign Ups & Sign Ins             | Trends (line)           | [SkSEe8dI](https://eu.posthog.com/project/133646/insights/SkSEe8dI) |
 | Seat Reservation Funnel — Feed → Modal → Completed | Funnel (3-step, 30 min) | [JlnWJmIp](https://eu.posthog.com/project/133646/insights/JlnWJmIp) |
-| Seat Reservation Outcomes — Completed vs Failed | Trends (bar) | [QbuasTFn](https://eu.posthog.com/project/133646/insights/QbuasTFn) |
-| Daily Active Users — Sign Outs | Trends (line, DAU) | [xaKAu9iy](https://eu.posthog.com/project/133646/insights/xaKAu9iy) |
+| Seat Reservation Outcomes — Completed vs Failed    | Trends (bar)            | [QbuasTFn](https://eu.posthog.com/project/133646/insights/QbuasTFn) |
+| Daily Active Users — Sign Outs                     | Trends (line, DAU)      | [xaKAu9iy](https://eu.posthog.com/project/133646/insights/xaKAu9iy) |

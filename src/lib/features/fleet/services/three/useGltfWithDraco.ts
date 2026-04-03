@@ -26,7 +26,7 @@ import * as THREE from "three"
 import { gltfLoader } from "$lib/features/fleet/services/three/gltfLoader"
 
 export type ThrelteGltf = GLTF & {
-  nodes:     Record<string, THREE.Object3D>
+  nodes: Record<string, THREE.Object3D>
   materials: Record<string, THREE.Material>
 }
 
@@ -36,7 +36,9 @@ export function useGltfWithDraco(path: string): Promise<ThrelteGltf> {
 
   if (!gltfLoader) {
     return Promise.reject(
-      new Error("[useGltfWithDraco] gltfLoader is undefined — check /static/draco/ exists")
+      new Error(
+        "[useGltfWithDraco] gltfLoader is undefined — check /static/draco/ exists",
+      ),
     )
   }
 
@@ -55,7 +57,9 @@ export function useGltfWithDraco(path: string): Promise<ThrelteGltf> {
         gltf.scene.traverse((obj) => {
           const mesh = obj as THREE.Mesh
           if (!mesh.isMesh) return
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          const mats = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material]
           for (const m of mats) {
             if (m?.name) materials[m.name] = m
           }

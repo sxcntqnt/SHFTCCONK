@@ -34,9 +34,12 @@
 //   Minors follow a parent-assisted KYC path — parent uploads birth certificate.
 //   hooks.server.ts guards this via profile.onboarding_status.
 
-import { derived, get } from 'svelte/store'
-import type { Tables } from '../../../DatabaseDefinitions'
-import type { UserState, MpesaGoProfile } from '$lib/features/auth/services/userState.server'
+import { derived, get } from "svelte/store"
+import type { Tables } from "../../../DatabaseDefinitions"
+import type {
+  UserState,
+  MpesaGoProfile,
+} from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,
   extractPermissions,
@@ -44,24 +47,24 @@ import {
   extractOrgMemberships,
   isAllowed,
   ACTOR_TYPES,
-} from '$lib/features/auth/contexts/context.template'
+} from "$lib/features/auth/contexts/context.template"
 import type {
   EffectivePermission,
   OrgMembership,
-} from '$lib/features/auth/contexts/context.template'
-import { ACTIONS } from '$lib/features/auth/stores/permisions'
+} from "$lib/features/auth/contexts/context.template"
+import { ACTIONS } from "$lib/features/auth/stores/permisions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActorRow    = Tables<'actors'>
-type ProfileRow  = Tables<'profiles'>
+type ActorRow = Tables<"actors">
+type ProfileRow = Tables<"profiles">
 
 // ── Context shape ─────────────────────────────────────────────────────────────
 
 export interface PassengerContext {
-  actor:   ActorRow
+  actor: ActorRow
   profile: ProfileRow
 
   /**
@@ -109,7 +112,8 @@ export interface PassengerContext {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { store, setContext, clearContext } = createContextStore<PassengerContext>()
+const { store, setContext, clearContext } =
+  createContextStore<PassengerContext>()
 export const passengerCtx = store
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,13 +122,12 @@ export const passengerCtx = store
 
 function computeIsMinor(dateOfBirth: string | null | undefined): boolean {
   if (!dateOfBirth) return false
-  const dob  = new Date(dateOfBirth)
+  const dob = new Date(dateOfBirth)
   const today = new Date()
-  const age   = today.getFullYear() - dob.getFullYear()
-  const hadBirthday = (
+  const age = today.getFullYear() - dob.getFullYear()
+  const hadBirthday =
     today.getMonth() > dob.getMonth() ||
     (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate())
-  )
   return (hadBirthday ? age : age - 1) < 18
 }
 
@@ -154,10 +157,10 @@ export function activatePassengerContext(userState: UserState): boolean {
   // Prefer PASSENGER over GUEST
   const actorCtx =
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.PASSENGER && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.PASSENGER && ctx.status === "active",
     ) ??
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.GUEST && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.GUEST && ctx.status === "active",
     ) ??
     null
 
@@ -166,36 +169,40 @@ export function activatePassengerContext(userState: UserState): boolean {
     return false
   }
 
-  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  const actor = userState.actors.find((a) => a.id === actorCtx.actorId)
   if (!actor) {
     clearContext()
     return false
   }
 
-  const profile        = userState.profile
-  const jurisdictions  = extractJurisdictions(userState, actorCtx.actorId)
+  const profile = userState.profile
+  const jurisdictions = extractJurisdictions(userState, actorCtx.actorId)
   const orgMemberships = extractOrgMemberships(userState, actorCtx.actorId)
-  const permissions    = extractPermissions(userState, actorCtx.actorId)
+  const permissions = extractPermissions(userState, actorCtx.actorId)
 
   // ── Verified state ──────────────────────────────────────────────────────────
   // PASSENGER type + at least one org membership = verified
-  const isVerified = actor.type === ACTOR_TYPES.PASSENGER && orgMemberships.length > 0
+  const isVerified =
+    actor.type === ACTOR_TYPES.PASSENGER && orgMemberships.length > 0
 
   // ── Verified orgs ───────────────────────────────────────────────────────────
   // Cross-reference org memberships with org-level jurisdictions for this actor
   const actorOrgIds = new Set(
     jurisdictions
-      .filter(j => j.level === 'org' && j.scope_id != null)
-      .map(j => j.scope_id as string)
+      .filter((j) => j.level === "org" && j.scope_id != null)
+      .map((j) => j.scope_id as string),
   )
-  const verifiedOrgs = orgMemberships.filter(m => actorOrgIds.has(m.organization_id))
-  const primaryOrg   = verifiedOrgs.length === 1 ? verifiedOrgs[0] : null
+  const verifiedOrgs = orgMemberships.filter((m) =>
+    actorOrgIds.has(m.organization_id),
+  )
+  const primaryOrg = verifiedOrgs.length === 1 ? verifiedOrgs[0] : null
 
   // ── Minor detection ─────────────────────────────────────────────────────────
   // Cast needed until DatabaseDefinitions regenerates with date_of_birth
-  const dateOfBirth      = (profile as any).date_of_birth as string | null
-  const isMinor          = computeIsMinor(dateOfBirth)
-  const guardianProfileId = (profile as any).guardian_profile_id as string | null ?? null
+  const dateOfBirth = (profile as any).date_of_birth as string | null
+  const isMinor = computeIsMinor(dateOfBirth)
+  const guardianProfileId =
+    ((profile as any).guardian_profile_id as string | null) ?? null
 
   setContext({
     actor,
@@ -203,7 +210,7 @@ export function activatePassengerContext(userState: UserState): boolean {
     isVerified,
     isMinor,
     guardianProfileId,
-    mpesaGo:      userState.mpesaGo ?? null,
+    mpesaGo: userState.mpesaGo ?? null,
     verifiedOrgs,
     primaryOrg,
     permissions,
@@ -228,7 +235,7 @@ const _allows = (ctx: PassengerContext | null, action: string): boolean =>
  * Blocks all transactions if overdue — mirrors Safaricom's 30-day rule.
  */
 const _mpesaGoCompliant = (ctx: PassengerContext | null): boolean => {
-  if (!ctx?.isMinor || !ctx.mpesaGo) return true  // adults always compliant
+  if (!ctx?.isMinor || !ctx.mpesaGo) return true // adults always compliant
   return ctx.mpesaGo.documentsSubmitted && !ctx.mpesaGo.documentsOverdue
 }
 
@@ -245,11 +252,11 @@ const _mpesaGoCompliant = (ctx: PassengerContext | null): boolean => {
  * <MpesaGoCompliancePrompt> if false + minor + not compliant.
  */
 export const canBookSeats = derived(passengerCtx, ($c) => {
-  if (!$c?.isVerified)          return false
+  if (!$c?.isVerified) return false
   if (!_allows($c, ACTIONS.BOOKING_ADD)) return false
   if ($c.isMinor) {
-    if (!_mpesaGoCompliant($c))            return false
-    if (!$c.mpesaGo?.lipaNaMpesaEnabled)   return false
+    if (!_mpesaGoCompliant($c)) return false
+    if (!$c.mpesaGo?.lipaNaMpesaEnabled) return false
   }
   return true
 })
@@ -261,16 +268,22 @@ export const canBookSeats = derived(passengerCtx, ($c) => {
 export const isVerified = derived(passengerCtx, ($c) => $c?.isVerified ?? false)
 
 /** View booking history (booking.list) */
-export const canViewBookings = derived(passengerCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
+export const canViewBookings = derived(passengerCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_LIST),
+)
 
 /**
  * Live tracking.
  * Available to GUEST actors — public tracking requires no SACCO verification.
  */
-export const canTrackLive = derived(passengerCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
+export const canTrackLive = derived(passengerCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_LIVE),
+)
 
 /** Edit own profile/customer record (customer.edit) */
-export const canEditProfile = derived(passengerCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_EDIT))
+export const canEditProfile = derived(passengerCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_EDIT),
+)
 
 /**
  * Submit a SACCO join request.
@@ -284,12 +297,9 @@ export const canApplyToSacco = derived(passengerCtx, ($c) => $c !== null)
  * Minors: parent must have enabled send_money AND documents must be compliant.
  */
 export const canSendMoney = derived(passengerCtx, ($c) => {
-  if (!$c?.isVerified)       return false
-  if (!$c.isMinor)           return true   // adults unrestricted
-  return (
-    ($c.mpesaGo?.sendMoneyEnabled  ?? false) &&
-    _mpesaGoCompliant($c)
-  )
+  if (!$c?.isVerified) return false
+  if (!$c.isMinor) return true // adults unrestricted
+  return ($c.mpesaGo?.sendMoneyEnabled ?? false) && _mpesaGoCompliant($c)
 })
 
 /**
@@ -298,19 +308,18 @@ export const canSendMoney = derived(passengerCtx, ($c) => {
  * Minors: parent toggle + compliance gate.
  */
 export const canPayGoods = derived(passengerCtx, ($c) => {
-  if (!$c?.isVerified)       return false
-  if (!$c.isMinor)           return _allows($c, ACTIONS.BOOKING_ADD)
-  return (
-    ($c.mpesaGo?.lipaNaMpesaEnabled ?? false) &&
-    _mpesaGoCompliant($c)
-  )
+  if (!$c?.isVerified) return false
+  if (!$c.isMinor) return _allows($c, ACTIONS.BOOKING_ADD)
+  return ($c.mpesaGo?.lipaNaMpesaEnabled ?? false) && _mpesaGoCompliant($c)
 })
 
 /**
  * True if minor's M-PESA GO documents are compliant.
  * Show <DocumentSubmissionBanner> in /app layout when false + isMinor.
  */
-export const isMpesaGoCompliant = derived(passengerCtx, ($c) => _mpesaGoCompliant($c))
+export const isMpesaGoCompliant = derived(passengerCtx, ($c) =>
+  _mpesaGoCompliant($c),
+)
 
 /**
  * True if documents are overdue — account is frozen for transactions.
@@ -346,13 +355,19 @@ export const guardianProfileId = derived(
 )
 
 /** SACCOs this passenger is verified with */
-export const verifiedOrgs = derived(passengerCtx, ($c) => $c?.verifiedOrgs ?? [])
+export const verifiedOrgs = derived(
+  passengerCtx,
+  ($c) => $c?.verifiedOrgs ?? [],
+)
 
 /** Primary SACCO (exactly one) — skips org picker */
 export const primaryOrg = derived(passengerCtx, ($c) => $c?.primaryOrg ?? null)
 
 /** 'PASSENGER' | 'GUEST' | null — for onboarding UX branching */
-export const passengerActorType = derived(passengerCtx, ($c) => $c?.actor.type ?? null)
+export const passengerActorType = derived(
+  passengerCtx,
+  ($c) => $c?.actor.type ?? null,
+)
 
 /** True if actor is GUEST — show SACCO discovery + join UI */
 export const isGuest = derived(
@@ -364,11 +379,12 @@ export const isGuest = derived(
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getPassengerActorId = () => get(passengerCtx)?.actor.id                    ?? null
-export const getPrimaryOrgId     = () => get(passengerCtx)?.primaryOrg?.organization_id ?? null
-export const isPassengerVerified = () => get(passengerCtx)?.isVerified                  ?? false
-export const getGuardianId       = () => get(passengerCtx)?.guardianProfileId            ?? null
-export const getMpesaGo          = () => get(passengerCtx)?.mpesaGo                     ?? null
+export const getPassengerActorId = () => get(passengerCtx)?.actor.id ?? null
+export const getPrimaryOrgId = () =>
+  get(passengerCtx)?.primaryOrg?.organization_id ?? null
+export const isPassengerVerified = () => get(passengerCtx)?.isVerified ?? false
+export const getGuardianId = () => get(passengerCtx)?.guardianProfileId ?? null
+export const getMpesaGo = () => get(passengerCtx)?.mpesaGo ?? null
 
 /**
  * Imperative permission check.

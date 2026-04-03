@@ -54,7 +54,11 @@ export const load: LayoutLoad = async ({ parent, url }) => {
  * Adjust required fields to match your onboarding requirements.
  */
 function hasFullProfile(
-  profile: { full_name: string | null; company_name: string | null; website: string | null } | null,
+  profile: {
+    full_name: string | null
+    company_name: string | null
+    website: string | null
+  } | null,
 ): boolean {
   if (!profile) return false
   if (!profile.full_name) return false

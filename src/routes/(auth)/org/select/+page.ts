@@ -24,16 +24,16 @@
  *   ?reason=insufficient_permissions → "Switch orgs to continue"
  */
 
-import type { PageLoad }  from '$lib/types'
-import { redirect }       from '@sveltejs/kit'
-import { get }            from 'svelte/store'
-import { sessionStore }   from '$lib/features/auth/stores/auth'
+import type { PageLoad } from "$lib/types"
+import { redirect } from "@sveltejs/kit"
+import { get } from "svelte/store"
+import { sessionStore } from "$lib/features/auth/stores/auth"
 
 export const load: PageLoad = async ({ parent, url }) => {
   const { session } = await parent()
 
   if (!session) {
-    throw redirect(303, '/login/sign_in')
+    throw redirect(303, "/login/sign_in")
   }
 
   const s = get(sessionStore)
@@ -44,7 +44,7 @@ export const load: PageLoad = async ({ parent, url }) => {
 
   // No orgs — user needs to request access or join a SACCO first
   if (memberships.length === 0) {
-    throw redirect(303, '/app/dashboard?reason=no_orgs')
+    throw redirect(303, "/app/dashboard?reason=no_orgs")
   }
 
   // Single org — skip the picker entirely
@@ -69,14 +69,14 @@ export const load: PageLoad = async ({ parent, url }) => {
 
     return {
       organizationId: m.organization_id,
-      orgName:        m.org_name ?? 'Unknown SACCO',
-      role:           topRole,
-      memberRole:     m.role ?? null,
+      orgName: m.org_name ?? "Unknown SACCO",
+      role: topRole,
+      memberRole: m.role ?? null,
     }
   })
 
   return {
     orgs,
-    reason: url.searchParams.get('reason') ?? null,
+    reason: url.searchParams.get("reason") ?? null,
   }
 }

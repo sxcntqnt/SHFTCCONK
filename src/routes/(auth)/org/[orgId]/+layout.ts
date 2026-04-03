@@ -18,28 +18,28 @@
 //   to scope permissions to this specific org. Comes from data.orgId
 //   which was set by +layout.server.ts from params.
 
-import type { LayoutLoad }              from './$types'
-import { redirect }                     from '@sveltejs/kit'
-import { activateOrgChairContext }      from '$lib/features/auth/contexts/org-chair.context'
-import { activateOrgContext }           from '$lib/features/auth/contexts/org.context'
+import type { LayoutLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { activateOrgChairContext } from "$lib/features/auth/contexts/org-chair.context"
+import { activateOrgContext } from "$lib/features/auth/contexts/org.context"
 
 export const load: LayoutLoad = async ({ data }) => {
-  if (!data.userState) throw redirect(303, '/login')
+  if (!data.userState) throw redirect(303, "/login")
 
-  if (data.contextType === 'chair') {
+  if (data.contextType === "chair") {
     // ORG_CHAIR or ADMIN/SUPER_ADMIN acting as chair
     if (!activateOrgChairContext(data.userState, data.orgId)) {
       // Fallback — ADMIN actors use federal jurisdiction,
       // activateOrgChairContext may still return false for ADMIN type.
       // Try staff context before giving up.
       if (!activateOrgContext(data.userState, data.orgId)) {
-        throw redirect(303, '/org/select?reason=no_access')
+        throw redirect(303, "/org/select?reason=no_access")
       }
     }
   } else {
     // Staff — any non-chair org role
     if (!activateOrgContext(data.userState, data.orgId)) {
-      throw redirect(303, '/org/select?reason=no_access')
+      throw redirect(303, "/org/select?reason=no_access")
     }
   }
 

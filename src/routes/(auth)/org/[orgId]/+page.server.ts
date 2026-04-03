@@ -8,7 +8,7 @@
 // and org data load before this redirect fires.
 
 import type { PageServerLoad } from "$lib/types"
-import { redirect }            from "@sveltejs/kit"
+import { redirect } from "@sveltejs/kit"
 
 export const load: PageServerLoad = async ({ params }) => {
   throw redirect(303, `/org/${params.orgId}/dashboard`)

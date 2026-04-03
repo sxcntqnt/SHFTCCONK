@@ -19,17 +19,20 @@
 //   activateCrewContext(). The server fetch confirms active_trip_id
 //   which may have changed since userState was resolved — we patch that too.
 
-import type { LayoutLoad }          from './$types'
-import { redirect }                 from '@sveltejs/kit'
-import { get }                      from 'svelte/store'
-import { activateCrewContext, crewCtx } from '$lib/features/auth/contexts/crew.context'
+import type { LayoutLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { get } from "svelte/store"
+import {
+  activateCrewContext,
+  crewCtx,
+} from "$lib/features/auth/contexts/crew.context"
 
 export const load: LayoutLoad = async ({ data }) => {
-  if (!data.userState) throw redirect(303, '/login')
+  if (!data.userState) throw redirect(303, "/login")
 
   // Activate the crew context store from server-resolved userState
   if (!activateCrewContext(data.userState)) {
-    throw redirect(303, '/app/dashboard?denied=crew_not_active')
+    throw redirect(303, "/app/dashboard?denied=crew_not_active")
   }
 
   // ── Patch crewCtx with richer server data ──────────────────────────────────
@@ -37,14 +40,14 @@ export const load: LayoutLoad = async ({ data }) => {
   // +layout.server.ts joined vehicles to get reg_number + org name.
   // Push those into the store now so all child components get full data.
   if (data.crewSummary.plate || data.crewSummary.orgName) {
-    crewCtx.update(ctx => {
+    crewCtx.update((ctx) => {
       if (!ctx) return ctx
       return {
         ...ctx,
-        activeVehicleId:    data.crewSummary.vehicleId   ?? ctx.activeVehicleId,
-        activeVehiclePlate: data.crewSummary.plate        ?? ctx.activeVehiclePlate,
-        activeTripId:       data.crewSummary.tripId       ?? ctx.activeTripId,
-        orgName:            data.crewSummary.orgName      ?? ctx.orgName,
+        activeVehicleId: data.crewSummary.vehicleId ?? ctx.activeVehicleId,
+        activeVehiclePlate: data.crewSummary.plate ?? ctx.activeVehiclePlate,
+        activeTripId: data.crewSummary.tripId ?? ctx.activeTripId,
+        orgName: data.crewSummary.orgName ?? ctx.orgName,
       }
     })
   }

@@ -31,7 +31,7 @@ const SETTLEMENT_AUTHORISED_ROLES = new Set([
 
 // KES settlement limits
 const MIN_SETTLEMENT_KES = 100
-const MAX_SETTLEMENT_KES = 10_000_000  // 10M KES — adjust per Daraja tier
+const MAX_SETTLEMENT_KES = 10_000_000 // 10M KES — adjust per Daraja tier
 
 // Safaricom paybill/till: 5 or 6 digits
 const SHORTCODE_RE = /^\d{5,6}$/
@@ -39,7 +39,7 @@ const SHORTCODE_RE = /^\d{5,6}$/
 export const POST: RequestHandler = async ({ request, locals }) => {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const { session } = await locals.safeGetSession()
-  const supabase    = locals.supabase
+  const supabase = locals.supabase
 
   if (!session?.user?.id) {
     return json({ error: "Unauthorised" }, { status: 401 })
@@ -53,13 +53,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const {
-    shortcode,
-    amount,
-    orgId,
-    reference,
-    actorId,
-  } = body as Record<string, unknown>
+  const { shortcode, amount, orgId, reference, actorId } = body as Record<
+    string,
+    unknown
+  >
 
   // Required fields
   if (!shortcode || !amount || !orgId || !actorId) {
@@ -72,7 +69,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // Shortcode validation
   if (typeof shortcode !== "string" || !SHORTCODE_RE.test(shortcode)) {
     return json(
-      { error: "shortcode must be a 5 or 6 digit Safaricom paybill or till number" },
+      {
+        error:
+          "shortcode must be a 5 or 6 digit Safaricom paybill or till number",
+      },
       { status: 400 },
     )
   }
@@ -85,7 +85,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     amountKes > MAX_SETTLEMENT_KES
   ) {
     return json(
-      { error: `amount must be a whole KES number between ${MIN_SETTLEMENT_KES} and ${MAX_SETTLEMENT_KES.toLocaleString()}` },
+      {
+        error: `amount must be a whole KES number between ${MIN_SETTLEMENT_KES} and ${MAX_SETTLEMENT_KES.toLocaleString()}`,
+      },
       { status: 400 },
     )
   }
@@ -103,7 +105,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   if (actor.profile_id !== session.user.id) {
-    return json({ error: "Actor does not belong to this session" }, { status: 403 })
+    return json(
+      { error: "Actor does not belong to this session" },
+      { status: 403 },
+    )
   }
 
   if (!SETTLEMENT_AUTHORISED_ROLES.has(actor.type as never)) {
@@ -179,46 +184,57 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     const { error: insertError } = await supabase
       .from("mpesa_settlements")
       .insert({
-        conversation_id:  conversationId,
-        originator_id:    response.OriginatorConversationID ?? null,
+        conversation_id: conversationId,
+        originator_id: response.OriginatorConversationID ?? null,
         shortcode,
-        amount:           amountKes,
-        reference:        reference ?? null,
-        organization_id:  orgId,
-        initiated_by:     actorId,
-        remarks:          reference ? `Settlement — ${reference}` : "Revenue share settlement",
-        status:           "processing",
+        amount: amountKes,
+        reference: reference ?? null,
+        organization_id: orgId,
+        initiated_by: actorId,
+        remarks: reference
+          ? `Settlement — ${reference}`
+          : "Revenue share settlement",
+        status: "processing",
       })
 
     if (insertError) {
-      console.error("[b2b-settlement] DB insert failed after Daraja call:", insertError)
-      return json({
-        conversationId,
-        warning: "Settlement initiated but recording failed — contact support with this ID",
-      }, { status: 202 })
+      console.error(
+        "[b2b-settlement] DB insert failed after Daraja call:",
+        insertError,
+      )
+      return json(
+        {
+          conversationId,
+          warning:
+            "Settlement initiated but recording failed — contact support with this ID",
+        },
+        { status: 202 },
+      )
     }
 
     // ── Audit log ─────────────────────────────────────────────────────────
     await supabase.from("audit_logs").insert({
-      event_type:   "mpesa_b2b_initiated",
-      actor_id:     actorId,
-      profile_id:   session.user.id,
+      event_type: "mpesa_b2b_initiated",
+      actor_id: actorId,
+      profile_id: session.user.id,
       performed_by: session.user.id,
       target_table: "mpesa_settlements",
       details: {
         conversation_id: conversationId,
-        amount_kes:      amountKes,
+        amount_kes: amountKes,
         shortcode,
-        reference:       reference ?? null,
-        org_id:          orgId,
+        reference: reference ?? null,
+        org_id: orgId,
       },
     })
 
     return json({ conversationId }, { status: 202 })
-
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     console.error("[b2b-settlement]", message)
-    return json({ error: "Settlement initiation failed", detail: message }, { status: 500 })
+    return json(
+      { error: "Settlement initiation failed", detail: message },
+      { status: 500 },
+    )
   }
 }

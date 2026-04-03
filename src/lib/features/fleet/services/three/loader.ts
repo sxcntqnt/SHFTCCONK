@@ -28,7 +28,7 @@ export function createVehicleLoader(path: string) {
           resolve({ default: Component })
         },
         undefined,
-        (err) => reject(err)
+        (err) => reject(err),
       )
     })
   }

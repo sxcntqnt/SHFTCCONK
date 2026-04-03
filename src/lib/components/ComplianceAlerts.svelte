@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { complianceStore, type ComplianceEvent } from '../stores/compliance';
-  import { derived } from 'svelte/store';
+  import { complianceStore, type ComplianceEvent } from "../stores/compliance"
+  import { derived } from "svelte/store"
 
   // Reactive subscription, latest events first
-  const events = derived(complianceStore, $c => $c);
+  const events = derived(complianceStore, ($c) => $c)
 
   // Optional: dismiss a single alert
   function dismissAlert(id: string) {
-    complianceStore.update(evs => evs.filter(e => e.id !== id));
+    complianceStore.update((evs) => evs.filter((e) => e.id !== id))
   }
 </script>
 
@@ -33,7 +33,9 @@
       <p class="text-sm text-gray-700 mt-2">{e.message}</p>
 
       <!-- Optional timestamp -->
-      <span class="text-xs text-gray-400 mt-1 block">{new Date(e.timestamp).toLocaleTimeString()}</span>
+      <span class="text-xs text-gray-400 mt-1 block"
+        >{new Date(e.timestamp).toLocaleTimeString()}</span
+      >
     </div>
   {/each}
 </div>

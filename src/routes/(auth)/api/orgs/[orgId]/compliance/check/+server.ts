@@ -17,7 +17,7 @@
 //   the orgId in the body is stamped onto every item for tenant isolation.
 //   The caller must provide an orgId they are authorised for.
 
-import { json }               from "@sveltejs/kit"
+import { json } from "@sveltejs/kit"
 import type { RequestHandler } from "$lib/types"
 import {
   evaluateCompliance,
@@ -79,8 +79,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // RLS on the vehicles table enforces they can only evaluate vehicles
   // that belong to orgs they are a member of.
   const bodyOrgId = Array.isArray(body)
-    ? items[0]?.organizationId        // batch: infer from first item
-    : (body as Record<string, unknown>)?.organizationId as string | undefined
+    ? items[0]?.organizationId // batch: infer from first item
+    : ((body as Record<string, unknown>)?.organizationId as string | undefined)
 
   if (!bodyOrgId) {
     return json(
@@ -121,10 +121,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   try {
     if (tenantItems.length === 1) {
-      results = [{
-        vehicleId:  tenantItems[0].vehicleId,
-        compliance: evaluateCompliance(tenantItems[0]),
-      }]
+      results = [
+        {
+          vehicleId: tenantItems[0].vehicleId,
+          compliance: evaluateCompliance(tenantItems[0]),
+        },
+      ]
     } else {
       results = evaluateComplianceBatch(tenantItems)
     }
@@ -135,9 +137,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // ── Respond ───────────────────────────────────────────────────────────────
   return json({
-    status:  "SUCCESS",
-    orgId:   bodyOrgId,
-    count:   results.length,
+    status: "SUCCESS",
+    orgId: bodyOrgId,
+    count: results.length,
     results,
   })
 }

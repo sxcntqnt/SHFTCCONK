@@ -36,31 +36,31 @@
  *   mpesa_phone      text    (phone used for payments, e.g. +254712345678)
  */
 
-import { writable, derived, get } from 'svelte/store'
+import { writable, derived, get } from "svelte/store"
 
 // ── Plan types ────────────────────────────────────────────────────────────────
 
-export type PlanId = 'free' | 'pro' | 'fleet'
+export type PlanId = "free" | "pro" | "fleet"
 
 export type MpesaPaymentStatus =
-  | 'idle'       // no payment in progress
-  | 'pending'    // STK Push sent — waiting for user to approve on phone
-  | 'completed'  // Daraja callback received — payment confirmed
-  | 'failed'     // STK timeout, declined, or wrong PIN
-  | 'expired'    // plan period ended — user needs to renew
+  | "idle" // no payment in progress
+  | "pending" // STK Push sent — waiting for user to approve on phone
+  | "completed" // Daraja callback received — payment confirmed
+  | "failed" // STK timeout, declined, or wrong PIN
+  | "expired" // plan period ended — user needs to renew
 
 // Plan prices in KES
 export const PLAN_PRICES_KES: Record<PlanId, number | null> = {
-  free:  0,
-  pro:   1_499,
+  free: 0,
+  pro: 1_499,
   fleet: null, // custom — contact sales
 }
 
 // Plan display names
 export const PLAN_LABELS: Record<PlanId, string> = {
-  free:  'Starter',
-  pro:   'Pro',
-  fleet: 'Fleet',
+  free: "Starter",
+  pro: "Pro",
+  fleet: "Fleet",
 }
 
 // ── Store shape ───────────────────────────────────────────────────────────────
@@ -119,24 +119,24 @@ export interface PaymentState {
 // All fields come from the profiles table.
 
 export interface PaymentBootstrap {
-  plan?:             string | null
-  plan_expires_at?:  string | null
-  mpesa_ref?:        string | null
-  mpesa_phone?:      string | null
+  plan?: string | null
+  plan_expires_at?: string | null
+  mpesa_ref?: string | null
+  mpesa_phone?: string | null
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 const DEFAULT_STATE: PaymentState = {
-  plan:               'free',
-  planExpiresAt:      null,
-  daysRemaining:      null,
-  mpesaRef:           null,
-  mpesaPhone:         null,
-  mpesaStatus:        'idle',
-  checkoutRequestId:  null,
-  isExpiringSoon:     false,
-  isExpired:          false,
+  plan: "free",
+  planExpiresAt: null,
+  daysRemaining: null,
+  mpesaRef: null,
+  mpesaPhone: null,
+  mpesaStatus: "idle",
+  checkoutRequestId: null,
+  isExpiringSoon: false,
+  isExpired: false,
 }
 
 export const paymentStore = writable<PaymentState>(DEFAULT_STATE)
@@ -160,22 +160,27 @@ export function activatePaymentsStore(
     return
   }
 
-  const rawPlan = bootstrap.plan ?? 'free'
-  const plan    = isValidPlan(rawPlan) ? rawPlan : 'free'
+  const rawPlan = bootstrap.plan ?? "free"
+  const plan = isValidPlan(rawPlan) ? rawPlan : "free"
 
-  const planExpiresAt  = bootstrap.plan_expires_at ?? null
-  const daysRemaining  = computeDaysRemaining(planExpiresAt)
-  const isExpired      = plan !== 'free' && daysRemaining !== null && daysRemaining <= 0
-  const isExpiringSoon = plan !== 'free' && daysRemaining !== null && daysRemaining <= 7 && !isExpired
+  const planExpiresAt = bootstrap.plan_expires_at ?? null
+  const daysRemaining = computeDaysRemaining(planExpiresAt)
+  const isExpired =
+    plan !== "free" && daysRemaining !== null && daysRemaining <= 0
+  const isExpiringSoon =
+    plan !== "free" &&
+    daysRemaining !== null &&
+    daysRemaining <= 7 &&
+    !isExpired
 
   paymentStore.set({
-    plan:               isExpired ? 'free' : plan, // treat expired as free
+    plan: isExpired ? "free" : plan, // treat expired as free
     planExpiresAt,
     daysRemaining,
-    mpesaRef:           bootstrap.mpesa_ref   ?? null,
-    mpesaPhone:         bootstrap.mpesa_phone ?? null,
-    mpesaStatus:        isExpired ? 'expired' : 'idle',
-    checkoutRequestId:  null,
+    mpesaRef: bootstrap.mpesa_ref ?? null,
+    mpesaPhone: bootstrap.mpesa_phone ?? null,
+    mpesaStatus: isExpired ? "expired" : "idle",
+    checkoutRequestId: null,
     isExpiringSoon,
     isExpired,
   })
@@ -201,7 +206,7 @@ export function setStkPushPending(
 ): void {
   paymentStore.update((s) => ({
     ...s,
-    mpesaStatus:       'pending',
+    mpesaStatus: "pending",
     checkoutRequestId,
     mpesaPhone,
   }))
@@ -229,10 +234,10 @@ export function confirmStkPayment(
     planExpiresAt,
     daysRemaining,
     mpesaRef,
-    mpesaStatus:       'completed',
+    mpesaStatus: "completed",
     checkoutRequestId: null,
-    isExpired:         false,
-    isExpiringSoon:    false,
+    isExpired: false,
+    isExpiringSoon: false,
   }))
 }
 
@@ -243,7 +248,7 @@ export function confirmStkPayment(
 export function setStkPushFailed(): void {
   paymentStore.update((s) => ({
     ...s,
-    mpesaStatus:       'failed',
+    mpesaStatus: "failed",
     checkoutRequestId: null,
   }))
 }
@@ -252,13 +257,17 @@ export function setStkPushFailed(): void {
  * Reset STK status to idle — use when user dismisses the failure/pending UI.
  */
 export function resetStkStatus(): void {
-  paymentStore.update((s) => ({ ...s, mpesaStatus: 'idle', checkoutRequestId: null }))
+  paymentStore.update((s) => ({
+    ...s,
+    mpesaStatus: "idle",
+    checkoutRequestId: null,
+  }))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isValidPlan(plan: string): plan is PlanId {
-  return ['free', 'pro', 'fleet'].includes(plan)
+  return ["free", "pro", "fleet"].includes(plan)
 }
 
 function computeDaysRemaining(expiresAt: string | null): number | null {
@@ -273,22 +282,28 @@ function computeDaysRemaining(expiresAt: string | null): number | null {
 export const userPlan = derived(paymentStore, ($s) => $s.plan)
 
 /** True if on a paid plan */
-export const isPaidUser = derived(paymentStore, ($s) => $s.plan !== 'free')
+export const isPaidUser = derived(paymentStore, ($s) => $s.plan !== "free")
 
 /** True if on free tier */
-export const isFreeUser = derived(paymentStore, ($s) => $s.plan === 'free')
+export const isFreeUser = derived(paymentStore, ($s) => $s.plan === "free")
 
 /** True if on Pro */
-export const isProUser = derived(paymentStore, ($s) => $s.plan === 'pro')
+export const isProUser = derived(paymentStore, ($s) => $s.plan === "pro")
 
 /** True if on Fleet */
-export const isFleetUser = derived(paymentStore, ($s) => $s.plan === 'fleet')
+export const isFleetUser = derived(paymentStore, ($s) => $s.plan === "fleet")
 
 /** True if STK Push is awaiting user approval on phone */
-export const isStkPending = derived(paymentStore, ($s) => $s.mpesaStatus === 'pending')
+export const isStkPending = derived(
+  paymentStore,
+  ($s) => $s.mpesaStatus === "pending",
+)
 
 /** True if last STK Push failed */
-export const isStkFailed = derived(paymentStore, ($s) => $s.mpesaStatus === 'failed')
+export const isStkFailed = derived(
+  paymentStore,
+  ($s) => $s.mpesaStatus === "failed",
+)
 
 /** True if plan expires within 7 days — show renewal reminder */
 export const isExpiringSoon = derived(paymentStore, ($s) => $s.isExpiringSoon)
@@ -316,19 +331,19 @@ export const planBadge = derived(
   paymentStore,
   ($s): { color: string; bg: string; border: string; label: string } | null => {
     switch ($s.plan) {
-      case 'pro':
+      case "pro":
         return {
-          color:  'var(--teal)',
-          bg:     'rgba(0,176,155,0.12)',
-          border: 'rgba(0,176,155,0.25)',
-          label:  'Pro',
+          color: "var(--teal)",
+          bg: "rgba(0,176,155,0.12)",
+          border: "rgba(0,176,155,0.25)",
+          label: "Pro",
         }
-      case 'fleet':
+      case "fleet":
         return {
-          color:  'var(--orange)',
-          bg:     'rgba(242,101,34,0.12)',
-          border: 'rgba(242,101,34,0.25)',
-          label:  'Fleet',
+          color: "var(--orange)",
+          bg: "rgba(242,101,34,0.12)",
+          border: "rgba(242,101,34,0.25)",
+          label: "Fleet",
         }
       default:
         return null
@@ -340,7 +355,10 @@ export const planBadge = derived(
 export const planLabel = derived(paymentStore, ($s) => PLAN_LABELS[$s.plan])
 
 /** Price in KES — null for fleet (custom) */
-export const planPriceKes = derived(paymentStore, ($s) => PLAN_PRICES_KES[$s.plan])
+export const planPriceKes = derived(
+  paymentStore,
+  ($s) => PLAN_PRICES_KES[$s.plan],
+)
 
 /**
  * CTA label for the upgrade/renew button.
@@ -352,12 +370,12 @@ export const planPriceKes = derived(paymentStore, ($s) => PLAN_PRICES_KES[$s.pla
  *   fleet        → 'Manage Plan'
  */
 export const paymentCta = derived(paymentStore, ($s) => {
-  if ($s.isExpired)                         return 'Renew Plan'
+  if ($s.isExpired) return "Renew Plan"
   if ($s.isExpiringSoon && $s.daysRemaining !== null)
-                                            return `Renew — ${$s.daysRemaining}d left`
-  if ($s.plan === 'free')                   return 'Upgrade to Pro'
-  if ($s.plan === 'pro')                    return 'Upgrade to Fleet'
-  return 'Manage Plan'
+    return `Renew — ${$s.daysRemaining}d left`
+  if ($s.plan === "free") return "Upgrade to Pro"
+  if ($s.plan === "pro") return "Upgrade to Fleet"
+  return "Manage Plan"
 })
 
 /**
@@ -365,18 +383,23 @@ export const paymentCta = derived(paymentStore, ($s) => {
  */
 export const stkStatusMessage = derived(paymentStore, ($s) => {
   switch ($s.mpesaStatus) {
-    case 'pending':   return 'Check your phone and enter your M-Pesa PIN to complete payment.'
-    case 'completed': return 'Payment confirmed! Your plan has been activated.'
-    case 'failed':    return 'Payment failed or timed out. Please try again.'
-    case 'expired':   return 'Your plan has expired. Renew to continue.'
-    default:          return null
+    case "pending":
+      return "Check your phone and enter your M-Pesa PIN to complete payment."
+    case "completed":
+      return "Payment confirmed! Your plan has been activated."
+    case "failed":
+      return "Payment failed or timed out. Please try again."
+    case "expired":
+      return "Your plan has expired. Renew to continue."
+    default:
+      return null
   }
 })
 
 // ── Imperative helpers ────────────────────────────────────────────────────────
 
-export const getCurrentPlan    = () => get(paymentStore).plan
-export const getMpesaPhone     = () => get(paymentStore).mpesaPhone
-export const isPlanPaid        = () => get(paymentStore).plan !== 'free'
-export const isPlanExpired     = () => get(paymentStore).isExpired
-export const getStkRequestId   = () => get(paymentStore).checkoutRequestId
+export const getCurrentPlan = () => get(paymentStore).plan
+export const getMpesaPhone = () => get(paymentStore).mpesaPhone
+export const isPlanPaid = () => get(paymentStore).plan !== "free"
+export const isPlanExpired = () => get(paymentStore).isExpired
+export const getStkRequestId = () => get(paymentStore).checkoutRequestId

@@ -16,14 +16,14 @@ const DB_NAME = "matatu-gps-db";
 const DB_VERSION = 1;
 
 const STORE_LOCATIONS = "locations"; // current vehicle positions
-const STORE_OUTBOX = "gps-outbox";   // offline sync queue
+const STORE_OUTBOX = "gps-outbox"; // offline sync queue
 
 // ======================================================
 // IndexedDB Initialization
 // ======================================================
 
 const dbPromise = openDB(DB_NAME, DB_VERSION, {
-  upgrade(db) {
+upgrade(db) {
 
     if (!db.objectStoreNames.contains(STORE_LOCATIONS)) {
       db.createObjectStore(STORE_LOCATIONS, {
@@ -37,7 +37,8 @@ const dbPromise = openDB(DB_NAME, DB_VERSION, {
         autoIncrement: true
       });
     }
-  }
+
+}
 });
 
 // ======================================================
@@ -46,9 +47,9 @@ const dbPromise = openDB(DB_NAME, DB_VERSION, {
 
 async function registerServiceWorker() {
 
-  if (!("serviceWorker" in navigator)) return;
+if (!("serviceWorker" in navigator)) return;
 
-  try {
+try {
 
     const reg = await navigator.serviceWorker.register("/sw.js");
 
@@ -66,9 +67,9 @@ async function registerServiceWorker() {
 
     });
 
-  } catch (err) {
-    console.error("Service Worker registration failed:", err);
-  }
+} catch (err) {
+console.error("Service Worker registration failed:", err);
+}
 }
 
 // ======================================================
@@ -79,13 +80,13 @@ let socket;
 
 function connectSocket() {
 
-  socket = new WebSocket(WS_ENDPOINT);
+socket = new WebSocket(WS_ENDPOINT);
 
-  socket.onopen = () => {
-    console.log("GPS WebSocket connected");
-  };
+socket.onopen = () => {
+console.log("GPS WebSocket connected");
+};
 
-  socket.onmessage = async (event) => {
+socket.onmessage = async (event) => {
 
     const data = JSON.parse(event.data);
 
@@ -115,18 +116,20 @@ function connectSocket() {
     // --------------------------------
 
     await sendGPSUpdate(data);
-  };
 
-  socket.onerror = (err) => {
-    console.error("WebSocket error:", err);
-  };
+};
 
-  socket.onclose = () => {
+socket.onerror = (err) => {
+console.error("WebSocket error:", err);
+};
+
+socket.onclose = () => {
 
     console.warn("WebSocket disconnected. Reconnecting...");
 
     setTimeout(connectSocket, 3000);
-  };
+
+};
 }
 
 // ======================================================
@@ -135,7 +138,7 @@ function connectSocket() {
 
 async function sendGPSUpdate(data) {
 
-  try {
+try {
 
     const response = await fetch(API_ENDPOINT, {
       method: "POST",
@@ -145,7 +148,7 @@ async function sendGPSUpdate(data) {
 
     if (!response.ok) throw new Error("Server error");
 
-  } catch (err) {
+} catch (err) {
 
     console.warn("Offline detected. Queuing GPS update.");
 
@@ -164,7 +167,8 @@ async function sendGPSUpdate(data) {
     } catch (syncErr) {
       console.warn("Background sync unavailable:", syncErr);
     }
-  }
+
+}
 }
 
 // ======================================================
@@ -173,7 +177,7 @@ async function sendGPSUpdate(data) {
 
 async function restoreVehiclesFromCache() {
 
-  try {
+try {
 
     const db = await dbPromise;
 
@@ -187,9 +191,9 @@ async function restoreVehiclesFromCache() {
 
     });
 
-  } catch (err) {
-    console.warn("Failed to restore cached vehicles:", err);
-  }
+} catch (err) {
+console.warn("Failed to restore cached vehicles:", err);
+}
 }
 
 // ======================================================
@@ -198,58 +202,53 @@ async function restoreVehiclesFromCache() {
 
 window.addEventListener("load", async () => {
 
-  await registerServiceWorker();
+await registerServiceWorker();
 
-  await restoreVehiclesFromCache();
+await restoreVehiclesFromCache();
 
-  connectSocket();
+connectSocket();
 
 });
 
-
-
 GPS Device
-    │
-    ▼
+│
+▼
 WebSocket Stream
-    │
-    ▼
+│
+▼
 app.js
- ├─ Update Map UI
- ├─ Cache vehicle location (IndexedDB)
- └─ Try API POST
-        │
-        ▼
-     If Offline
-        │
-        ▼
-   gps-outbox queue
-        │
-        ▼
+├─ Update Map UI
+├─ Cache vehicle location (IndexedDB)
+└─ Try API POST
+│
+▼
+If Offline
+│
+▼
+gps-outbox queue
+│
+▼
 Service Worker
-   Background Sync
-        │
-        ▼
+Background Sync
+│
+▼
 Server API
 
-
-
 function connectStream(orgId: string) {
-  const source = new EventSource(`/api/gps/stream?orgId=${orgId}`)
+const source = new EventSource(`/api/gps/stream?orgId=${orgId}`)
 
-  source.onmessage = async (event) => {
-    const data = JSON.parse(event.data)
-    updateVehicle(data)
-    await cacheLocation(data)
-    await sendGPSUpdate(data) // your outbox logic
-  }
-
-  source.onerror = () => {
-    // EventSource reconnects automatically — no setTimeout needed
-    console.warn('SSE disconnected, browser will reconnect...')
-  }
+source.onmessage = async (event) => {
+const data = JSON.parse(event.data)
+updateVehicle(data)
+await cacheLocation(data)
+await sendGPSUpdate(data) // your outbox logic
 }
 
+source.onerror = () => {
+// EventSource reconnects automatically — no setTimeout needed
+console.warn('SSE disconnected, browser will reconnect...')
+}
+}
 
 // ❌ CDN import won't work in your bundled SvelteKit app
 import { openDB } from "https://unpkg.com/idb?module"

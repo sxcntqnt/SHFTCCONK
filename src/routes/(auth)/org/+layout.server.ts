@@ -21,8 +21,8 @@
 //   The /org/select page fetches its own org list.
 //   The /org/[orgId] child layout handles org-specific access.
 
-import type { LayoutServerLoad } from './$types'
-import { redirect }              from '@sveltejs/kit'
+import type { LayoutServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const { userState, activeContext } = locals
@@ -30,7 +30,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // userState null = resolution failed or reached without session.
   // authGuardHandle protects /org — this is a safety net only.
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   return {

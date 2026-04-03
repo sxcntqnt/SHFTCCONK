@@ -16,18 +16,17 @@ import type { UserState } from "$lib/features/auth/userState.server"
 
 declare global {
   namespace App {
-
     // ──────────────────────────────────────────────────────────
     // ContextType — the valid runtime contexts a user can occupy
     // ──────────────────────────────────────────────────────────
     type ContextType =
-      | 'superAdmin'
-      | 'orgChair'
-      | 'orgStaff'
-      | 'crew'
-      | 'operator'
-      | 'passenger'
-      | 'guest'
+      | "superAdmin"
+      | "orgChair"
+      | "orgStaff"
+      | "crew"
+      | "operator"
+      | "passenger"
+      | "guest"
 
     // ──────────────────────────────────────────────────────────
     // ActiveContext — the resolved runtime context for a request

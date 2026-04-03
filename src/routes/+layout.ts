@@ -80,11 +80,11 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     clearSession()
     return {
       supabase,
-      session:       null,
-      user:          null,
-      userState:     null,
+      session: null,
+      user: null,
+      userState: null,
       activeContext: null,
-      bootstrapped:  false,
+      bootstrapped: false,
     }
   }
 
@@ -94,7 +94,7 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   // Pass it through and skip bootstrap_session() entirely.
   // This is the fast path for all authenticated requests.
   if (data.userState) {
-    const current      = get(sessionStore)
+    const current = get(sessionStore)
     const forceRefresh = url.searchParams.has("rebootstrap")
 
     // Only bootstrap the sessionStore shim if it isn't already hydrated
@@ -107,9 +107,8 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
       forceRefresh
 
     if (needsBootstrap) {
-      const { data: payload, error: bootstrapError } = await supabase.rpc(
-        "bootstrap_session",
-      )
+      const { data: payload, error: bootstrapError } =
+        await supabase.rpc("bootstrap_session")
 
       if (bootstrapError) {
         // Non-fatal — userState is the authoritative source.
@@ -117,12 +116,12 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
         // context system are unaffected.
         console.warn(
           "[layout] bootstrap_session() shim failed — " +
-          "sessionStore not updated. userState is still authoritative.",
+            "sessionStore not updated. userState is still authoritative.",
           bootstrapError,
         )
       } else {
         const bootstrapData = payload as BootstrapSessionPayload
-        const inviteScoped  = url.searchParams.get("complete_profile") === "true"
+        const inviteScoped = url.searchParams.get("complete_profile") === "true"
         initSession(bootstrapData, { inviteScoped })
       }
     }
@@ -130,10 +129,10 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     return {
       supabase,
       session,
-      user:          session.user,
-      userState:     data.userState,
+      user: session.user,
+      userState: data.userState,
       activeContext: data.activeContext,
-      bootstrapped:  true,
+      bootstrapped: true,
     }
   }
 
@@ -142,7 +141,7 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   // non-redirect errors. In both cases userState + activeContext are null.
   // Still run bootstrap_session() so sessionStore-dependent components
   // function correctly on partially-authenticated states.
-  const current      = get(sessionStore)
+  const current = get(sessionStore)
   const forceRefresh = url.searchParams.has("rebootstrap")
 
   if (
@@ -153,16 +152,15 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     return {
       supabase,
       session,
-      user:          session.user,
-      userState:     null,
+      user: session.user,
+      userState: null,
       activeContext: null,
-      bootstrapped:  true,
+      bootstrapped: true,
     }
   }
 
-  const { data: payload, error: bootstrapError } = await supabase.rpc(
-    "bootstrap_session",
-  )
+  const { data: payload, error: bootstrapError } =
+    await supabase.rpc("bootstrap_session")
 
   if (bootstrapError) {
     console.error("[layout] Bootstrap failed:", bootstrapError)
@@ -170,24 +168,24 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     return {
       supabase,
       session,
-      user:          session.user,
-      userState:     null,
+      user: session.user,
+      userState: null,
       activeContext: null,
-      bootstrapped:  false,
+      bootstrapped: false,
     }
   }
 
   const bootstrapData = payload as BootstrapSessionPayload
-  const inviteScoped  = url.searchParams.get("complete_profile") === "true"
+  const inviteScoped = url.searchParams.get("complete_profile") === "true"
   initSession(bootstrapData, { inviteScoped })
 
   return {
     supabase,
     session,
-    user:          session.user,
-    profile:       bootstrapData.profile,
-    userState:     null,
+    user: session.user,
+    profile: bootstrapData.profile,
+    userState: null,
     activeContext: null,
-    bootstrapped:  true,
+    bootstrapped: true,
   }
 }

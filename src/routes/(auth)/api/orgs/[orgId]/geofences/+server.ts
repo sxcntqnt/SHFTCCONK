@@ -24,23 +24,27 @@
 // POST body must include scope + relevant owner field (profileId or orgId)
 // DELETE ?id=xxx&scope=personal  or  ?id=xxx&scope=org&orgId=xxx
 
-import { json }               from "@sveltejs/kit"
-import type { RequestHandler }  from "$lib/types"
-import { geoClient }           from "$lib/server/redis"
+import { json } from "@sveltejs/kit"
+import type { RequestHandler } from "$lib/types"
+import { geoClient } from "$lib/server/redis"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PERSONAL_COLLECTION = "personal-geofences"
-const ORG_COLLECTION      = "org-geofences"
+const ORG_COLLECTION = "org-geofences"
 
 type GeofenceScope = "personal" | "org"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function tile38Key(scope: GeofenceScope, ownerId: string, fenceId: string): string {
+function tile38Key(
+  scope: GeofenceScope,
+  ownerId: string,
+  fenceId: string,
+): string {
   return scope === "personal"
-    ? `${ownerId}:${fenceId}`   // personal-geofences:{profileId}:{fenceId}
-    : `${ownerId}:${fenceId}`   // org-geofences:{orgId}:{fenceId}
+    ? `${ownerId}:${fenceId}` // personal-geofences:{profileId}:{fenceId}
+    : `${ownerId}:${fenceId}` // org-geofences:{orgId}:{fenceId}
 }
 
 function collectionFor(scope: GeofenceScope): string {
@@ -49,8 +53,8 @@ function collectionFor(scope: GeofenceScope): string {
 
 function closeRing(coords: [number, number][]): [number, number][] {
   const first = coords[0]
-  const last  = coords[coords.length - 1]
-  return (first[0] === last[0] && first[1] === last[1])
+  const last = coords[coords.length - 1]
+  return first[0] === last[0] && first[1] === last[1]
     ? coords
     : [...coords, first]
 }
@@ -63,28 +67,28 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     return json({ error: "Unauthorised" }, { status: 401 })
   }
 
-  const supabase  = locals.supabase
-  const scope     = (url.searchParams.get("scope") ?? "personal") as GeofenceScope
-  const orgId     = url.searchParams.get("orgId")    ?? null
+  const supabase = locals.supabase
+  const scope = (url.searchParams.get("scope") ?? "personal") as GeofenceScope
+  const orgId = url.searchParams.get("orgId") ?? null
   const vehicleId = url.searchParams.get("vehicleId") ?? null
 
   // ── Build query ───────────────────────────────────────────────────────────
   let query = supabase
     .from("geofences")
-    .select("id, name, color, scope, profile_id, org_id, vehicle_id, active, metadata, created_at")
+    .select(
+      "id, name, color, scope, profile_id, org_id, vehicle_id, active, metadata, created_at",
+    )
     .order("created_at", { ascending: false })
 
   if (scope === "personal") {
     // Users can only see their own personal geofences
-    query = query
-      .eq("scope",      "personal")
-      .eq("profile_id", session.user.id)
+    query = query.eq("scope", "personal").eq("profile_id", session.user.id)
 
     if (vehicleId) query = query.eq("vehicle_id", vehicleId)
-
   } else {
     // Org geofences — verify membership first
-    if (!orgId) return json({ error: "orgId required for org scope" }, { status: 400 })
+    if (!orgId)
+      return json({ error: "orgId required for org scope" }, { status: 400 })
 
     const { data: membership } = await supabase
       .from("organization_members")
@@ -94,7 +98,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       .maybeSingle()
 
     if (!membership) {
-      return json({ error: "You do not have access to this organisation" }, { status: 403 })
+      return json(
+        { error: "You do not have access to this organisation" },
+        { status: 403 },
+      )
     }
 
     query = query.eq("scope", "org").eq("org_id", orgId)
@@ -111,20 +118,22 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
   // ── Enrich with geometry from Tile38 ──────────────────────────────────────
   const collection = collectionFor(scope)
-  const ownerId    = scope === "personal" ? session.user.id : orgId!
+  const ownerId = scope === "personal" ? session.user.id : orgId!
 
   const withGeometry = await Promise.allSettled(
     rows.map(async (row) => {
       try {
-        const geo = await geoClient.call(
-          "GET", collection, tile38Key(scope, ownerId, row.id),
+        const geo = (await geoClient.call(
+          "GET",
+          collection,
+          tile38Key(scope, ownerId, row.id),
           "WITHFIELDS",
-        ) as { object?: { coordinates: unknown[][] } } | null
+        )) as { object?: { coordinates: unknown[][] } } | null
 
         return {
           ...row,
-          coords:             geo?.object?.coordinates?.[0] ?? [],
-          geometryAvailable:  !!geo?.object,
+          coords: geo?.object?.coordinates?.[0] ?? [],
+          geometryAvailable: !!geo?.object,
         }
       } catch {
         return { ...row, coords: [], geometryAvailable: false }
@@ -133,7 +142,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   )
 
   const geofences = withGeometry
-    .map((r) => r.status === "fulfilled" ? r.value : null)
+    .map((r) => (r.status === "fulfilled" ? r.value : null))
     .filter(Boolean)
 
   return json({ geofences })
@@ -156,18 +165,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const {
-    id, name, color, coords, scope, orgId, vehicleId, metadata,
-  } = body as {
-    id?:        string
-    name?:      string
-    color?:     string
-    coords?:    [number, number][]
-    scope?:     GeofenceScope
-    orgId?:     string
-    vehicleId?: string
-    metadata?:  Record<string, unknown>
-  }
+  const { id, name, color, coords, scope, orgId, vehicleId, metadata } =
+    body as {
+      id?: string
+      name?: string
+      color?: string
+      coords?: [number, number][]
+      scope?: GeofenceScope
+      orgId?: string
+      vehicleId?: string
+      metadata?: Record<string, unknown>
+    }
 
   // ── Validate ──────────────────────────────────────────────────────────────
   if (!id || !name || !scope) {
@@ -188,7 +196,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // Personal geofences must be tied to a specific vehicle
   if (scope === "personal" && !vehicleId) {
     return json(
-      { error: "Personal geofences require a vehicleId — which vehicle are you tracking?" },
+      {
+        error:
+          "Personal geofences require a vehicleId — which vehicle are you tracking?",
+      },
       { status: 400 },
     )
   }
@@ -210,7 +221,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       .maybeSingle()
 
     if (!membership) {
-      return json({ error: "You do not have access to this organisation" }, { status: 403 })
+      return json(
+        { error: "You do not have access to this organisation" },
+        { status: 403 },
+      )
     }
   }
 
@@ -228,23 +242,24 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   // ── 1. Insert metadata into Supabase ──────────────────────────────────────
-  const { error: insertError } = await supabase
-    .from("geofences")
-    .insert({
-      id,
-      name,
-      color:      color ?? "#00b09b",
-      scope,
-      profile_id: session.user.id,             // always stamped — who created it
-      org_id:     scope === "org" ? orgId : null,
-      vehicle_id: vehicleId ?? null,
-      active:     true,
-      metadata:   metadata ?? null,
-    })
+  const { error: insertError } = await supabase.from("geofences").insert({
+    id,
+    name,
+    color: color ?? "#00b09b",
+    scope,
+    profile_id: session.user.id, // always stamped — who created it
+    org_id: scope === "org" ? orgId : null,
+    vehicle_id: vehicleId ?? null,
+    active: true,
+    metadata: metadata ?? null,
+  })
 
   if (insertError) {
     if (insertError.code === "23505") {
-      return json({ error: "A geofence with this ID already exists" }, { status: 409 })
+      return json(
+        { error: "A geofence with this ID already exists" },
+        { status: 409 },
+      )
     }
     console.error("[geofences POST] Supabase insert error:", insertError)
     return json({ error: "Failed to create geofence" }, { status: 500 })
@@ -252,14 +267,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // ── 2. Store geometry in Tile38 ───────────────────────────────────────────
   const collection = collectionFor(scope)
-  const ownerId    = scope === "personal" ? session.user.id : orgId!
-  const tileKey    = tile38Key(scope, ownerId, id)
+  const ownerId = scope === "personal" ? session.user.id : orgId!
+  const tileKey = tile38Key(scope, ownerId, id)
 
   try {
     await geoClient.call(
-      "SET", collection, tileKey,
-      "OBJECT", JSON.stringify({
-        type:        "Polygon",
+      "SET",
+      collection,
+      tileKey,
+      "OBJECT",
+      JSON.stringify({
+        type: "Polygon",
         coordinates: [closedCoords],
       }),
     )
@@ -267,7 +285,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     console.error("[geofences POST] Tile38 SET error:", tileError)
 
     // Rollback Supabase
-    await supabase.from("geofences").delete().eq("id", id).eq("profile_id", session.user.id)
+    await supabase
+      .from("geofences")
+      .delete()
+      .eq("id", id)
+      .eq("profile_id", session.user.id)
 
     return json(
       { error: "Geofence geometry could not be stored. Creation rolled back." },
@@ -277,14 +299,17 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   scope === "personal" ? "personal_geofence_created" : "org_geofence_created",
+    event_type:
+      scope === "personal"
+        ? "personal_geofence_created"
+        : "org_geofence_created",
     performed_by: session.user.id,
     target_table: "geofences",
     details: {
-      fence_id:    id,
+      fence_id: id,
       scope,
-      org_id:      orgId ?? null,
-      vehicle_id:  vehicleId ?? null,
+      org_id: orgId ?? null,
+      vehicle_id: vehicleId ?? null,
       name,
       coord_count: closedCoords.length,
     },
@@ -302,9 +327,9 @@ export const DELETE: RequestHandler = async ({ url, locals }) => {
   }
 
   const supabase = locals.supabase
-  const id       = url.searchParams.get("id")
-  const scope    = (url.searchParams.get("scope") ?? "personal") as GeofenceScope
-  const orgId    = url.searchParams.get("orgId") ?? null
+  const id = url.searchParams.get("id")
+  const scope = (url.searchParams.get("scope") ?? "personal") as GeofenceScope
+  const orgId = url.searchParams.get("orgId") ?? null
 
   if (!id) return json({ error: "id is required" }, { status: 400 })
 
@@ -332,7 +357,10 @@ export const DELETE: RequestHandler = async ({ url, locals }) => {
       .maybeSingle()
 
     if (!membership) {
-      return json({ error: "You do not have access to this organisation" }, { status: 403 })
+      return json(
+        { error: "You do not have access to this organisation" },
+        { status: 403 },
+      )
     }
 
     fenceQuery = fenceQuery.eq("org_id", orgId!)
@@ -342,14 +370,16 @@ export const DELETE: RequestHandler = async ({ url, locals }) => {
 
   if (!fence) {
     return json(
-      { error: "Geofence not found or you do not have permission to delete it" },
+      {
+        error: "Geofence not found or you do not have permission to delete it",
+      },
       { status: 404 },
     )
   }
 
   // ── 1. Remove from Tile38 first (fence goes inactive immediately) ─────────
   const collection = collectionFor(scope)
-  const ownerId    = scope === "personal" ? session.user.id : orgId!
+  const ownerId = scope === "personal" ? session.user.id : orgId!
 
   try {
     await geoClient.call("DEL", collection, tile38Key(scope, ownerId, id))
@@ -371,13 +401,17 @@ export const DELETE: RequestHandler = async ({ url, locals }) => {
     console.error("[geofences DELETE] Supabase delete error:", deleteError)
     return json({
       success: true,
-      warning: "Geometry removed but metadata delete failed. Will be cleaned up.",
+      warning:
+        "Geometry removed but metadata delete failed. Will be cleaned up.",
     })
   }
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   scope === "personal" ? "personal_geofence_deleted" : "org_geofence_deleted",
+    event_type:
+      scope === "personal"
+        ? "personal_geofence_deleted"
+        : "org_geofence_deleted",
     performed_by: session.user.id,
     target_table: "geofences",
     details: { fence_id: id, scope, org_id: orgId ?? null, name: fence.name },

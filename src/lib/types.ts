@@ -16,9 +16,19 @@ export type PlatformActor = {
   icon: string
 }
 
-export type CommuterWorkflow = { icon: IconKey; title: string; description: string; link: string }
+export type CommuterWorkflow = {
+  icon: IconKey
+  title: string
+  description: string
+  link: string
+}
 
-export type Testimonial = { name: string; userType: string; testimony: string; rating: number }
+export type Testimonial = {
+  name: string
+  userType: string
+  testimony: string
+  rating: number
+}
 
 /**
  * auth.types.ts
@@ -41,15 +51,15 @@ import type { Role } from "$lib/features/auth/stores/auth"
    Returns the resolved identity and the dashboard route to redirect to.
 ───────────────────────────────────────────────────────────────────── */
 export interface BootstrapSessionPayload {
-  profile_id:      string
-  actor_id:        string | null
-  actor_type:      Role
-  name:            string
-  email:           string | null
-  organizationId:  string | null
-  sacco:           string | null
-  permissions:     string[]
-  route:           string    // e.g. "/account", "/operator/dashboard", "/driver/trips"
+  profile_id: string
+  actor_id: string | null
+  actor_type: Role
+  name: string
+  email: string | null
+  organizationId: string | null
+  sacco: string | null
+  permissions: string[]
+  route: string // e.g. "/account", "/operator/dashboard", "/driver/trips"
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -58,14 +68,14 @@ export interface BootstrapSessionPayload {
    Server validates token, assigns role+org, creates profile, marks redeemed.
 ───────────────────────────────────────────────────────────────────── */
 export interface RedeemInviteParams {
-  p_token:    string   // the raw invite token/code
-  p_password: string   // the user's chosen password (set via auth.admin.updateUserById)
+  p_token: string // the raw invite token/code
+  p_password: string // the user's chosen password (set via auth.admin.updateUserById)
 }
 
 export interface RedeemInviteResult {
-  success:         boolean
-  profile_id:      string
-  role:            Role
+  success: boolean
+  profile_id: string
+  role: Role
   organization_id: string
 }
 
@@ -73,14 +83,14 @@ export interface RedeemInviteResult {
    pending_invites table row (read-only from server +page.server.ts)
 ───────────────────────────────────────────────────────────────────── */
 export interface PendingInvite {
-  id:              string
-  token:           string
-  email:           string
-  role:            Role             // pre-assigned, immutable
+  id: string
+  token: string
+  email: string
+  role: Role // pre-assigned, immutable
   organization_id: string
-  invited_by:      string
-  expires_at:      string           // ISO 8601
-  redeemed_at:     string | null
+  invited_by: string
+  expires_at: string // ISO 8601
+  redeemed_at: string | null
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -88,21 +98,21 @@ export interface PendingInvite {
    Used to determine where to send each role after login.
 ───────────────────────────────────────────────────────────────────── */
 export const ROLE_ROUTES: Record<Role, string> = {
-  PASSENGER:           "/app/dashboard",
-  DRIVER:              "/crew/dashboard",
-  CONDUCTOR:           "/crew/dashboard",          // shared driver UI
-  OWNER:               "/org/select",
-  VEHICLE_OWNER:       "/org/select",
-  ORGANIZATION:        "/org/select",              // org-level users select which org to manage if they have access to multiple
-  ORG_CHAIR:           "/org/select",
-  OPERATIONS_MANAGER:  "/org/select",
-  COMPLIANCE_OFFICER:  "/org/select",
-  ACCOUNTANT:          "/org/select",
-  ROUTE_SUPERVISOR:    "/org/select",
-  STAGE_OPERATOR:      "/org/select",
-  REGULATOR:           "/org/select",
-  PLANNER:             "/org/select",
-  ADMIN:               "/admin/dashboard",
+  PASSENGER: "/app/dashboard",
+  DRIVER: "/crew/dashboard",
+  CONDUCTOR: "/crew/dashboard", // shared driver UI
+  OWNER: "/org/select",
+  VEHICLE_OWNER: "/org/select",
+  ORGANIZATION: "/org/select", // org-level users select which org to manage if they have access to multiple
+  ORG_CHAIR: "/org/select",
+  OPERATIONS_MANAGER: "/org/select",
+  COMPLIANCE_OFFICER: "/org/select",
+  ACCOUNTANT: "/org/select",
+  ROUTE_SUPERVISOR: "/org/select",
+  STAGE_OPERATOR: "/org/select",
+  REGULATOR: "/org/select",
+  PLANNER: "/org/select",
+  ADMIN: "/admin/dashboard",
 }
 
 /* ─────────────────────────────────────────────────────────────────────

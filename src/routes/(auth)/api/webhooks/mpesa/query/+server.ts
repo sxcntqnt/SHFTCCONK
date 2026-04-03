@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
   }
 
   return json({
-    status: payment.status,               // pending | completed | failed
+    status: payment.status, // pending | completed | failed
     message: payment.result_desc ?? "—",
   })
 }

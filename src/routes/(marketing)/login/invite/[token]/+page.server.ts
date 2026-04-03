@@ -39,7 +39,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const { data: invite, error: dbErr } = await supabase
     .from("pending_invites")
-    .select(`
+    .select(
+      `
       id,
       email,
       role,
@@ -48,7 +49,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       expires_at,
       redeemed_at,
       organizations ( name )
-    `)
+    `,
+    )
     .eq("token", token.toUpperCase())
     .maybeSingle()
 
@@ -72,7 +74,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (new Date(invite.expires_at) < new Date()) {
     return {
       token,
-      invite: { valid: false, error: "This invitation has expired. Invitation links are valid for 72 hours." },
+      invite: {
+        valid: false,
+        error:
+          "This invitation has expired. Invitation links are valid for 72 hours.",
+      },
     }
   }
 
@@ -80,14 +86,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   return {
     token,
     invite: {
-      valid:            true,
-      email:            invite.email,
-      role:             invite.role,               // never from user input
-      organizationId:   invite.organization_id,    // never from user input
-      organizationName: (invite.organizations as any)?.name ?? "Your Organisation",
-      invitedBy:        invite.invited_by,
-      expiresAt:        invite.expires_at,
-      error:            null,
+      valid: true,
+      email: invite.email,
+      role: invite.role, // never from user input
+      organizationId: invite.organization_id, // never from user input
+      organizationName:
+        (invite.organizations as any)?.name ?? "Your Organisation",
+      invitedBy: invite.invited_by,
+      expiresAt: invite.expires_at,
+      error: null,
     },
   }
 }

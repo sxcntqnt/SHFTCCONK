@@ -10,8 +10,8 @@
 // Access: SUPER_ADMIN or ADMIN only (requireAdminAccess)
 
 import type { RequestHandler } from "./$types"
-import { json }                from "@sveltejs/kit"
-import { requireAdminAccess }  from "$lib/security/authGuard"
+import { json } from "@sveltejs/kit"
+import { requireAdminAccess } from "$lib/security/authGuard"
 
 export const DELETE: RequestHandler = async (event) => {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -22,8 +22,8 @@ export const DELETE: RequestHandler = async (event) => {
   }
 
   const { params, locals } = event
-  const { session }        = await locals.safeGetSession()
-  const supabase           = locals.supabase
+  const { session } = await locals.safeGetSession()
+  const supabase = locals.supabase
   const { orgId, eventId } = params
 
   if (!eventId) {
@@ -41,10 +41,16 @@ export const DELETE: RequestHandler = async (event) => {
     .maybeSingle()
 
   if (checkErr) {
-    return json({ error: `Lookup failed: ${checkErr.message}` }, { status: 500 })
+    return json(
+      { error: `Lookup failed: ${checkErr.message}` },
+      { status: 500 },
+    )
   }
   if (!existing) {
-    return json({ error: "Event not found or does not belong to this org" }, { status: 404 })
+    return json(
+      { error: "Event not found or does not belong to this org" },
+      { status: 404 },
+    )
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -55,17 +61,20 @@ export const DELETE: RequestHandler = async (event) => {
     .eq("stream_id", eventId)
 
   if (deleteErr) {
-    return json({ error: `Discard failed: ${deleteErr.message}` }, { status: 500 })
+    return json(
+      { error: `Discard failed: ${deleteErr.message}` },
+      { status: 500 },
+    )
   }
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   "dlq_discard",
+    event_type: "dlq_discard",
     performed_by: session!.user.id,
     target_table: "dlq_events",
     details: {
-      org_id:     orgId,
-      stream_id:  eventId,
+      org_id: orgId,
+      stream_id: eventId,
       vehicle_id: existing.vehicle_id,
     },
   })

@@ -23,15 +23,15 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { writable } from 'svelte/store'
-import type { Writable } from 'svelte/store'
+import { writable } from "svelte/store"
+import type { Writable } from "svelte/store"
 import type {
   UserState,
   ActorContext,
   PermissionEntry,
   EnrichedOrgMember,
-} from '$lib/features/auth/services/userState.server'
-import type { Tables } from '../../../DatabaseDefinitions'
+} from "$lib/features/auth/services/userState.server"
+import type { Tables } from "../../../DatabaseDefinitions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Re-exported shared types
@@ -47,9 +47,9 @@ import type { Tables } from '../../../DatabaseDefinitions'
  * since no context file uses it.
  */
 export type Jurisdiction = {
-  id:       string
+  id: string
   actor_id: string
-  level:    string        // 'federal' | 'org' | 'branch' | 'department'
+  level: string // 'federal' | 'org' | 'branch' | 'department'
   scope_id: string | null // orgId | branchId | deptId | null (federal)
   max_vehicles: number | null // OPERATOR only — null for all other actor types
 }
@@ -82,33 +82,33 @@ export type EffectivePermission = PermissionEntry & {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ACTOR_TYPES = {
-  SUPER_ADMIN:        'SUPER_ADMIN',
-  ADMIN:              'ADMIN',
-  ORG_CHAIR:          'ORG_CHAIR',
-  GENERAL_MANAGER:    'GENERAL_MANAGER',
-  FLEET_MANAGER:      'FLEET_MANAGER',
-  OPERATIONS_MANAGER: 'OPERATIONS_MANAGER',
-  BRANCH_MANAGER:     'BRANCH_MANAGER',
-  SECRETARY:          'SECRETARY',
-  ACCOUNTANT:         'ACCOUNTANT',
-  ACCOUNTS_CLERK:     'ACCOUNTS_CLERK',
-  AUDITOR:            'AUDITOR',
-  COMPLIANCE_OFFICER: 'COMPLIANCE_OFFICER',
-  ROUTE_SUPERVISOR:   'ROUTE_SUPERVISOR',
-  DISPATCHER:         'DISPATCHER',
-  MECHANIC:           'MECHANIC',
-  FIELD_ATTENDANT:    'FIELD_ATTENDANT',
-  DATA_CLERK:         'DATA_CLERK',
-  CUSTOMER_SUPPORT:   'CUSTOMER_SUPPORT',
-  SALES_MANAGER:      'SALES_MANAGER',
-  OPERATOR:           'OPERATOR',
-  DRIVER:             'DRIVER',
-  CONDUCTOR:          'CONDUCTOR',
-  PASSENGER:          'PASSENGER',
-  GUEST:              'GUEST',
+  SUPER_ADMIN: "SUPER_ADMIN",
+  ADMIN: "ADMIN",
+  ORG_CHAIR: "ORG_CHAIR",
+  GENERAL_MANAGER: "GENERAL_MANAGER",
+  FLEET_MANAGER: "FLEET_MANAGER",
+  OPERATIONS_MANAGER: "OPERATIONS_MANAGER",
+  BRANCH_MANAGER: "BRANCH_MANAGER",
+  SECRETARY: "SECRETARY",
+  ACCOUNTANT: "ACCOUNTANT",
+  ACCOUNTS_CLERK: "ACCOUNTS_CLERK",
+  AUDITOR: "AUDITOR",
+  COMPLIANCE_OFFICER: "COMPLIANCE_OFFICER",
+  ROUTE_SUPERVISOR: "ROUTE_SUPERVISOR",
+  DISPATCHER: "DISPATCHER",
+  MECHANIC: "MECHANIC",
+  FIELD_ATTENDANT: "FIELD_ATTENDANT",
+  DATA_CLERK: "DATA_CLERK",
+  CUSTOMER_SUPPORT: "CUSTOMER_SUPPORT",
+  SALES_MANAGER: "SALES_MANAGER",
+  OPERATOR: "OPERATOR",
+  DRIVER: "DRIVER",
+  CONDUCTOR: "CONDUCTOR",
+  PASSENGER: "PASSENGER",
+  GUEST: "GUEST",
 } as const
 
-export type ActorType = typeof ACTOR_TYPES[keyof typeof ACTOR_TYPES]
+export type ActorType = (typeof ACTOR_TYPES)[keyof typeof ACTOR_TYPES]
 
 /**
  * All org staff roles served by /org/[orgId]/*.
@@ -145,10 +145,10 @@ export const ORG_STAFF_TYPES: string[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 const isDelegated = (source: string | null): boolean =>
-  source?.startsWith('delegated_from:') ?? false
+  source?.startsWith("delegated_from:") ?? false
 
 const isDirectOrGroup = (source: string | null): boolean =>
-  source === 'direct' || (source?.startsWith('group:') ?? false)
+  source === "direct" || (source?.startsWith("group:") ?? false)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER: activateXContext()
@@ -170,7 +170,6 @@ export function activateXContext(
   contextType: App.ContextType,
   options?: { orgId?: string },
 ): App.ActiveContext | null {
-
   const actorCtx = selectActorContext(userState, contextType, options?.orgId)
   if (!actorCtx) return null
 
@@ -179,21 +178,21 @@ export function activateXContext(
   // effective_permissions_raw is unfiltered but the view aggregates deny > allow.
   // We trust the view output and only surface 'allow' rows here.
   const permissions: string[] = actorCtx.permissions
-    .filter(p => p.effect === 'allow')
-    .map(p => p.action)
+    .filter((p) => p.effect === "allow")
+    .map((p) => p.action)
 
   const delegatedPermissions: string[] = actorCtx.delegatedPermissions
-    .filter(p => p.effect === 'allow')
-    .map(p => p.action)
+    .filter((p) => p.effect === "allow")
+    .map((p) => p.action)
 
   return {
-    actorId:             actorCtx.actorId,
-    actorType:           contextType,
+    actorId: actorCtx.actorId,
+    actorType: contextType,
     permissions,
     delegatedPermissions,
-    policyGroups:        actorCtx.policyGroupIds,
-    assignments:         gatherAssignments(userState, actorCtx.actorId),
-    hasPaidPlan:         userState.hasPaidPlan,
+    policyGroups: actorCtx.policyGroupIds,
+    assignments: gatherAssignments(userState, actorCtx.actorId),
+    hasPaidPlan: userState.hasPaidPlan,
     userState,
   }
 }
@@ -215,59 +214,85 @@ function selectActorContext(
   const active = userState.activeContexts
 
   switch (contextType) {
+    case "superAdmin":
+      return (
+        active.find(
+          (ctx) =>
+            [ACTOR_TYPES.SUPER_ADMIN, ACTOR_TYPES.ADMIN].includes(
+              ctx.type as ActorType,
+            ) && ctx.status === "active",
+        ) ?? null
+      )
 
-    case 'superAdmin':
-      return active.find(ctx =>
-        [ACTOR_TYPES.SUPER_ADMIN, ACTOR_TYPES.ADMIN].includes(ctx.type as ActorType)
-        && ctx.status === 'active'
-      ) ?? null
+    case "orgChair":
+      return (
+        active.find((ctx) => {
+          if (ctx.type !== ACTOR_TYPES.ORG_CHAIR || ctx.status !== "active")
+            return false
+          if (!orgId) return true
+          // Federal jurisdiction = chair over all orgs
+          return ctx.jurisdictions.some(
+            (j) =>
+              j.level === "federal" ||
+              (j.level === "org" && j.scope_id === orgId),
+          )
+        }) ?? null
+      )
 
-    case 'orgChair':
-      return active.find(ctx => {
-        if (ctx.type !== ACTOR_TYPES.ORG_CHAIR || ctx.status !== 'active') return false
-        if (!orgId) return true
-        // Federal jurisdiction = chair over all orgs
-        return ctx.jurisdictions.some(
-          j => j.level === 'federal' || (j.level === 'org' && j.scope_id === orgId)
-        )
-      }) ?? null
+    case "orgStaff":
+      return (
+        active.find((ctx) => {
+          if (!ORG_STAFF_TYPES.includes(ctx.type) || ctx.status !== "active")
+            return false
+          if (!orgId) return true
+          return ctx.jurisdictions.some(
+            (j) =>
+              j.level === "federal" ||
+              (j.level === "org" && j.scope_id === orgId) ||
+              (j.level === "branch" && j.scope_id != null), // branch actors qualify
+          )
+        }) ?? null
+      )
 
-    case 'orgStaff':
-      return active.find(ctx => {
-        if (!ORG_STAFF_TYPES.includes(ctx.type) || ctx.status !== 'active') return false
-        if (!orgId) return true
-        return ctx.jurisdictions.some(
-          j => j.level === 'federal'
-            || (j.level === 'org'    && j.scope_id === orgId)
-            || (j.level === 'branch' && j.scope_id != null)  // branch actors qualify
-        )
-      }) ?? null
-
-    case 'crew':
+    case "crew":
       // Prefer DRIVER — has shift + fuel write access that CONDUCTOR lacks
       return (
-        active.find(ctx => ctx.type === ACTOR_TYPES.DRIVER    && ctx.status === 'active') ??
-        active.find(ctx => ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === 'active') ??
+        active.find(
+          (ctx) => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === "active",
+        ) ??
+        active.find(
+          (ctx) =>
+            ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === "active",
+        ) ??
         null
       )
 
-    case 'operator':
-      return active.find(ctx =>
-        ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === 'active'
-      ) ?? null
+    case "operator":
+      return (
+        active.find(
+          (ctx) => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === "active",
+        ) ?? null
+      )
 
-    case 'passenger':
+    case "passenger":
       // Prefer PASSENGER over GUEST — GUEST cannot book
       return (
-        active.find(ctx => ctx.type === ACTOR_TYPES.PASSENGER && ctx.status === 'active') ??
-        active.find(ctx => ctx.type === ACTOR_TYPES.GUEST      && ctx.status === 'active') ??
+        active.find(
+          (ctx) =>
+            ctx.type === ACTOR_TYPES.PASSENGER && ctx.status === "active",
+        ) ??
+        active.find(
+          (ctx) => ctx.type === ACTOR_TYPES.GUEST && ctx.status === "active",
+        ) ??
         null
       )
 
-    case 'guest':
-      return active.find(ctx =>
-        ctx.type === ACTOR_TYPES.GUEST && ctx.status === 'active'
-      ) ?? null
+    case "guest":
+      return (
+        active.find(
+          (ctx) => ctx.type === ACTOR_TYPES.GUEST && ctx.status === "active",
+        ) ?? null
+      )
 
     default:
       return null
@@ -284,11 +309,11 @@ function selectActorContext(
 function gatherAssignments(userState: UserState, actorId: string): unknown[] {
   const a = userState.assignments
   return [
-    ...a.driverAssignments.filter(r  => r.actor_id    === actorId),
-    ...a.conductorAssignments.filter(r => r.actor_id  === actorId),
-    ...a.orgMemberships.filter(r     => r.actor_id    === actorId),
-    ...a.fleetOwnership.filter(r     => r.actor_id    === actorId),
-    ...a.stageAssignments.filter(r   => r.operator_id === actorId),
+    ...a.driverAssignments.filter((r) => r.actor_id === actorId),
+    ...a.conductorAssignments.filter((r) => r.actor_id === actorId),
+    ...a.orgMemberships.filter((r) => r.actor_id === actorId),
+    ...a.fleetOwnership.filter((r) => r.actor_id === actorId),
+    ...a.stageAssignments.filter((r) => r.operator_id === actorId),
   ]
 }
 
@@ -310,8 +335,8 @@ function gatherAssignments(userState: UserState, actorId: string): unknown[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ContextStore<T> = {
-  store:        Writable<T | null>
-  setContext:   (value: T) => void
+  store: Writable<T | null>
+  setContext: (value: T) => void
   clearContext: () => void
 }
 
@@ -319,7 +344,7 @@ export function createContextStore<T>(): ContextStore<T> {
   const store = writable<T | null>(null)
   return {
     store,
-    setContext:   (value: T) => store.set(value),
+    setContext: (value: T) => store.set(value),
     clearContext: () => store.set(null),
   }
 }
@@ -344,7 +369,9 @@ export function extractPermissions(
   actorId: string,
   scopeId?: string,
 ): EffectivePermission[] {
-  const actorCtx = userState.activeContexts.find(ctx => ctx.actorId === actorId)
+  const actorCtx = userState.activeContexts.find(
+    (ctx) => ctx.actorId === actorId,
+  )
   if (!actorCtx) return []
 
   // Merge both arrays — context files use a single flat list
@@ -362,10 +389,9 @@ export function extractPermissions(
 
   // Scope filter: include if scope matches, OR if federal/branch level
   return all
-    .filter(p =>
-      p.scope_id === scopeId
-      || p.level === 'federal'
-      || p.level === 'branch'
+    .filter(
+      (p) =>
+        p.scope_id === scopeId || p.level === "federal" || p.level === "branch",
     )
     .map(withActorId)
 }
@@ -378,13 +404,15 @@ export function extractJurisdictions(
   userState: UserState,
   actorId: string,
 ): Jurisdiction[] {
-  const actorCtx = userState.activeContexts.find(ctx => ctx.actorId === actorId)
+  const actorCtx = userState.activeContexts.find(
+    (ctx) => ctx.actorId === actorId,
+  )
   if (!actorCtx) return []
 
-  return actorCtx.jurisdictions.map(j => ({
-    id:       j.id,
+  return actorCtx.jurisdictions.map((j) => ({
+    id: j.id,
     actor_id: j.actor_id,
-    level:    j.level,
+    level: j.level,
     scope_id: j.scope_id,
   }))
 }
@@ -397,7 +425,9 @@ export function extractOrgMemberships(
   userState: UserState,
   actorId: string,
 ): OrgMembership[] {
-  return userState.assignments.orgMemberships.filter(m => m.actor_id === actorId)
+  return userState.assignments.orgMemberships.filter(
+    (m) => m.actor_id === actorId,
+  )
 }
 
 /**
@@ -413,9 +443,10 @@ export function isAllowed(
   action: string,
   scopeId?: string,
 ): boolean {
-  return permissions.some(p =>
-    p.action === action
-    && p.effect === 'allow'
-    && (!scopeId || p.scope_id === scopeId || p.level === 'federal')
+  return permissions.some(
+    (p) =>
+      p.action === action &&
+      p.effect === "allow" &&
+      (!scopeId || p.scope_id === scopeId || p.level === "federal"),
   )
 }

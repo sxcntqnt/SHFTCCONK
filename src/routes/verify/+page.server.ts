@@ -23,12 +23,12 @@
  * (magic link case). The token itself is the auth.
  */
 
-import type { PageServerLoad, Actions } from './$types'
-import { fail, redirect }               from '@sveltejs/kit'
-import { createHash }                   from 'crypto'
+import type { PageServerLoad, Actions } from "./$types"
+import { fail, redirect } from "@sveltejs/kit"
+import { createHash } from "crypto"
 
 function hashToken(raw: string): string {
-  return createHash('sha256').update(raw).digest('hex')
+  return createHash("sha256").update(raw).digest("hex")
 }
 
 /* ============================================================
@@ -37,65 +37,78 @@ function hashToken(raw: string): string {
 export const load: PageServerLoad = async ({ url, locals }) => {
   const { supabase } = locals
 
-  const token  = url.searchParams.get('token')
-  const method = url.searchParams.get('method')
+  const token = url.searchParams.get("token")
+  const method = url.searchParams.get("method")
 
   // ── EMAIL AUTO-VERIFY ────────────────────────────────────────
   // If both params present and method=email, verify immediately
-  if (token && method === 'email') {
+  if (token && method === "email") {
     const tokenHash = hashToken(token)
 
     const { data: record } = await supabase
-      .from('actor_verification_tokens')
-      .select('id, actor_id, profile_id, expires_at, used_at')
-      .eq('token_hash', tokenHash)
-      .eq('method', 'email')
+      .from("actor_verification_tokens")
+      .select("id, actor_id, profile_id, expires_at, used_at")
+      .eq("token_hash", tokenHash)
+      .eq("method", "email")
       .single()
 
     if (!record) {
-      return { mode: 'email_error', error: 'This verification link is invalid or has already been used.' }
+      return {
+        mode: "email_error",
+        error: "This verification link is invalid or has already been used.",
+      }
     }
 
     if (record.used_at) {
-      return { mode: 'email_error', error: 'This verification link has already been used.' }
+      return {
+        mode: "email_error",
+        error: "This verification link has already been used.",
+      }
     }
 
     if (new Date(record.expires_at) < new Date()) {
-      return { mode: 'email_error', error: 'This verification link has expired. Ask your admin to send a new one.' }
+      return {
+        mode: "email_error",
+        error:
+          "This verification link has expired. Ask your admin to send a new one.",
+      }
     }
 
     // ── Activate actor ──────────────────────────────────────────
     const { error: updateErr } = await supabase
-      .from('actors')
-      .update({ status: 'active' })
-      .eq('id', record.actor_id)
+      .from("actors")
+      .update({ status: "active" })
+      .eq("id", record.actor_id)
 
     if (updateErr) {
-      console.error('[verify] actor update error:', updateErr)
-      return { mode: 'email_error', error: 'Verification failed. Please try again.' }
+      console.error("[verify] actor update error:", updateErr)
+      return {
+        mode: "email_error",
+        error: "Verification failed. Please try again.",
+      }
     }
 
     // Mark token used
     await supabase
-      .from('actor_verification_tokens')
+      .from("actor_verification_tokens")
       .update({ used_at: new Date().toISOString() })
-      .eq('id', record.id)
+      .eq("id", record.id)
 
     // Audit
-    await supabase.from('audit_logs').insert({
-      event_type: 'actor_verified_email',
-      actor_id:   record.actor_id,
+    await supabase.from("audit_logs").insert({
+      event_type: "actor_verified_email",
+      actor_id: record.actor_id,
       profile_id: record.profile_id,
-      details:    { method: 'email' },
+      details: { method: "email" },
     })
 
     // Redirect to app — they're now verified
-    throw redirect(303, '/app?verified=1')
+    throw redirect(303, "/app?verified=1")
   }
 
   // ── SMS FORM ─────────────────────────────────────────────────
   // No token in URL → show the OTP entry form
-  return { mode: 'sms_form', error: null }
+  return { mode: "sms_form", error: null }
 }
 
 /* ============================================================
@@ -108,63 +121,67 @@ export const actions: Actions = {
 
     // User may submit their profile_id to scope the lookup,
     // or we find by OTP hash alone (safe since OTP is 6 digits + 15min expiry)
-    const otp        = (form.get('otp') as string)?.trim().replace(/\s/g, '')
-    const profile_id = (form.get('profile_id') as string)?.trim() || null
+    const otp = (form.get("otp") as string)?.trim().replace(/\s/g, "")
+    const profile_id = (form.get("profile_id") as string)?.trim() || null
 
     if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
-      return fail(400, { error: 'Enter the 6-digit code from your SMS.' })
+      return fail(400, { error: "Enter the 6-digit code from your SMS." })
     }
 
     const tokenHash = hashToken(otp)
 
     // Find matching token — scope by profile_id if provided for extra safety
     let query = supabase
-      .from('actor_verification_tokens')
-      .select('id, actor_id, profile_id, expires_at, used_at')
-      .eq('token_hash', tokenHash)
-      .eq('method', 'sms')
+      .from("actor_verification_tokens")
+      .select("id, actor_id, profile_id, expires_at, used_at")
+      .eq("token_hash", tokenHash)
+      .eq("method", "sms")
 
-    if (profile_id) query = query.eq('profile_id', profile_id)
+    if (profile_id) query = query.eq("profile_id", profile_id)
 
     const { data: record } = await query.single()
 
     if (!record) {
-      return fail(400, { error: 'Incorrect code. Check your SMS and try again.' })
+      return fail(400, {
+        error: "Incorrect code. Check your SMS and try again.",
+      })
     }
 
     if (record.used_at) {
-      return fail(400, { error: 'This code has already been used.' })
+      return fail(400, { error: "This code has already been used." })
     }
 
     if (new Date(record.expires_at) < new Date()) {
-      return fail(400, { error: 'This code has expired. Ask your admin to send a new one.' })
+      return fail(400, {
+        error: "This code has expired. Ask your admin to send a new one.",
+      })
     }
 
     // ── Activate actor ──────────────────────────────────────────
     const { error: updateErr } = await supabase
-      .from('actors')
-      .update({ status: 'active' })
-      .eq('id', record.actor_id)
+      .from("actors")
+      .update({ status: "active" })
+      .eq("id", record.actor_id)
 
     if (updateErr) {
-      console.error('[verify] actor update error:', updateErr)
-      return fail(500, { error: 'Verification failed. Please try again.' })
+      console.error("[verify] actor update error:", updateErr)
+      return fail(500, { error: "Verification failed. Please try again." })
     }
 
     // Mark token used
     await supabase
-      .from('actor_verification_tokens')
+      .from("actor_verification_tokens")
       .update({ used_at: new Date().toISOString() })
-      .eq('id', record.id)
+      .eq("id", record.id)
 
     // Audit
-    await supabase.from('audit_logs').insert({
-      event_type: 'actor_verified_sms',
-      actor_id:   record.actor_id,
+    await supabase.from("audit_logs").insert({
+      event_type: "actor_verified_sms",
+      actor_id: record.actor_id,
       profile_id: record.profile_id,
-      details:    { method: 'sms' },
+      details: { method: "sms" },
     })
 
-    throw redirect(303, '/app?verified=1')
+    throw redirect(303, "/app?verified=1")
   },
 }

@@ -19,15 +19,14 @@ export const vehicleModelLoaders = {
   "26": () => import("./components/japanese_bus_osaka_city_bus_osaka.svelte"),
   "33": () => import("./components/retro_anime_vintage_volkswagen_van.svelte"),
   "matatu-generic": () => import("./components/GenericMatatu.svelte"),
-
 } satisfies Record<string, () => Promise<{ default: any }>>
 
 /** Union of all valid keys in the vehicle model registry */
 export type VehicleModelKey = keyof typeof vehicleModelLoaders
 
 /** All valid capacity keys (excludes named keys like "matatu-generic") */
-export const validCapacities = Object.keys(vehicleModelLoaders).filter(
-  (k) => /^\d+$/.test(k)
+export const validCapacities = Object.keys(vehicleModelLoaders).filter((k) =>
+  /^\d+$/.test(k),
 ) as string[]
 
 /**
@@ -41,7 +40,9 @@ export const validCapacities = Object.keys(vehicleModelLoaders).filter(
  *
  * This is the single source of truth for model resolution.
  */
-export function resolveModelKey(input: string | number | undefined | null): VehicleModelKey {
+export function resolveModelKey(
+  input: string | number | undefined | null,
+): VehicleModelKey {
   if (!input) return "matatu-generic"
 
   const raw = String(input).trim()

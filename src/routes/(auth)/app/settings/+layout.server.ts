@@ -10,14 +10,14 @@
 // Profile completeness check happens here — incomplete profiles
 // are sent to create_profile before they can edit settings.
 
-import { redirect }              from '@sveltejs/kit'
-import type { LayoutServerLoad } from './$types'
-import { _hasFullProfile }       from '$lib/features/profile/profile.service'
+import { redirect } from "@sveltejs/kit"
+import type { LayoutServerLoad } from "./$types"
+import { _hasFullProfile } from "$lib/features/profile/profile.service"
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
   const { userState, user } = locals
 
-  if (!userState || !user) throw redirect(303, '/login')
+  if (!userState || !user) throw redirect(303, "/login")
 
   // Profile must be complete before editing settings
   if (!_hasFullProfile(userState.profile)) {
@@ -28,6 +28,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   return {
     userState,
     activeContext: locals.activeContext,
-    profile:       userState.profile,
+    profile: userState.profile,
   }
 }

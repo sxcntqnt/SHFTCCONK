@@ -4,10 +4,7 @@
   "description": "A closed growth loop that intercepts free-tier operators at the BUSINESS_RESERVATION anchor boundary (5/month cap), surfaces a quantified KES revenue-exposure figure, and offers an immediate per-event M-Pesa escrow path at 2.5% of agreed fare as an alternative to subscription upgrade. Operators who repeatedly pay per-event fees receive inline copy showing cumulative cost vs Starter subscription price, driving subscription conversion. The loop self-reinforces: each QUOTA_EXCEEDED event that converts to a per-event escrow payment enriches the exposure ledger, which in turn sharpens the upgrade prompt shown on the next cycle. Redis-cached gate evaluation keeps the anchor-ledger endpoint within latency SLA while Daraja STK push callbacks atomically complete the escrow and fire the ledger anchor, ensuring >95% escrow reliability.",
   "linked_feature": "M-Pesa Payment Store & STK Push Flow",
   "linked_feature_id": "m_pesa_payment_store_stk_push_flow",
-  "growth_pillars": [
-    "engagement",
-    "retention"
-  ],
+  "growth_pillars": ["engagement", "retention"],
   "requirements": {
     "files": [
       {
@@ -342,9 +339,7 @@
     ]
   },
   "metrics": {
-    "data_actions": [
-      "per_event_escrow_completed"
-    ],
+    "data_actions": ["per_event_escrow_completed"],
     "success_criteria": [
       "per_event_escrow_first_completed rate > 40% of operators who hit QUOTA_EXCEEDED with a fare-bearing booking within the same session",
       "Subscription conversion within 30 days of first QUOTA_EXCEEDED event > 25% of affected operators",

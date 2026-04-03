@@ -1,5 +1,5 @@
-import * as THREE from 'three'
-import { GRID_RESOLUTION } from '../BusConstants'
+import * as THREE from "three"
+import { GRID_RESOLUTION } from "../BusConstants"
 
 interface GridCell {
   x: number
@@ -9,18 +9,18 @@ interface GridCell {
 }
 
 export class BusGeometry {
-  busModel:     THREE.Object3D
-  raycaster:    THREE.Raycaster
-  busBounds:    THREE.Box3 | null
-  busSize:      THREE.Vector3
-  busCenter:    THREE.Vector3
+  busModel: THREE.Object3D
+  raycaster: THREE.Raycaster
+  busBounds: THREE.Box3 | null
+  busSize: THREE.Vector3
+  busCenter: THREE.Vector3
 
   constructor(busModel: THREE.Object3D) {
-    this.busModel   = busModel
-    this.raycaster  = new THREE.Raycaster()
-    this.busBounds  = null
-    this.busSize    = new THREE.Vector3()
-    this.busCenter  = new THREE.Vector3()
+    this.busModel = busModel
+    this.raycaster = new THREE.Raycaster()
+    this.busBounds = null
+    this.busSize = new THREE.Vector3()
+    this.busCenter = new THREE.Vector3()
   }
 
   computeBusBounds() {
@@ -29,7 +29,9 @@ export class BusGeometry {
     this.busBounds.getCenter(this.busCenter)
 
     if (this.busSize.length() < 0.001) {
-      console.warn('[BusGeometry] Bounding box is near-zero — model may not be in scene yet')
+      console.warn(
+        "[BusGeometry] Bounding box is near-zero — model may not be in scene yet",
+      )
     }
   }
 
@@ -37,7 +39,7 @@ export class BusGeometry {
     if (!this.busBounds) return []
 
     const maxDim = Math.max(this.busSize.x, this.busSize.z)
-    const res    = maxDim > 50 ? GRID_RESOLUTION * (maxDim / 10) : GRID_RESOLUTION
+    const res = maxDim > 50 ? GRID_RESOLUTION * (maxDim / 10) : GRID_RESOLUTION
 
     const cols = Math.max(1, Math.floor(this.busSize.x / res))
     const rows = Math.max(1, Math.floor(this.busSize.z / res))
@@ -48,7 +50,8 @@ export class BusGeometry {
         const worldX = this.busBounds.min.x + (x + 0.5) * res
         const worldZ = this.busBounds.min.z + (z + 0.5) * res
         cells.push({
-          x, z,
+          x,
+          z,
           position: new THREE.Vector3(worldX, this.busCenter.y, worldZ),
           blocked: false,
         })
@@ -75,7 +78,11 @@ export class BusGeometry {
     const floorY = this.busBounds.min.y + this.busSize.y * 0.15
 
     cells.forEach((cell) => {
-      const origin = new THREE.Vector3(cell.position.x, this.busBounds!.max.y, cell.position.z)
+      const origin = new THREE.Vector3(
+        cell.position.x,
+        this.busBounds!.max.y,
+        cell.position.z,
+      )
       this.raycaster.set(origin, new THREE.Vector3(0, -1, 0))
       const hits = this.raycaster.intersectObject(this.busModel, true)
       if (!hits.length) return
@@ -88,7 +95,11 @@ export class BusGeometry {
     const floorY = this.busBounds.min.y + this.busSize.y * 0.12
 
     cells.forEach((cell) => {
-      const origin = new THREE.Vector3(cell.position.x, this.busBounds!.max.y, cell.position.z)
+      const origin = new THREE.Vector3(
+        cell.position.x,
+        this.busBounds!.max.y,
+        cell.position.z,
+      )
       this.raycaster.set(origin, new THREE.Vector3(0, -1, 0))
       const hits = this.raycaster.intersectObject(this.busModel, true)
       if (!hits.length) return

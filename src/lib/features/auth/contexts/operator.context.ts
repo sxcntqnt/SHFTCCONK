@@ -19,9 +19,9 @@
 //   One OperatorOrgSlot per org-level jurisdiction.
 //   Operator switches active org via setActiveOperatorOrg(orgId).
 
-import { derived, get } from 'svelte/store'
-import type { Tables } from '../../../DatabaseDefinitions'
-import type { UserState } from '$lib/features/auth/services/userState.server'
+import { derived, get } from "svelte/store"
+import type { Tables } from "../../../DatabaseDefinitions"
+import type { UserState } from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,
   extractPermissions,
@@ -29,23 +29,23 @@ import {
   extractOrgMemberships,
   isAllowed,
   ACTOR_TYPES,
-} from '$lib/features/auth/contexts/context.template'
+} from "$lib/features/auth/contexts/context.template"
 import type {
   EffectivePermission,
   Jurisdiction,
-} from '$lib/features/auth/contexts/context.template'
-import { ACTIONS } from '$lib/features/auth/stores/permisions'
+} from "$lib/features/auth/contexts/context.template"
+import { ACTIONS } from "$lib/features/auth/stores/permisions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActorRow = Tables<'actors'>
+type ActorRow = Tables<"actors">
 
 // ── Org slot ──────────────────────────────────────────────────────────────────
 
 export interface OperatorOrgSlot {
-  orgId:   string
+  orgId: string
   orgName: string
 
   /**
@@ -109,7 +109,8 @@ export interface OperatorContext {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { store, setContext, clearContext } = createContextStore<OperatorContext>()
+const { store, setContext, clearContext } =
+  createContextStore<OperatorContext>()
 export const operatorCtx = store
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,31 +129,32 @@ export const operatorCtx = store
  *   }
  */
 export function activateOperatorContext(userState: UserState): boolean {
-  const actorCtx = userState.activeContexts.find(
-    ctx => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === 'active'
-  ) ?? null
+  const actorCtx =
+    userState.activeContexts.find(
+      (ctx) => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === "active",
+    ) ?? null
 
   if (!actorCtx) {
     clearContext()
     return false
   }
 
-  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  const actor = userState.actors.find((a) => a.id === actorCtx.actorId)
   if (!actor) {
     clearContext()
     return false
   }
 
-  const jurisdictions  = extractJurisdictions(userState, actorCtx.actorId)
+  const jurisdictions = extractJurisdictions(userState, actorCtx.actorId)
   const orgMemberships = extractOrgMemberships(userState, actorCtx.actorId)
   const allPermissions = extractPermissions(userState, actorCtx.actorId)
 
   // ── Build org slots ─────────────────────────────────────────────────────────
   const orgSlots: OperatorOrgSlot[] = jurisdictions
-    .filter(j => j.level === 'org' && j.scope_id != null)
-    .map(j => {
-      const orgId     = j.scope_id as string
-      const orgMember = orgMemberships.find(m => m.organization_id === orgId)
+    .filter((j) => j.level === "org" && j.scope_id != null)
+    .map((j) => {
+      const orgId = j.scope_id as string
+      const orgMember = orgMemberships.find((m) => m.organization_id === orgId)
 
       // max_vehicles — set by ORG_CHAIR at approval time via actor_jurisdictions
       // -1 signals the column was not set (data quality issue — ORG_CHAIR should
@@ -161,20 +163,20 @@ export function activateOperatorContext(userState: UserState): boolean {
 
       // Vehicles this operator currently manages in this org
       const assignedVehicleIds = actorCtx.fleetOwnership
-        .filter(f => f.actor_id === actorCtx.actorId)
-        .map(f => f.vehicle_id)
+        .filter((f) => f.actor_id === actorCtx.actorId)
+        .map((f) => f.vehicle_id)
 
       // Stages/routes approved for this org
       const routeIds = actorCtx.stageAssignments
-        .filter(s => s.organization_id === orgId)
-        .map(s => s.id)
+        .filter((s) => s.organization_id === orgId)
+        .map((s) => s.id)
 
       // Permissions scoped to this org (federal grants included)
       const permissions = extractPermissions(userState, actorCtx.actorId, orgId)
 
       return {
         orgId,
-        orgName: orgMember?.org_name ?? 'Unknown SACCO',
+        orgName: orgMember?.org_name ?? "Unknown SACCO",
         maxVehicles,
         assignedVehicleIds,
         routeIds,
@@ -191,8 +193,8 @@ export function activateOperatorContext(userState: UserState): boolean {
   setContext({
     actor,
     orgSlots,
-    activeOrgId:    orgSlots[0].orgId,
-    activeSlot:     orgSlots[0],
+    activeOrgId: orgSlots[0].orgId,
+    activeSlot: orgSlots[0],
     allPermissions,
     jurisdictions,
   })
@@ -205,9 +207,9 @@ export function activateOperatorContext(userState: UserState): boolean {
  * Call when operator selects a different org from the org switcher UI.
  */
 export function setActiveOperatorOrg(orgId: string): void {
-  operatorCtx.update(ctx => {
+  operatorCtx.update((ctx) => {
     if (!ctx) return ctx
-    const slot = ctx.orgSlots.find(s => s.orgId === orgId)
+    const slot = ctx.orgSlots.find((s) => s.orgId === orgId)
     if (!slot) return ctx
     return { ...ctx, activeOrgId: orgId, activeSlot: slot }
   })
@@ -242,18 +244,42 @@ export const canOrganiseTrips = derived(
   ($c) => _allows($c, ACTIONS.BOOKING_ADD) && _allows($c, ACTIONS.BOOKING_EDIT),
 )
 
-export const canViewBookings  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
-export const canEditBooking   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.BOOKING_EDIT))
-export const canViewVehicles  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_VIEW))
-export const canListVehicles  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.VEHICLE_LIST))
-export const canLogFuel       = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_ADD))
-export const canViewFuel      = derived(operatorCtx, ($c) => _allows($c, ACTIONS.FUEL_LIST))
-export const canTrackLive     = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
-export const canTrackHistory  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.TRACKING_HISTORY))
-export const canListCustomers = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_LIST))
-export const canAddCustomer   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_ADD))
-export const canEditCustomer  = derived(operatorCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_EDIT))
-export const canViewReports   = derived(operatorCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
+export const canViewBookings = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_LIST),
+)
+export const canEditBooking = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_EDIT),
+)
+export const canViewVehicles = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_VIEW),
+)
+export const canListVehicles = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_LIST),
+)
+export const canLogFuel = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_ADD),
+)
+export const canViewFuel = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_LIST),
+)
+export const canTrackLive = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_LIVE),
+)
+export const canTrackHistory = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_HISTORY),
+)
+export const canListCustomers = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_LIST),
+)
+export const canAddCustomer = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_ADD),
+)
+export const canEditCustomer = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_EDIT),
+)
+export const canViewReports = derived(operatorCtx, ($c) =>
+  _allows($c, ACTIONS.REPORTS_VIEW),
+)
 
 // ── Cross-org stores ──────────────────────────────────────────────────────────
 
@@ -263,16 +289,33 @@ export const canViewReports   = derived(operatorCtx, ($c) => _allows($c, ACTIONS
  */
 export const canOrganiseTripsGlobally = derived(
   operatorCtx,
-  ($c) => _allowsGlobal($c, ACTIONS.BOOKING_ADD) && _allowsGlobal($c, ACTIONS.BOOKING_EDIT),
+  ($c) =>
+    _allowsGlobal($c, ACTIONS.BOOKING_ADD) &&
+    _allowsGlobal($c, ACTIONS.BOOKING_EDIT),
 )
 
-export const operatorOrgSlots         = derived(operatorCtx, ($c) => $c?.orgSlots        ?? [])
-export const operatorOrgCount         = derived(operatorCtx, ($c) => $c?.orgSlots.length ?? 0)
-export const activeOrgId              = derived(operatorCtx, ($c) => $c?.activeOrgId      ?? null)
-export const activeOrgName            = derived(operatorCtx, ($c) => $c?.activeSlot.orgName ?? '')
-export const activeAssignedVehicleIds = derived(operatorCtx, ($c) => $c?.activeSlot.assignedVehicleIds ?? [])
-export const activeMaxVehicles        = derived(operatorCtx, ($c) => $c?.activeSlot.maxVehicles ?? -1)
-export const activeRouteIds           = derived(operatorCtx, ($c) => $c?.activeSlot.routeIds ?? [])
+export const operatorOrgSlots = derived(operatorCtx, ($c) => $c?.orgSlots ?? [])
+export const operatorOrgCount = derived(
+  operatorCtx,
+  ($c) => $c?.orgSlots.length ?? 0,
+)
+export const activeOrgId = derived(operatorCtx, ($c) => $c?.activeOrgId ?? null)
+export const activeOrgName = derived(
+  operatorCtx,
+  ($c) => $c?.activeSlot.orgName ?? "",
+)
+export const activeAssignedVehicleIds = derived(
+  operatorCtx,
+  ($c) => $c?.activeSlot.assignedVehicleIds ?? [],
+)
+export const activeMaxVehicles = derived(
+  operatorCtx,
+  ($c) => $c?.activeSlot.maxVehicles ?? -1,
+)
+export const activeRouteIds = derived(
+  operatorCtx,
+  ($c) => $c?.activeSlot.routeIds ?? [],
+)
 
 /**
  * Vehicle utilisation in the active org — 0.0 to 1.0.
@@ -281,7 +324,7 @@ export const activeRouteIds           = derived(operatorCtx, ($c) => $c?.activeS
 export const vehicleUtilisation = derived(operatorCtx, ($c) => {
   if (!$c) return 0
   const { assignedVehicleIds, maxVehicles } = $c.activeSlot
-  if (maxVehicles <= 0) return 0   // -1 = no cap set
+  if (maxVehicles <= 0) return 0 // -1 = no cap set
   return assignedVehicleIds.length / maxVehicles
 })
 
@@ -292,20 +335,23 @@ export const vehicleUtilisation = derived(operatorCtx, ($c) => {
 export const isAtVehicleLimit = derived(operatorCtx, ($c) => {
   if (!$c) return false
   const { assignedVehicleIds, maxVehicles } = $c.activeSlot
-  if (maxVehicles <= 0) return false  // -1 = no cap set
+  if (maxVehicles <= 0) return false // -1 = no cap set
   return assignedVehicleIds.length >= maxVehicles
 })
 
 /** True if operator manages more than one org — show org switcher */
-export const isMultiOrg = derived(operatorCtx, ($c) => ($c?.orgSlots.length ?? 0) > 1)
+export const isMultiOrg = derived(
+  operatorCtx,
+  ($c) => ($c?.orgSlots.length ?? 0) > 1,
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getOperatorActorId      = () => get(operatorCtx)?.actor.id    ?? null
-export const getOperatorActiveOrg    = () => get(operatorCtx)?.activeOrgId  ?? null
-export const getOperatorOrgSlots     = () => get(operatorCtx)?.orgSlots     ?? []
+export const getOperatorActorId = () => get(operatorCtx)?.actor.id ?? null
+export const getOperatorActiveOrg = () => get(operatorCtx)?.activeOrgId ?? null
+export const getOperatorOrgSlots = () => get(operatorCtx)?.orgSlots ?? []
 export const isOperatorContextActive = () => get(operatorCtx) !== null
 
 /**

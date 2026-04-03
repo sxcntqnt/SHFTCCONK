@@ -1,7 +1,7 @@
 // lib/security/tenantGuard.ts
 
-import { get } from 'svelte/store';
-import { user } from '$lib/stores/user';
+import { get } from "svelte/store"
+import { user } from "$lib/stores/user"
 
 /* ============================================================
    PRODUCTION-GRADE TENANT GUARD
@@ -12,9 +12,9 @@ import { user } from '$lib/stores/user';
 ============================================================ */
 
 export class TenantGuardError extends Error {
-  constructor(message = 'Cross-tenant access denied') {
-    super(message);
-    this.name = 'TenantGuardError';
+  constructor(message = "Cross-tenant access denied") {
+    super(message)
+    this.name = "TenantGuardError"
   }
 }
 
@@ -26,24 +26,24 @@ export class TenantGuardError extends Error {
  */
 export function enforceTenantAccess(
   resourceOrgId: string,
-  throwOnFail = true
+  throwOnFail = true,
 ): boolean {
-  const currentUser = get(user);
+  const currentUser = get(user)
 
   if (!currentUser.organizationId) {
     if (throwOnFail) {
-      throw new TenantGuardError('User has no tenant context');
+      throw new TenantGuardError("User has no tenant context")
     }
-    return false;
+    return false
   }
 
-  const hasAccess = currentUser.organizationId === resourceOrgId;
+  const hasAccess = currentUser.organizationId === resourceOrgId
 
   if (!hasAccess && throwOnFail) {
-    throw new TenantGuardError();
+    throw new TenantGuardError()
   }
 
-  return hasAccess;
+  return hasAccess
 }
 
 /**
@@ -51,10 +51,10 @@ export function enforceTenantAccess(
  */
 export function withTenantGuard<T extends (...args: any[]) => any>(
   resourceOrgId: string,
-  fn: T
+  fn: T,
 ): T {
   return ((...args: Parameters<T>): ReturnType<T> => {
-    enforceTenantAccess(resourceOrgId);
-    return fn(...args);
-  }) as T;
+    enforceTenantAccess(resourceOrgId)
+    return fn(...args)
+  }) as T
 }

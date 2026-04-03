@@ -19,9 +19,9 @@
 //   - No activateSuperAdminContext() calls (belongs in +layout.ts)
 //   - No domain logic — only data fetching for the admin nav/dashboard
 
-import type { LayoutServerLoad } from './$types'
-import { redirect }              from '@sveltejs/kit'
-import { ACTOR_TYPES }           from '$lib/features/auth/contexts/context.template'
+import type { LayoutServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { ACTOR_TYPES } from "$lib/features/auth/contexts/context.template"
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const { userState, activeContext, supabase } = locals
@@ -31,18 +31,18 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // authGuardHandle already redirected unauthenticated users to /login.
   // Here we check the domain condition: must have an admin-level actor.
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   const hasAdminActor = userState.activeContexts.some(
-    ctx =>
+    (ctx) =>
       [ACTOR_TYPES.SUPER_ADMIN, ACTOR_TYPES.ADMIN].includes(
-        ctx.type as typeof ACTOR_TYPES.SUPER_ADMIN | typeof ACTOR_TYPES.ADMIN
-      ) && ctx.status === 'active'
+        ctx.type as typeof ACTOR_TYPES.SUPER_ADMIN | typeof ACTOR_TYPES.ADMIN,
+      ) && ctx.status === "active",
   )
 
   if (!hasAdminActor) {
-    throw redirect(303, '/unauthorized')
+    throw redirect(303, "/unauthorized")
   }
 
   // ── Domain data fetch ──────────────────────────────────────────────────────
@@ -59,28 +59,28 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   ] = await Promise.all([
     // Total pending actor_requests — badge on nav link
     supabase
-      .from('actor_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending'),
+      .from("actor_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending"),
 
     // Audit events in last 24h — activity indicator
     supabase
-      .from('audit_logs')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', yesterday),
+      .from("audit_logs")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", yesterday),
 
     // Active org count — dashboard summary card
     supabase
-      .from('organizations')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active'),
+      .from("organizations")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active"),
 
     // Pending requests by type — nav badge breakdown
     // e.g. "3 org_member, 1 crew" without a GROUP BY RPC
     supabase
-      .from('actor_requests')
-      .select('requested_type')
-      .eq('status', 'pending'),
+      .from("actor_requests")
+      .select("requested_type")
+      .eq("status", "pending"),
   ])
 
   // Build type breakdown client-side from the raw rows
@@ -97,8 +97,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
     // ── Admin nav + dashboard summary data ────────────────────────
     pendingRequestCount: pendingRequestsResult.count ?? 0,
-    recentAuditCount:    recentAuditResult.count     ?? 0,
-    orgCount:            orgCountResult.count         ?? 0,
+    recentAuditCount: recentAuditResult.count ?? 0,
+    orgCount: orgCountResult.count ?? 0,
     typeBreakdown,
   }
 }

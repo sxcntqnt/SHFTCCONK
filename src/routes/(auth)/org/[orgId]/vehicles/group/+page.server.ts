@@ -1,34 +1,36 @@
 // src/routes/(auth)/org/[orgId]/vehicles/group/+page.server.ts
-import type { PageServerLoad, Actions } from './$types'
-import { redirect, fail } from '@sveltejs/kit'
+import type { PageServerLoad, Actions } from "./$types"
+import { redirect, fail } from "@sveltejs/kit"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const { safeGetSession, supabase } = locals
   const { session } = await safeGetSession()
-  if (!session) redirect(303, '/login')
+  if (!session) redirect(303, "/login")
 
   const orgId = params.orgId
 
   const { data: groups, error } = await supabase
-    .from('vehicle_groups')
-    .select(`
+    .from("vehicle_groups")
+    .select(
+      `
       id,
       name,
       description,
       vehicles ( count )
-    `)
-    .eq('organization_id', orgId)
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .eq("organization_id", orgId)
+    .order("created_at", { ascending: false })
 
-  if (error) console.error('[groups load]', error)
+  if (error) console.error("[groups load]", error)
 
   return {
     orgId,
     groups: (groups ?? []).map((g) => ({
-      id:          g.id,
-      name:        g.name,
-      description: g.description ?? '',
-      vehicles:    (g.vehicles as any)?.[0]?.count ?? 0,
+      id: g.id,
+      name: g.name,
+      description: g.description ?? "",
+      vehicles: (g.vehicles as any)?.[0]?.count ?? 0,
     })),
   }
 }
@@ -38,16 +40,16 @@ export const actions: Actions = {
   create: async ({ params, request, locals }) => {
     const { safeGetSession, supabase } = locals
     const { session } = await safeGetSession()
-    if (!session) return fail(401, { message: 'Unauthorised' })
+    if (!session) return fail(401, { message: "Unauthorised" })
 
     const form = await request.formData()
-    const name = form.get('name')?.toString().trim()
-    const description = form.get('description')?.toString().trim() ?? ''
+    const name = form.get("name")?.toString().trim()
+    const description = form.get("description")?.toString().trim() ?? ""
 
-    if (!name) return fail(400, { message: 'Group name is required' })
+    if (!name) return fail(400, { message: "Group name is required" })
 
     const { error } = await supabase
-      .from('vehicle_groups')
+      .from("vehicle_groups")
       .insert({ organization_id: params.orgId, name, description })
 
     if (error) return fail(500, { message: error.message })
@@ -59,18 +61,18 @@ export const actions: Actions = {
   delete: async ({ params, request, locals }) => {
     const { safeGetSession, supabase } = locals
     const { session } = await safeGetSession()
-    if (!session) return fail(401, { message: 'Unauthorised' })
+    if (!session) return fail(401, { message: "Unauthorised" })
 
     const form = await request.formData()
-    const id = form.get('id')?.toString()
+    const id = form.get("id")?.toString()
 
-    if (!id) return fail(400, { message: 'Missing group id' })
+    if (!id) return fail(400, { message: "Missing group id" })
 
     const { error } = await supabase
-      .from('vehicle_groups')
+      .from("vehicle_groups")
       .delete()
-      .eq('id', id)
-      .eq('organization_id', params.orgId) // scope guard
+      .eq("id", id)
+      .eq("organization_id", params.orgId) // scope guard
 
     if (error) return fail(500, { message: error.message })
 

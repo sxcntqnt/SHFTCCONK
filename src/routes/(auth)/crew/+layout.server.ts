@@ -22,25 +22,25 @@
 //   2. Fetch — vehicle assignment with org name join
 //   3. Return — crew summary + assignment for layout shell + store patch
 
-import type { LayoutServerLoad } from './$types'
-import { redirect }              from '@sveltejs/kit'
-import { ACTOR_TYPES }           from '$lib/features/auth/contexts/context.template'
+import type { LayoutServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { ACTOR_TYPES } from "$lib/features/auth/contexts/context.template"
 
 // Shared vehicle join shape for driver + conductor tables
 type VehicleJoin = {
-  id:              string
-  reg_number:      string
-  capacity:        number | null
-  active:          boolean | null
+  id: string
+  reg_number: string
+  capacity: number | null
+  active: boolean | null
   organization_id: string | null
-  organizations:   { id: string; name: string } | null
+  organizations: { id: string; name: string } | null
 }
 
 type AssignmentRow = {
-  actor_id:       string
-  vehicle_id:     string
+  actor_id: string
+  vehicle_id: string
   active_trip_id: string | null
-  vehicles:       VehicleJoin | null
+  vehicles: VehicleJoin | null
 }
 
 export const load: LayoutServerLoad = async ({ locals }) => {
@@ -48,21 +48,21 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
   // ── Gate ───────────────────────────────────────────────────────────────────
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   // Find the active crew actor — DRIVER preferred over CONDUCTOR
   const crewActorCtx =
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === "active",
     ) ??
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === "active",
     ) ??
     null
 
   if (!crewActorCtx) {
-    throw redirect(303, '/app/dashboard?denied=crew_not_active')
+    throw redirect(303, "/app/dashboard?denied=crew_not_active")
   }
 
   const isDriver = crewActorCtx.type === ACTOR_TYPES.DRIVER
@@ -73,12 +73,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // driver_assignments has shift_state; conductor_assignments does not.
   // Both have vehicle_id and active_trip_id.
   const assignmentTable = isDriver
-    ? 'driver_assignments'
-    : 'conductor_assignments'
+    ? "driver_assignments"
+    : "conductor_assignments"
 
   const { data: assignment, error } = await supabase
     .from(assignmentTable)
-    .select(`
+    .select(
+      `
       actor_id,
       vehicle_id,
       active_trip_id,
@@ -90,14 +91,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         organization_id,
         organizations ( id, name )
       )
-    `)
-    .eq('actor_id', crewActorCtx.actorId)
+    `,
+    )
+    .eq("actor_id", crewActorCtx.actorId)
     .maybeSingle()
 
   if (error) {
     // Non-fatal — crew can still access the dashboard without an assignment.
     // The "waiting for assignment" UI handles this state.
-    console.error('[crew layout] vehicle assignment fetch failed:', error)
+    console.error("[crew layout] vehicle assignment fetch failed:", error)
   }
 
   const vehicle = assignment?.vehicles as VehicleJoin | null
@@ -107,13 +109,13 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // Also used by +layout.ts to patch crewCtx with the richer vehicle data
   // that resolveUserState couldn't provide (reg_number + org name join).
   const crewSummary = {
-    actorId:    crewActorCtx.actorId,
-    crewType:   isDriver ? 'DRIVER' : 'CONDUCTOR',
+    actorId: crewActorCtx.actorId,
+    crewType: isDriver ? "DRIVER" : "CONDUCTOR",
     isDriver,
-    plate:      vehicle?.reg_number    ?? null,
-    vehicleId:  vehicle?.id            ?? null,
-    tripId:     assignment?.active_trip_id ?? null,
-    orgName:    vehicle?.organizations?.name ?? null,
+    plate: vehicle?.reg_number ?? null,
+    vehicleId: vehicle?.id ?? null,
+    tripId: assignment?.active_trip_id ?? null,
+    orgName: vehicle?.organizations?.name ?? null,
     hasVehicle: assignment !== null && vehicle !== null,
   } as const
 

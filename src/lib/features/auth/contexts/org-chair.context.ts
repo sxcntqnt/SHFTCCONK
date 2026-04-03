@@ -34,9 +34,9 @@
 //         .gt('expires_at', new Date().toISOString())
 //     Then expose as actorCtx.outboundDelegations in ActorContext.
 
-import { derived, get } from 'svelte/store'
-import type { Tables } from '../../../DatabaseDefinitions'
-import type { UserState } from '$lib/features/auth/services/userState.server'
+import { derived, get } from "svelte/store"
+import type { Tables } from "../../../DatabaseDefinitions"
+import type { UserState } from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,
   extractPermissions,
@@ -44,24 +44,24 @@ import {
   extractOrgMemberships,
   isAllowed,
   ACTOR_TYPES,
-} from '$lib/features/auth/contexts/context.template'
+} from "$lib/features/auth/contexts/context.template"
 import type {
   EffectivePermission,
   Jurisdiction,
-} from '$lib/features/auth/contexts/context.template'
-import { ACTIONS } from '$lib/features/auth/stores/permisions'
+} from "$lib/features/auth/contexts/context.template"
+import { ACTIONS } from "$lib/features/auth/stores/permisions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActorRow = Tables<'actors'>
+type ActorRow = Tables<"actors">
 
 // ── Context shape ─────────────────────────────────────────────────────────────
 
 export interface OrgChairContext {
-  actor:   ActorRow
-  orgId:   string
+  actor: ActorRow
+  orgId: string
   orgName: string
 
   jurisdictions: Jurisdiction[]
@@ -87,7 +87,8 @@ export interface OrgChairContext {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { store, setContext, clearContext } = createContextStore<OrgChairContext>()
+const { store, setContext, clearContext } =
+  createContextStore<OrgChairContext>()
 export const orgChairCtx = store
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -117,27 +118,30 @@ export function activateOrgChairContext(
 ): boolean {
   // Find the ORG_CHAIR ActorContext with jurisdiction over this org.
   // Federal jurisdiction = chair over all orgs (platform admin edge case).
-  const actorCtx = userState.activeContexts.find(ctx => {
-    if (ctx.type !== ACTOR_TYPES.ORG_CHAIR || ctx.status !== 'active') return false
-    return ctx.jurisdictions.some(
-      j => j.level === 'federal' || (j.level === 'org' && j.scope_id === orgId)
-    )
-  }) ?? null
+  const actorCtx =
+    userState.activeContexts.find((ctx) => {
+      if (ctx.type !== ACTOR_TYPES.ORG_CHAIR || ctx.status !== "active")
+        return false
+      return ctx.jurisdictions.some(
+        (j) =>
+          j.level === "federal" || (j.level === "org" && j.scope_id === orgId),
+      )
+    }) ?? null
 
   if (!actorCtx) {
     clearContext()
     return false
   }
 
-  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  const actor = userState.actors.find((a) => a.id === actorCtx.actorId)
   if (!actor) {
     clearContext()
     return false
   }
 
-  const jurisdictions  = extractJurisdictions(userState, actorCtx.actorId)
+  const jurisdictions = extractJurisdictions(userState, actorCtx.actorId)
   const orgMemberships = extractOrgMemberships(userState, actorCtx.actorId)
-  const orgMembership  = orgMemberships.find(m => m.organization_id === orgId)
+  const orgMembership = orgMemberships.find((m) => m.organization_id === orgId)
 
   // Permissions scoped to this specific org (org-level scope or federal)
   const permissions = extractPermissions(userState, actorCtx.actorId, orgId)
@@ -153,7 +157,7 @@ export function activateOrgChairContext(
   setContext({
     actor,
     orgId,
-    orgName:             orgMembership?.org_name ?? 'Unknown SACCO',
+    orgName: orgMembership?.org_name ?? "Unknown SACCO",
     jurisdictions,
     permissions,
     hasDelegatedApproval,
@@ -185,16 +189,24 @@ const _allows = (ctx: OrgChairContext | null, action: string): boolean =>
  * Approve/reject passenger + crew join requests (member.approve).
  * Primary revenue action — approved passengers → ticket commissions.
  */
-export const canApproveMembers    = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.MEMBER_APPROVE))
+export const canApproveMembers = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_APPROVE),
+)
 
 /** Send invite tokens to new SACCO members (member.invite) */
-export const canInviteMembers     = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.MEMBER_INVITE))
+export const canInviteMembers = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_INVITE),
+)
 
 /** View pending actor_requests for this org (member.requests) */
-export const canViewMemberRequests = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.MEMBER_REQUESTS))
+export const canViewMemberRequests = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_REQUESTS),
+)
 
 /** Manage org settings, branding, metadata (org.manage) */
-export const canManageOrgSettings = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.ORG_MANAGE))
+export const canManageOrgSettings = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.ORG_MANAGE),
+)
 
 /**
  * Manage vehicles — requires vehicle.list OR vehicle.edit.
@@ -202,48 +214,61 @@ export const canManageOrgSettings = derived(orgChairCtx, ($c) => _allows($c, ACT
  */
 export const canManageVehicles = derived(
   orgChairCtx,
-  ($c) => _allows($c, ACTIONS.VEHICLE_LIST) || _allows($c, ACTIONS.VEHICLE_EDIT),
+  ($c) =>
+    _allows($c, ACTIONS.VEHICLE_LIST) || _allows($c, ACTIONS.VEHICLE_EDIT),
 )
 
 /** View finance records (finance.list) */
-export const canViewFinance     = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.FINANCE_LIST))
+export const canViewFinance = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.FINANCE_LIST),
+)
 
 /** Live tracking (tracking.live) */
-export const canTrackLive       = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
+export const canTrackLive = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_LIVE),
+)
 
 /** Manage drivers (driver.list) */
-export const canManageDrivers   = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.DRIVER_LIST))
+export const canManageDrivers = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.DRIVER_LIST),
+)
 
 /** View maintenance records (maintenance.view) */
-export const canViewMaintenance = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.MAINTENANCE_VIEW))
+export const canViewMaintenance = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.MAINTENANCE_VIEW),
+)
 
 /** View org reports (reports.view) */
-export const canViewOrgReports  = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
+export const canViewOrgReports = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.REPORTS_VIEW),
+)
 
 /** Full settings access (settings.all) */
-export const canChangeSettings  = derived(orgChairCtx, ($c) => _allows($c, ACTIONS.SETTINGS_ALL))
+export const canChangeSettings = derived(orgChairCtx, ($c) =>
+  _allows($c, ACTIONS.SETTINGS_ALL),
+)
 
 /** Active org ID — avoids $orgChairCtx?.orgId in every template */
-export const activeOrgId = derived(orgChairCtx, ($c) => $c?.orgId   ?? null)
+export const activeOrgId = derived(orgChairCtx, ($c) => $c?.orgId ?? null)
 
 /** Active org name — for page titles, nav breadcrumbs */
-export const activeOrgName = derived(orgChairCtx, ($c) => $c?.orgName ?? '')
+export const activeOrgName = derived(orgChairCtx, ($c) => $c?.orgName ?? "")
 
 /** All allowed action strings for this chair in this org — for debug panel */
 export const chairAllowedActions = derived(
   orgChairCtx,
-  ($c) => $c?.permissions
-    .filter(p => p.effect === 'allow')
-    .map(p => p.action) ?? [],
+  ($c) =>
+    $c?.permissions.filter((p) => p.effect === "allow").map((p) => p.action) ??
+    [],
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getOrgChairActorId = () => get(orgChairCtx)?.actor.id  ?? null
-export const getActiveOrgId     = () => get(orgChairCtx)?.orgId      ?? null
-export const isOrgChairActive   = () => get(orgChairCtx) !== null
+export const getOrgChairActorId = () => get(orgChairCtx)?.actor.id ?? null
+export const getActiveOrgId = () => get(orgChairCtx)?.orgId ?? null
+export const isOrgChairActive = () => get(orgChairCtx) !== null
 
 /**
  * Imperative permission check scoped to this org.

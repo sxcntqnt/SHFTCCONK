@@ -13,8 +13,8 @@
 //   - PaymentTransaction now typed as MpesaTransaction | CashTransaction.
 //   - summarizeReconciliation now returns totalMpesa, totalCash, totalShortfall.
 
-import { json }               from "@sveltejs/kit"
-import type { RequestHandler }  from "./$types"
+import { json } from "@sveltejs/kit"
+import type { RequestHandler } from "./$types"
 import {
   reconcilePayments,
   summarizeReconciliation,
@@ -42,10 +42,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   const { payments, remittances, orgId, date } = body as {
-    payments:    unknown
+    payments: unknown
     remittances: unknown
-    orgId:       unknown
-    date?:       unknown
+    orgId: unknown
+    date?: unknown
   }
 
   // ── Validate ──────────────────────────────────────────────────────────────
@@ -65,7 +65,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   if (remittances.length > 500) {
-    return json({ error: "Maximum 500 vehicles per reconciliation run" }, { status: 422 })
+    return json(
+      { error: "Maximum 500 vehicles per reconciliation run" },
+      { status: 422 },
+    )
   }
 
   if (typeof orgId !== "string" || !orgId) {
@@ -93,7 +96,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   try {
     results = reconcilePayments(
-      payments    as PaymentTransaction[],
+      payments as PaymentTransaction[],
       remittances as RemittanceRecord[],
     )
     summary = summarizeReconciliation(results)
@@ -105,31 +108,30 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // ── Persist to reconciliation_events ─────────────────────────────────────
   // Upsert so re-running reconciliation for the same date/org/vehicle
   // updates rather than duplicates.
-  const reconciliationDate = typeof date === "string"
-    ? date
-    : new Date().toISOString().slice(0, 10)  // YYYY-MM-DD
+  const reconciliationDate =
+    typeof date === "string" ? date : new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 
   const rows = results.map((r) => ({
-    organization_id:  orgId,
-    vehicle_id:       r.vehicleId,
-    total_collected:  r.collectedAmount,
-    expected_amount:  r.expectedAmount,
-    variance:         r.variance,
-    status:           r.status,
-    mpesa_amount:     r.mpesaAmount,
-    cash_amount:      r.cashAmount,
+    organization_id: orgId,
+    vehicle_id: r.vehicleId,
+    total_collected: r.collectedAmount,
+    expected_amount: r.expectedAmount,
+    variance: r.variance,
+    status: r.status,
+    mpesa_amount: r.mpesaAmount,
+    cash_amount: r.cashAmount,
     transaction_refs: r.transactionRefs,
-    mpesa_phones:     r.mpesaPhones,
-    reconciled_date:  reconciliationDate,
-    reconciled_by:    session.user.id,
-    created_at:       new Date().toISOString(),
+    mpesa_phones: r.mpesaPhones,
+    reconciled_date: reconciliationDate,
+    reconciled_by: session.user.id,
+    created_at: new Date().toISOString(),
   }))
 
   const { error: upsertError } = await supabase
     .from("reconciliation_events")
     .upsert(rows, {
-      onConflict:        "organization_id,vehicle_id,reconciled_date",
-      ignoreDuplicates:  false,   // update on conflict
+      onConflict: "organization_id,vehicle_id,reconciled_date",
+      ignoreDuplicates: false, // update on conflict
     })
 
   if (upsertError) {
@@ -137,40 +139,41 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // Return results anyway — caller can retry the persist separately
     return json(
       {
-        status:          "COMPUTED_NOT_PERSISTED",
-        warning:         "Reconciliation computed but not saved. Retry or contact support.",
-        detail:          upsertError.message,
-        reconciliation:  results,
+        status: "COMPUTED_NOT_PERSISTED",
+        warning:
+          "Reconciliation computed but not saved. Retry or contact support.",
+        detail: upsertError.message,
+        reconciliation: results,
         summary,
       },
-      { status: 207 },  // 207 Multi-Status — partial success
+      { status: 207 }, // 207 Multi-Status — partial success
     )
   }
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   "reconciliation_run",
+    event_type: "reconciliation_run",
     performed_by: session.user.id,
     target_table: "reconciliation_events",
     details: {
-      org_id:           orgId,
-      date:             reconciliationDate,
-      vehicle_count:    results.length,
-      total_collected:  summary.totalCollected,
-      total_expected:   summary.totalExpected,
-      total_variance:   summary.totalVariance,
-      matched_count:    summary.matchedCount,
-      shortfall_count:  summary.shortfallCount,
-      overage_count:    summary.overageCount,
+      org_id: orgId,
+      date: reconciliationDate,
+      vehicle_count: results.length,
+      total_collected: summary.totalCollected,
+      total_expected: summary.totalExpected,
+      total_variance: summary.totalVariance,
+      matched_count: summary.matchedCount,
+      shortfall_count: summary.shortfallCount,
+      overage_count: summary.overageCount,
     },
   })
 
   // ── Respond ───────────────────────────────────────────────────────────────
   return json({
-    status:         "OK",
+    status: "OK",
     orgId,
-    date:           reconciliationDate,
-    vehicleCount:   results.length,
+    date: reconciliationDate,
+    vehicleCount: results.length,
     reconciliation: results,
     summary,
   })

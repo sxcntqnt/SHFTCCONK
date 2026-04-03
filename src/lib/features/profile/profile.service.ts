@@ -14,41 +14,41 @@
 //   upsertProfile
 //   upsertActorRequest
 
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ProfileInput {
-  fullName:             string
-  phone:                string
-  companyName?:         string
-  website?:             string
-  startingLocations?:   string
-  destinations?:        string
-  highwayCorridors?:    string[]
-  routesToTrack?:       string[]
+  fullName: string
+  phone: string
+  companyName?: string
+  website?: string
+  startingLocations?: string
+  destinations?: string
+  highwayCorridors?: string[]
+  routesToTrack?: string[]
   preferredVehicleType?: string[]
-  socialMediaLinks?:    string
-  emergencyContacts?:   string
-  languagesSpoken?:     string[]
-  timeZone?:            string
-  workingHoursStart?:   string
-  workingHoursEnd?:     string
-  orgIds?:              string[]
+  socialMediaLinks?: string
+  emergencyContacts?: string
+  languagesSpoken?: string[]
+  timeZone?: string
+  workingHoursStart?: string
+  workingHoursEnd?: string
+  orgIds?: string[]
 }
 
 export interface ProfileValidationError {
-  fields:  string[]
+  fields: string[]
   message: string
 }
 
 export interface Organization {
-  id:     string
-  name:   string
+  id: string
+  name: string
   status: string
-  type:   string | null
+  type: string | null
   county: string | null
 }
 
@@ -65,11 +65,14 @@ export interface Organization {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function _hasFullProfile(
-  profile: { full_name?: string | null; phone?: string | null } | null | undefined,
+  profile:
+    | { full_name?: string | null; phone?: string | null }
+    | null
+    | undefined,
 ): boolean {
   if (!profile) return false
-  const name = profile.full_name?.trim() ?? ''
-  if (!name || name.toLowerCase() === 'user') return false
+  const name = profile.full_name?.trim() ?? ""
+  if (!name || name.toLowerCase() === "user") return false
   if (!profile.phone?.trim()) return false
   return true
 }
@@ -83,13 +86,13 @@ export function validateProfileInput(
 ): ProfileValidationError | null {
   const fields: string[] = []
 
-  if (!input.fullName?.trim()) fields.push('fullName')
+  if (!input.fullName?.trim()) fields.push("fullName")
 
-  const phoneDigits = input.phone?.replace(/\D/g, '') ?? ''
-  if (!phoneDigits || phoneDigits.length < 9) fields.push('phone')
+  const phoneDigits = input.phone?.replace(/\D/g, "") ?? ""
+  if (!phoneDigits || phoneDigits.length < 9) fields.push("phone")
 
   if (fields.length > 0) {
-    return { fields, message: 'Please fix the highlighted fields.' }
+    return { fields, message: "Please fix the highlighted fields." }
   }
   return null
 }
@@ -99,9 +102,9 @@ export function validateProfileInput(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function normalisePhone(phone: string): string {
-  let digits = phone.replace(/\D/g, '')
-  if (digits.startsWith('0')) digits = '254' + digits.slice(1)
-  if (!digits.startsWith('+')) digits = '+' + digits
+  let digits = phone.replace(/\D/g, "")
+  if (digits.startsWith("0")) digits = "254" + digits.slice(1)
+  if (!digits.startsWith("+")) digits = "+" + digits
   return digits
 }
 
@@ -110,42 +113,42 @@ export function normalisePhone(phone: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function upsertProfile(
-  supabase:  SupabaseClient,
-  userId:    string,
-  input:     ProfileInput & { normalisedPhone: string },
+  supabase: SupabaseClient,
+  userId: string,
+  input: ProfileInput & { normalisedPhone: string },
 ): Promise<string | null> {
-  const { error } = await supabase
-    .from('profiles')
-    .upsert(
-      {
-        id:                    userId,
-        full_name:             input.fullName.trim(),
-        phone:                 input.normalisedPhone,
-        company_name:          input.companyName?.trim()          || null,
-        website:               input.website?.trim()               || null,
-        starting_locations:    input.startingLocations?.trim()    || null,
-        destinations:          input.destinations?.trim()          || null,
-        highway_corridors:     input.highwayCorridors?.length
-                                 ? input.highwayCorridors : null,
-        routes_to_track:       input.routesToTrack?.length
-                                 ? input.routesToTrack    : null,
-        preferred_vehicle_type: input.preferredVehicleType?.length
-                                 ? input.preferredVehicleType : null,
-        social_media_links:    input.socialMediaLinks?.trim()     || null,
-        emergency_contacts:    input.emergencyContacts?.trim()    || null,
-        languages_spoken:      input.languagesSpoken?.length
-                                 ? input.languagesSpoken : null,
-        time_zone:             input.timeZone?.trim()             || 'Africa/Nairobi',
-        working_hours_start:   input.workingHoursStart            || null,
-        working_hours_end:     input.workingHoursEnd              || null,
-        updated_at:            new Date().toISOString(),
-      },
-      { onConflict: 'id' },
-    )
+  const { error } = await supabase.from("profiles").upsert(
+    {
+      id: userId,
+      full_name: input.fullName.trim(),
+      phone: input.normalisedPhone,
+      company_name: input.companyName?.trim() || null,
+      website: input.website?.trim() || null,
+      starting_locations: input.startingLocations?.trim() || null,
+      destinations: input.destinations?.trim() || null,
+      highway_corridors: input.highwayCorridors?.length
+        ? input.highwayCorridors
+        : null,
+      routes_to_track: input.routesToTrack?.length ? input.routesToTrack : null,
+      preferred_vehicle_type: input.preferredVehicleType?.length
+        ? input.preferredVehicleType
+        : null,
+      social_media_links: input.socialMediaLinks?.trim() || null,
+      emergency_contacts: input.emergencyContacts?.trim() || null,
+      languages_spoken: input.languagesSpoken?.length
+        ? input.languagesSpoken
+        : null,
+      time_zone: input.timeZone?.trim() || "Africa/Nairobi",
+      working_hours_start: input.workingHoursStart || null,
+      working_hours_end: input.workingHoursEnd || null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  )
 
   if (error) {
-    console.error('[profile.service] upsert error:', error)
-    return 'Failed to save profile. Please try again.'
+    console.error("[profile.service] upsert error:", error)
+    return "Failed to save profile. Please try again."
   }
   return null
 }
@@ -158,18 +161,18 @@ export async function upsertProfile(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function upsertActorRequest(
-  supabase:        SupabaseClient,
-  userId:          string,
-  orgIds:          string[],
+  supabase: SupabaseClient,
+  userId: string,
+  orgIds: string[],
   normalisedPhone: string,
 ): Promise<void> {
   if (orgIds.length === 0) return
 
   const { data: existing } = await supabase
-    .from('actor_requests')
-    .select('id, payload')
-    .eq('profile_id', userId)
-    .eq('status', 'pending')
+    .from("actor_requests")
+    .select("id, payload")
+    .eq("profile_id", userId)
+    .eq("status", "pending")
     .maybeSingle()
 
   if (existing) {
@@ -180,31 +183,31 @@ export async function upsertActorRequest(
       ]),
     )
     const { error } = await supabase
-      .from('actor_requests')
+      .from("actor_requests")
       .update({
         payload: {
           ...(existing.payload as object),
           desired_org_ids: merged,
-          phone:           normalisedPhone,
+          phone: normalisedPhone,
         },
       })
-      .eq('id', existing.id)
+      .eq("id", existing.id)
 
-    if (error) console.error('[profile.service] actor_request update error:', error)
+    if (error)
+      console.error("[profile.service] actor_request update error:", error)
   } else {
-    const { error } = await supabase
-      .from('actor_requests')
-      .insert({
-        profile_id:     userId,
-        requested_type: 'GUEST',
-        status:         'pending',
-        payload: {
-          desired_org_ids: orgIds,
-          phone:           normalisedPhone,
-        },
-      })
+    const { error } = await supabase.from("actor_requests").insert({
+      profile_id: userId,
+      requested_type: "GUEST",
+      status: "pending",
+      payload: {
+        desired_org_ids: orgIds,
+        phone: normalisedPhone,
+      },
+    })
 
-    if (error) console.error('[profile.service] actor_request insert error:', error)
+    if (error)
+      console.error("[profile.service] actor_request insert error:", error)
   }
 }
 
@@ -220,18 +223,26 @@ export async function upsertActorRequest(
 
 export async function saveProfile(
   supabase: SupabaseClient,
-  userId:   string,
-  input:    ProfileInput,
+  userId: string,
+  input: ProfileInput,
 ): Promise<ProfileValidationError | { serverError: string } | null> {
   const validationError = validateProfileInput(input)
   if (validationError) return validationError
 
   const normalisedPhone = normalisePhone(input.phone)
 
-  const saveError = await upsertProfile(supabase, userId, { ...input, normalisedPhone })
+  const saveError = await upsertProfile(supabase, userId, {
+    ...input,
+    normalisedPhone,
+  })
   if (saveError) return { serverError: saveError }
 
-  await upsertActorRequest(supabase, userId, input.orgIds ?? [], normalisedPhone)
+  await upsertActorRequest(
+    supabase,
+    userId,
+    input.orgIds ?? [],
+    normalisedPhone,
+  )
   return null
 }
 
@@ -241,7 +252,7 @@ export async function saveProfile(
 
 export async function loadProfileFormData(
   supabase: SupabaseClient,
-  userId:   string,
+  userId: string,
 ) {
   const [
     { data: profile },
@@ -249,8 +260,9 @@ export async function loadProfileFormData(
     { data: existingRequests },
   ] = await Promise.all([
     supabase
-      .from('profiles')
-      .select(`
+      .from("profiles")
+      .select(
+        `
         full_name,
         phone,
         company_name,
@@ -266,35 +278,37 @@ export async function loadProfileFormData(
         time_zone,
         working_hours_start,
         working_hours_end
-      `)
-      .eq('id', userId)
+      `,
+      )
+      .eq("id", userId)
       .maybeSingle(),
 
     supabase
-      .from('organizations')
-      .select('id, name, status, metadata')
-      .eq('status', 'active')
-      .order('name', { ascending: true }),
+      .from("organizations")
+      .select("id, name, status, metadata")
+      .eq("status", "active")
+      .order("name", { ascending: true }),
 
     supabase
-      .from('actor_requests')
-      .select('payload')
-      .eq('profile_id', userId)
-      .eq('status', 'pending'),
+      .from("actor_requests")
+      .select("payload")
+      .eq("profile_id", userId)
+      .eq("status", "pending"),
   ])
 
-  if (orgError) console.error('[profile.service] organizations load error:', orgError)
+  if (orgError)
+    console.error("[profile.service] organizations load error:", orgError)
 
-  const organizations: Organization[] = (orgsRaw ?? []).map(o => ({
-    id:     o.id,
-    name:   o.name,
+  const organizations: Organization[] = (orgsRaw ?? []).map((o) => ({
+    id: o.id,
+    name: o.name,
     status: o.status,
-    type:   (o.metadata as any)?.type   ?? null,
+    type: (o.metadata as any)?.type ?? null,
     county: (o.metadata as any)?.county ?? null,
   }))
 
   const linkedOrgIds: string[] = (existingRequests ?? []).flatMap(
-    r => (r.payload as any)?.desired_org_ids ?? [],
+    (r) => (r.payload as any)?.desired_org_ids ?? [],
   )
 
   return { profile: profile ?? null, organizations, linkedOrgIds }

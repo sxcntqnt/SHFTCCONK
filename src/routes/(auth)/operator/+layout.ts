@@ -19,19 +19,19 @@
 //   The server stage fetch is for the layout shell template only —
 //   operatorCtx already has stage IDs via actorCtx.stageAssignments.
 
-import type { LayoutLoad }              from './$types'
-import { redirect }                     from '@sveltejs/kit'
-import { activateOperatorContext }      from '$lib/features/auth/contexts/operator.context'
+import type { LayoutLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { activateOperatorContext } from "$lib/features/auth/contexts/operator.context"
 
 export const load: LayoutLoad = async ({ data }) => {
-  if (!data.userState) throw redirect(303, '/login')
+  if (!data.userState) throw redirect(303, "/login")
 
   // activateOperatorContext returns false if:
   //   - No active OPERATOR actor (double-checked after server gate)
   //   - Actor exists but has zero org jurisdiction slots
   //     (approved but ORG_CHAIR hasn't set jurisdiction yet)
   if (!activateOperatorContext(data.userState)) {
-    throw redirect(303, '/app/dashboard?denied=operator_no_jurisdiction')
+    throw redirect(303, "/app/dashboard?denied=operator_no_jurisdiction")
   }
 
   return {

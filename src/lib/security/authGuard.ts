@@ -38,33 +38,29 @@
 //   with any remaining +layout.ts files not yet migrated to the direct
 //   activate*() pattern. New layouts should call activate*() directly.
 
-import { redirect, type LoadEvent as SvelteLoadEvent } from '@sveltejs/kit'
-import { get }                   from 'svelte/store'
-import { isSessionCurrent }      from '$lib/features/auth/stores/auth'
+import { redirect, type LoadEvent as SvelteLoadEvent } from "@sveltejs/kit"
+import { get } from "svelte/store"
+import { isSessionCurrent } from "$lib/features/auth/stores/auth"
 import {
   activateSuperAdminContext,
   superAdminCtx,
-}                                from '$lib/features/auth/contexts/super-admin.context'
+} from "$lib/features/auth/contexts/super-admin.context"
 import {
   activateOrgChairContext,
   orgChairCtx,
-}                                from '$lib/features/auth/contexts/org-chair.context'
+} from "$lib/features/auth/contexts/org-chair.context"
 import {
   activateOrgContext,
   orgCtx,
-}                                from '$lib/features/auth/contexts/org.context'
-import {
-  activateCrewContext,
-}                                from '$lib/features/auth/contexts/crew.context'
+} from "$lib/features/auth/contexts/org.context"
+import { activateCrewContext } from "$lib/features/auth/contexts/crew.context"
 import {
   activateOperatorContext,
   operatorCtx,
-}                                from '$lib/features/auth/contexts/operator.context'
-import {
-  activatePassengerContext,
-}                                from '$lib/features/auth/contexts/passenger.context'
-import { isAllowed }             from '$lib/features/auth/contexts/context.template'
-import type { UserState }        from '$lib/features/auth/services/userState.server'
+} from "$lib/features/auth/contexts/operator.context"
+import { activatePassengerContext } from "$lib/features/auth/contexts/passenger.context"
+import { isAllowed } from "$lib/features/auth/contexts/context.template"
+import type { UserState } from "$lib/features/auth/services/userState.server"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LoadEvent type
@@ -74,14 +70,14 @@ import type { UserState }        from '$lib/features/auth/services/userState.ser
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface GuardParent {
-  session:       { user: { id: string } } | null
-  bootstrapped:  boolean
-  userState:     UserState | null
+  session: { user: { id: string } } | null
+  bootstrapped: boolean
+  userState: UserState | null
   activeContext: App.ActiveContext | null
 }
 
 interface GuardEvent {
-  url:    URL
+  url: URL
   parent: () => Promise<GuardParent>
 }
 
@@ -107,14 +103,14 @@ export async function requireAuth(event: GuardEvent): Promise<GuardParent> {
   // Background polling handles idle; this catches navigation-time staleness.
   if (bootstrapped && !isSessionCurrent()) {
     const current = event.url.pathname + event.url.search
-    const sep     = current.includes('?') ? '&' : '?'
+    const sep = current.includes("?") ? "&" : "?"
     throw redirect(303, `${current}${sep}rebootstrap=1`)
   }
 
   // userState missing on an authenticated route = resolution failure in hooks.
   // Redirect to login — safer than proceeding with unknown state.
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   return parent
@@ -131,7 +127,7 @@ export async function requirePassengerAccess(event: GuardEvent): Promise<void> {
   const { userState } = await requireAuth(event)
 
   if (!activatePassengerContext(userState!)) {
-    throw redirect(303, '/onboarding')
+    throw redirect(303, "/onboarding")
   }
 }
 
@@ -146,7 +142,7 @@ export async function requireCrewAccess(event: GuardEvent): Promise<void> {
   const { userState } = await requireAuth(event)
 
   if (!activateCrewContext(userState!)) {
-    throw redirect(303, '/app/dashboard?denied=crew_not_active')
+    throw redirect(303, "/app/dashboard?denied=crew_not_active")
   }
 }
 
@@ -166,14 +162,14 @@ export async function requireOperatorAccess(event: GuardEvent): Promise<void> {
   const { userState } = await requireAuth(event)
 
   if (!activateOperatorContext(userState!)) {
-    throw redirect(303, '/app/dashboard?denied=operator_not_active')
+    throw redirect(303, "/app/dashboard?denied=operator_not_active")
   }
 
   // activateOperatorContext returns false if orgSlots is empty,
   // but check explicitly for the pending-approval redirect
   const ctx = get(operatorCtx)
   if (!ctx || ctx.orgSlots.length === 0) {
-    throw redirect(303, '/operator/pending?reason=no_org_approved')
+    throw redirect(303, "/operator/pending?reason=no_org_approved")
   }
 }
 
@@ -187,7 +183,7 @@ export async function requireAdminAccess(event: GuardEvent): Promise<void> {
   const { userState } = await requireAuth(event)
 
   if (!activateSuperAdminContext(userState!)) {
-    throw redirect(303, '/app/dashboard?denied=requires_admin')
+    throw redirect(303, "/app/dashboard?denied=requires_admin")
   }
 }
 
@@ -201,13 +197,11 @@ export async function requireAdminAccess(event: GuardEvent): Promise<void> {
 export async function requireAuditAccess(event: GuardEvent): Promise<void> {
   await requireAdminAccess(event)
 
-  const ctx      = get(superAdminCtx)
-  const canAudit = ctx
-    ? isAllowed(ctx.permissions, 'audit.view')
-    : false
+  const ctx = get(superAdminCtx)
+  const canAudit = ctx ? isAllowed(ctx.permissions, "audit.view") : false
 
   if (!canAudit) {
-    throw redirect(303, '/admin/dashboard?denied=audit.view')
+    throw redirect(303, "/admin/dashboard?denied=audit.view")
   }
 }
 
@@ -225,13 +219,13 @@ export async function requireAuditAccess(event: GuardEvent): Promise<void> {
 export async function requireOrgMemberAccess(
   event: GuardEvent,
   orgId: string,
-): Promise<'chair' | 'staff'> {
+): Promise<"chair" | "staff"> {
   const { userState } = await requireAuth(event)
 
-  if (activateOrgChairContext(userState!, orgId)) return 'chair'
-  if (activateOrgContext(userState!, orgId))      return 'staff'
+  if (activateOrgChairContext(userState!, orgId)) return "chair"
+  if (activateOrgContext(userState!, orgId)) return "staff"
 
-  throw redirect(303, '/org/select?reason=no_access')
+  throw redirect(303, "/org/select?reason=no_access")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,18 +236,18 @@ export async function requireOrgMemberAccess(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function requireOrgPermission(
-  event:   GuardEvent,
-  orgId:   string,
+  event: GuardEvent,
+  orgId: string,
   ...actions: string[]
 ): Promise<void> {
   const contextType = await requireOrgMemberAccess(event, orgId)
 
   const permissions =
-    contextType === 'chair'
+    contextType === "chair"
       ? (get(orgChairCtx)?.permissions ?? [])
-      : (get(orgCtx)?.permissions      ?? [])
+      : (get(orgCtx)?.permissions ?? [])
 
-  const hasAny = actions.some(action => isAllowed(permissions, action, orgId))
+  const hasAny = actions.some((action) => isAllowed(permissions, action, orgId))
 
   if (!hasAny) {
     throw redirect(303, `/org/${orgId}/dashboard?denied=${actions[0]}`)
@@ -276,10 +270,10 @@ export async function requireStageAccess(
 ): Promise<void> {
   await requireOrgMemberAccess(event, orgId)
 
-  const ctx      = get(orgCtx)
+  const ctx = get(orgCtx)
   const canStage = ctx
-    ? isAllowed(ctx.permissions, 'tracking.live', orgId) ||
-      isAllowed(ctx.permissions, 'booking.list',  orgId)
+    ? isAllowed(ctx.permissions, "tracking.live", orgId) ||
+      isAllowed(ctx.permissions, "booking.list", orgId)
     : false
 
   if (!canStage) {

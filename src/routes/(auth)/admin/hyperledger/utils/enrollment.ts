@@ -11,12 +11,12 @@ import {
   revokeIdentity as libRevokeIdentity,
   type EnrollUserPayload,
   type EnrollDevicePayload,
-} from '$lib/hyperledger/ca';
+} from "$lib/hyperledger/ca"
 
-import { recordPlatformComplianceEvent } from './transactions';
+import { recordPlatformComplianceEvent } from "./transactions"
 
 // Re-export types so callers only need to import from this file
-export type { EnrollUserPayload, EnrollDevicePayload };
+export type { EnrollUserPayload, EnrollDevicePayload }
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -26,9 +26,9 @@ export type { EnrollUserPayload, EnrollDevicePayload };
  * Safe to call again — will throw if admin is already enrolled at CA.
  */
 export async function bootstrapAdmin(): Promise<void> {
-  console.log('[Enrollment] Bootstrapping platform admin...');
-  await libEnrollAdmin();
-  console.log('[Enrollment] Platform admin ready.');
+  console.log("[Enrollment] Bootstrapping platform admin...")
+  await libEnrollAdmin()
+  console.log("[Enrollment] Platform admin ready.")
 }
 
 // ─── User / driver enrollment ─────────────────────────────────────────────────
@@ -38,19 +38,19 @@ export async function bootstrapAdmin(): Promise<void> {
  * Stores identity in Vault. Records event on ledger.
  */
 export async function enrollUser(payload: EnrollUserPayload) {
-  const result = await libRegisterUser(payload);
+  const result = await libRegisterUser(payload)
 
   // Write an audit event to the ledger (non-blocking — don't fail enrollment if this fails)
   recordPlatformComplianceEvent(
     payload.userId,
-    'driver', // closest entity type for ledger
-    'USER_ENROLLED',
-    `Role: ${payload.role}, Org: ${payload.orgId}`
+    "driver", // closest entity type for ledger
+    "USER_ENROLLED",
+    `Role: ${payload.role}, Org: ${payload.orgId}`,
   ).catch((err) =>
-    console.warn('[Enrollment] Ledger audit write failed (non-fatal):', err)
-  );
+    console.warn("[Enrollment] Ledger audit write failed (non-fatal):", err),
+  )
 
-  return result;
+  return result
 }
 
 // ─── Device enrollment ────────────────────────────────────────────────────────
@@ -60,19 +60,19 @@ export async function enrollUser(payload: EnrollUserPayload) {
  * Returns the raw private key — caller must securely transmit to device once.
  */
 export async function enrollDevice(payload: EnrollDevicePayload) {
-  const result = await libRegisterDevice(payload);
+  const result = await libRegisterDevice(payload)
 
   // Flag on ledger that this device was registered
   recordPlatformComplianceEvent(
     payload.deviceId,
-    'device',
-    'DEVICE_ENROLLED',
-    `Vehicle: ${payload.vehicleId ?? 'unassigned'}, Org: ${payload.orgId}`
+    "device",
+    "DEVICE_ENROLLED",
+    `Vehicle: ${payload.vehicleId ?? "unassigned"}, Org: ${payload.orgId}`,
   ).catch((err) =>
-    console.warn('[Enrollment] Ledger audit write failed (non-fatal):', err)
-  );
+    console.warn("[Enrollment] Ledger audit write failed (non-fatal):", err),
+  )
 
-  return result;
+  return result
 }
 
 // ─── Revocation ───────────────────────────────────────────────────────────────
@@ -83,29 +83,35 @@ export async function enrollDevice(payload: EnrollDevicePayload) {
  */
 export async function revokeUser(
   userId: string,
-  reason: string = 'privilegewithdrawn',
-  entityType: 'org' | 'vehicle' | 'driver' | 'device' = 'driver'
+  reason: string = "privilegewithdrawn",
+  entityType: "org" | "vehicle" | "driver" | "device" = "driver",
 ) {
-  await libRevokeIdentity(userId, reason);
+  await libRevokeIdentity(userId, reason)
 
   // If it's a device, flag it on-chain so chaincode rejects future txs
-  if (entityType === 'device') {
+  if (entityType === "device") {
     await recordPlatformComplianceEvent(
       userId,
-      'device',
-      'DEVICE_REVOKED',
-      `Reason: ${reason}`
+      "device",
+      "DEVICE_REVOKED",
+      `Reason: ${reason}`,
     ).catch((err) =>
-      console.warn('[Enrollment] On-chain device flag failed (non-fatal):', err)
-    );
+      console.warn(
+        "[Enrollment] On-chain device flag failed (non-fatal):",
+        err,
+      ),
+    )
   } else {
     await recordPlatformComplianceEvent(
       userId,
       entityType,
-      'IDENTITY_REVOKED',
-      `Reason: ${reason}`
+      "IDENTITY_REVOKED",
+      `Reason: ${reason}`,
     ).catch((err) =>
-      console.warn('[Enrollment] On-chain revocation event failed (non-fatal):', err)
-    );
+      console.warn(
+        "[Enrollment] On-chain revocation event failed (non-fatal):",
+        err,
+      ),
+    )
   }
 }

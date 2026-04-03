@@ -2,16 +2,16 @@
 // Lightweight SSE consumer — connects to the stream,
 // calls onUpdate for each position fix, nothing else.
 
-import { browser } from '$app/environment'
+import { browser } from "$app/environment"
 
 export interface GpsUpdate {
   vehicleId: string
-  lat:       number
-  lng:       number
-  speed?:    number
-  heading?:  number
+  lat: number
+  lng: number
+  speed?: number
+  heading?: number
   timestamp: string
-  orgId:     string
+  orgId: string
 }
 
 const SSE_ENDPOINT = (orgId: string) => `/api/ingest/stream?orgId=${orgId}`
@@ -19,7 +19,7 @@ const SSE_ENDPOINT = (orgId: string) => `/api/ingest/stream?orgId=${orgId}`
 let eventSource: EventSource | null = null
 
 export function connectGpsStream(
-  orgId:    string,
+  orgId: string,
   onUpdate: (update: GpsUpdate) => void,
 ): void {
   if (!browser) return
@@ -28,7 +28,7 @@ export function connectGpsStream(
   eventSource = new EventSource(SSE_ENDPOINT(orgId))
 
   eventSource.onopen = () => {
-    console.info('[gps] SSE connected')
+    console.info("[gps] SSE connected")
   }
 
   eventSource.onmessage = (event) => {
@@ -36,13 +36,13 @@ export function connectGpsStream(
       const update: GpsUpdate = JSON.parse(event.data)
       onUpdate(update)
     } catch (err) {
-      console.warn('[gps] Failed to parse update:', err)
+      console.warn("[gps] Failed to parse update:", err)
     }
   }
 
   eventSource.onerror = () => {
     // EventSource reconnects automatically
-    console.warn('[gps] SSE error — browser will reconnect')
+    console.warn("[gps] SSE error — browser will reconnect")
   }
 }
 
@@ -50,13 +50,13 @@ export function disconnectGpsStream(): void {
   if (eventSource) {
     eventSource.close()
     eventSource = null
-    console.info('[gps] SSE disconnected')
+    console.info("[gps] SSE disconnected")
   }
 }
 
 // Convenience wrappers matching the map page's onMount pattern
 export function initGpsClient(
-  orgId:    string,
+  orgId: string,
   onUpdate: (update: GpsUpdate) => void,
 ): void {
   connectGpsStream(orgId, onUpdate)

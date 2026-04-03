@@ -27,70 +27,76 @@
 //     return () => destroyGPSSocket()
 //   })
 
-import { gpsStore }   from "$lib/features/vehicles/gps.store"
+import { gpsStore } from "$lib/features/vehicles/gps.store"
 import type { GPSData } from "$lib/features/vehicles/gps.store"
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const WS_URL        = import.meta.env.VITE_REALTIME_WS_URL ?? "wss://api.matatupulse.co.ke/realtime/gps"
-const MAX_RETRIES   = 10
+const WS_URL =
+  import.meta.env.VITE_REALTIME_WS_URL ??
+  "wss://api.matatupulse.co.ke/realtime/gps"
+const MAX_RETRIES = 10
 const BASE_DELAY_MS = 1_000
-const MAX_DELAY_MS  = 30_000
+const MAX_DELAY_MS = 30_000
 
 // ── Incoming message types (from gateway) ─────────────────────────────────────
 
 interface AuthOkMessage {
-  type:  "auth_ok"
+  type: "auth_ok"
   orgId: string
 }
 
 interface PositionMessage {
-  type:      "position"
+  type: "position"
   vehicleId: string
-  la:        number    // latitude (compact field names match architecture spec)
-  lo:        number    // longitude
-  sp?:       number    // speed km/h
-  hd?:       number    // heading degrees
-  ts:        number    // unix ms
-  ev?:       string    // event type if critical
+  la: number // latitude (compact field names match architecture spec)
+  lo: number // longitude
+  sp?: number // speed km/h
+  hd?: number // heading degrees
+  ts: number // unix ms
+  ev?: string // event type if critical
 }
 
 interface BatchMessage {
-  type:      "batch"
+  type: "batch"
   positions: Omit<PositionMessage, "type">[]
 }
 
 interface ErrorMessage {
-  type:    "error"
+  type: "error"
   message: string
 }
 
-type GatewayMessage = AuthOkMessage | PositionMessage | BatchMessage | ErrorMessage
+type GatewayMessage =
+  | AuthOkMessage
+  | PositionMessage
+  | BatchMessage
+  | ErrorMessage
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 interface SocketOptions {
   /** Short-lived JWT from session — refreshed on reconnect via getToken() */
-  token:        string
+  token: string
   /** Org to subscribe to — client only receives updates for their org */
-  orgId:        string
+  orgId: string
   /** Subscribe to specific vehicles only. Omit for all vehicles in org. */
-  vehicleIds?:  string[]
+  vehicleIds?: string[]
   /** Called when connection is established and auth succeeds */
   onConnected?: () => void
   /** Called when max retries are exhausted */
-  onFailed?:    () => void
+  onFailed?: () => void
   /**
    * Called before each reconnect attempt to get a fresh token.
    * Important: JWTs are short-lived (15min). Without this, reconnects
    * after token expiry will get auth_error from the gateway.
    */
-  getToken?:    () => Promise<string>
+  getToken?: () => Promise<string>
 }
 
-let _socket:     WebSocket    | null = null
-let _options:    SocketOptions | null = null
-let _retryCount  = 0
+let _socket: WebSocket | null = null
+let _options: SocketOptions | null = null
+let _retryCount = 0
 let _retryTimer: ReturnType<typeof setTimeout> | null = null
 let _isDestroyed = false
 
@@ -108,9 +114,9 @@ let _isDestroyed = false
  *   })
  */
 export function initGPSSocket(options: SocketOptions): void {
-  if (_socket) return   // already connected
+  if (_socket) return // already connected
   _isDestroyed = false
-  _options     = options
+  _options = options
   _connect()
 }
 
@@ -210,14 +216,17 @@ function _handleMessage(event: MessageEvent): void {
       break
 
     default:
-      console.warn("[gps-socket] Unknown message type:", (msg as { type: string }).type)
+      console.warn(
+        "[gps-socket] Unknown message type:",
+        (msg as { type: string }).type,
+      )
   }
 }
 
 function _handleClose(event: CloseEvent): void {
   _socket = null
 
-  if (_isDestroyed) return   // intentional close — don't reconnect
+  if (_isDestroyed) return // intentional close — don't reconnect
 
   // Code 4001 = auth failed (custom code from gateway) — don't retry with same token
   if (event.code === 4001) {
@@ -226,7 +235,9 @@ function _handleClose(event: CloseEvent): void {
     return
   }
 
-  console.warn(`[gps-socket] Closed (code ${event.code}) — scheduling reconnect`)
+  console.warn(
+    `[gps-socket] Closed (code ${event.code}) — scheduling reconnect`,
+  )
   _scheduleReconnect()
 }
 
@@ -240,7 +251,7 @@ function _handleError(event: Event): void {
 function _handleAuthOk(msg: AuthOkMessage): void {
   if (!_options) return
 
-  _retryCount = 0   // reset on successful auth
+  _retryCount = 0 // reset on successful auth
   console.info(`[gps-socket] Authenticated for org ${msg.orgId}`)
   _options.onConnected?.()
 
@@ -258,14 +269,14 @@ function _applyPosition(pos: Omit<PositionMessage, "type">): void {
   if (!pos.vehicleId || pos.la == null || pos.lo == null || !pos.ts) return
 
   const incoming: GPSData = {
-    vehicleId:      pos.vehicleId,
+    vehicleId: pos.vehicleId,
     organizationId: _options?.orgId ?? "",
-    lat:            pos.la,
-    lng:            pos.lo,
-    speed:          pos.sp  ?? undefined,
-    heading:        pos.hd  ?? undefined,
-    fixStatus:      "3D_FIX",   // gateway only forwards fixed positions
-    timestamp:      new Date(pos.ts).toISOString(),
+    lat: pos.la,
+    lng: pos.lo,
+    speed: pos.sp ?? undefined,
+    heading: pos.hd ?? undefined,
+    fixStatus: "3D_FIX", // gateway only forwards fixed positions
+    timestamp: new Date(pos.ts).toISOString(),
   }
 
   gpsStore.update((state) => {
@@ -290,11 +301,16 @@ function _scheduleReconnect(): void {
   _retryCount++
 
   // Exponential backoff with ±20% jitter to avoid thundering herd
-  const base  = Math.min(BASE_DELAY_MS * Math.pow(2, _retryCount - 1), MAX_DELAY_MS)
+  const base = Math.min(
+    BASE_DELAY_MS * Math.pow(2, _retryCount - 1),
+    MAX_DELAY_MS,
+  )
   const jitter = base * 0.2 * (Math.random() * 2 - 1)
-  const delay  = Math.round(base + jitter)
+  const delay = Math.round(base + jitter)
 
-  console.info(`[gps-socket] Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${_retryCount}/${MAX_RETRIES})`)
+  console.info(
+    `[gps-socket] Reconnecting in ${(delay / 1000).toFixed(1)}s (attempt ${_retryCount}/${MAX_RETRIES})`,
+  )
 
   _retryTimer = setTimeout(_connect, delay)
 }
@@ -321,6 +337,6 @@ function _send(payload: object): void {
 export function getSocketState(): "connecting" | "open" | "closed" {
   if (!_socket) return "closed"
   if (_socket.readyState === WebSocket.CONNECTING) return "connecting"
-  if (_socket.readyState === WebSocket.OPEN)       return "open"
+  if (_socket.readyState === WebSocket.OPEN) return "open"
   return "closed"
 }

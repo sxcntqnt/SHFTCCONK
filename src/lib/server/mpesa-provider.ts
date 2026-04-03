@@ -37,7 +37,9 @@ async function getAccessToken(): Promise<string> {
   const now = Date.now()
   if (cachedToken && now < tokenExpiry) return cachedToken
 
-  const auth = Buffer.from(`${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`).toString("base64")
+  const auth = Buffer.from(
+    `${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`,
+  ).toString("base64")
 
   const res = await fetch(
     `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
@@ -55,11 +57,16 @@ async function getAccessToken(): Promise<string> {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function generateTimestamp(): string {
-  return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)
+  return new Date()
+    .toISOString()
+    .replace(/[-:T.Z]/g, "")
+    .slice(0, 14)
 }
 
 function generatePassword(timestamp: string): string {
-  return Buffer.from(`${MPESA_BUSINESS_SHORT_CODE}${MPESA_API_PASS_KEY}${timestamp}`).toString("base64")
+  return Buffer.from(
+    `${MPESA_BUSINESS_SHORT_CODE}${MPESA_API_PASS_KEY}${timestamp}`,
+  ).toString("base64")
 }
 
 /**
@@ -68,7 +75,7 @@ function generatePassword(timestamp: string): string {
  */
 export function formatPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "")
-  if (digits.startsWith("0"))   return "254" + digits.slice(1)
+  if (digits.startsWith("0")) return "254" + digits.slice(1)
   if (digits.startsWith("254")) return digits
   return digits
 }
@@ -76,27 +83,27 @@ export function formatPhone(phone: string): string {
 // ── Daraja response types ─────────────────────────────────────────────────────
 
 export interface StkPushResponse {
-  MerchantRequestID:   string
-  CheckoutRequestID:   string
-  ResponseCode:        string
+  MerchantRequestID: string
+  CheckoutRequestID: string
+  ResponseCode: string
   ResponseDescription: string
-  CustomerMessage:     string
+  CustomerMessage: string
 }
 
 export interface StkStatusResponse {
-  ResponseCode:        string
+  ResponseCode: string
   ResponseDescription: string
-  MerchantRequestID:   string
-  CheckoutRequestID:   string
-  ResultCode:          string
-  ResultDesc:          string
+  MerchantRequestID: string
+  CheckoutRequestID: string
+  ResultCode: string
+  ResultDesc: string
 }
 
 export interface AsyncDarajaResponse {
-  ConversationID:           string
+  ConversationID: string
   OriginatorConversationID: string
-  ResponseCode:             string
-  ResponseDescription:      string
+  ResponseCode: string
+  ResponseDescription: string
 }
 
 // ── 1. STK Push (Customer → Platform) ────────────────────────────────────────
@@ -114,38 +121,43 @@ export interface AsyncDarajaResponse {
  * @param transactionDesc   Short description on STK prompt (max 13 chars)
  */
 export async function processMpesaPush(
-  phoneNumber:       string,
-  amount:            number,
+  phoneNumber: string,
+  amount: number,
   accountReference = "MATATU_PULSE",
-  transactionDesc  = "Payment",
+  transactionDesc = "Payment",
 ): Promise<StkPushResponse> {
-  const token     = await getAccessToken()
+  const token = await getAccessToken()
   const timestamp = generateTimestamp()
-  const password  = generatePassword(timestamp)
+  const password = generatePassword(timestamp)
 
   const payload = {
     BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
-    Password:          password,
-    Timestamp:         timestamp,
-    TransactionType:   "CustomerPayBillOnline",
-    Amount:            Math.round(amount),
-    PartyA:            formatPhone(phoneNumber),
-    PartyB:            MPESA_BUSINESS_SHORT_CODE,
-    PhoneNumber:       formatPhone(phoneNumber),
-    CallBackURL:       `${MPESA_CALLBACK_URL}/stk-callback`,
-    AccountReference:  accountReference.slice(0, 12),
-    TransactionDesc:   transactionDesc.slice(0, 13),
+    Password: password,
+    Timestamp: timestamp,
+    TransactionType: "CustomerPayBillOnline",
+    Amount: Math.round(amount),
+    PartyA: formatPhone(phoneNumber),
+    PartyB: MPESA_BUSINESS_SHORT_CODE,
+    PhoneNumber: formatPhone(phoneNumber),
+    CallBackURL: `${MPESA_CALLBACK_URL}/stk-callback`,
+    AccountReference: accountReference.slice(0, 12),
+    TransactionDesc: transactionDesc.slice(0, 13),
   }
 
   const res = await fetch(`${BASE_URL}/mpesa/stkpush/v1/processrequest`, {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   const data = await res.json()
   if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(data?.errorMessage ?? data?.ResponseDescription ?? "STK Push failed")
+    throw new Error(
+      data?.errorMessage ?? data?.ResponseDescription ?? "STK Push failed",
+    )
   }
 
   return data as StkPushResponse
@@ -155,22 +167,27 @@ export async function processMpesaPush(
  * Poll STK Push result by CheckoutRequestID.
  * Use if the STK callback hasn't arrived within ~30s.
  */
-export async function queryStkStatus(checkoutRequestId: string): Promise<StkStatusResponse> {
-  const token     = await getAccessToken()
+export async function queryStkStatus(
+  checkoutRequestId: string,
+): Promise<StkStatusResponse> {
+  const token = await getAccessToken()
   const timestamp = generateTimestamp()
-  const password  = generatePassword(timestamp)
+  const password = generatePassword(timestamp)
 
   const payload = {
     BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
-    Password:          password,
-    Timestamp:         timestamp,
+    Password: password,
+    Timestamp: timestamp,
     CheckoutRequestID: checkoutRequestId,
   }
 
   const res = await fetch(`${BASE_URL}/mpesa/stkpushquery/v1/query`, {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   return res.json() as Promise<StkStatusResponse>
@@ -194,34 +211,39 @@ export async function sendB2CPayment({
   occasion,
 }: {
   phoneNumber: string
-  amount:      number
-  remarks?:    string
-  occasion?:   string
+  amount: number
+  remarks?: string
+  occasion?: string
 }): Promise<AsyncDarajaResponse> {
   const token = await getAccessToken()
 
   const payload = {
-    InitiatorName:      MPESA_INITIATOR_NAME,
+    InitiatorName: MPESA_INITIATOR_NAME,
     SecurityCredential: MPESA_INITIATOR_PASSWORD,
-    CommandID:          "BusinessPayment",
-    Amount:             Math.round(amount),
-    PartyA:             MPESA_B2C_SHORT_CODE,
-    PartyB:             formatPhone(phoneNumber),
-    Remarks:            (remarks  ?? "Tip payout").slice(0, 100),
-    QueueTimeOutURL:    `${MPESA_CALLBACK_URL}/b2c-timeout`,
-    ResultURL:          `${MPESA_CALLBACK_URL}/b2c-callback`,
-    Occasion:           (occasion ?? "Tip payout").slice(0, 100),
+    CommandID: "BusinessPayment",
+    Amount: Math.round(amount),
+    PartyA: MPESA_B2C_SHORT_CODE,
+    PartyB: formatPhone(phoneNumber),
+    Remarks: (remarks ?? "Tip payout").slice(0, 100),
+    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2c-timeout`,
+    ResultURL: `${MPESA_CALLBACK_URL}/b2c-callback`,
+    Occasion: (occasion ?? "Tip payout").slice(0, 100),
   }
 
   const res = await fetch(`${BASE_URL}/mpesa/b2c/v1/paymentrequest`, {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   const data = await res.json()
   if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(data?.errorMessage ?? data?.ResponseDescription ?? "B2C payment failed")
+    throw new Error(
+      data?.errorMessage ?? data?.ResponseDescription ?? "B2C payment failed",
+    )
   }
 
   return data as AsyncDarajaResponse
@@ -243,37 +265,42 @@ export async function sendB2BPayment({
   remarks,
   accountReference,
 }: {
-  shortcode:         string
-  amount:            number
-  remarks?:          string
+  shortcode: string
+  amount: number
+  remarks?: string
   accountReference?: string
 }): Promise<AsyncDarajaResponse> {
   const token = await getAccessToken()
 
   const payload = {
-    Initiator:              MPESA_INITIATOR_NAME,
-    SecurityCredential:     MPESA_INITIATOR_PASSWORD,
-    CommandID:              "BusinessPayBill",
-    SenderIdentifierType:   "4",
+    Initiator: MPESA_INITIATOR_NAME,
+    SecurityCredential: MPESA_INITIATOR_PASSWORD,
+    CommandID: "BusinessPayBill",
+    SenderIdentifierType: "4",
     RecieverIdentifierType: "4",
-    Amount:                 Math.round(amount),
-    PartyA:                 MPESA_B2B_SHORT_CODE,
-    PartyB:                 shortcode,
-    AccountReference:       (accountReference ?? "SETTLEMENT").slice(0, 12),
-    Remarks:                (remarks ?? "Revenue share settlement").slice(0, 100),
-    QueueTimeOutURL:        `${MPESA_CALLBACK_URL}/b2b-timeout`,
-    ResultURL:              `${MPESA_CALLBACK_URL}/b2b-callback`,
+    Amount: Math.round(amount),
+    PartyA: MPESA_B2B_SHORT_CODE,
+    PartyB: shortcode,
+    AccountReference: (accountReference ?? "SETTLEMENT").slice(0, 12),
+    Remarks: (remarks ?? "Revenue share settlement").slice(0, 100),
+    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2b-timeout`,
+    ResultURL: `${MPESA_CALLBACK_URL}/b2b-callback`,
   }
 
   const res = await fetch(`${BASE_URL}/mpesa/b2b/v1/paymentrequest`, {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   const data = await res.json()
   if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(data?.errorMessage ?? data?.ResponseDescription ?? "B2B payment failed")
+    throw new Error(
+      data?.errorMessage ?? data?.ResponseDescription ?? "B2B payment failed",
+    )
   }
 
   return data as AsyncDarajaResponse
@@ -281,26 +308,31 @@ export async function sendB2BPayment({
 
 // ── 4. Transaction status query ───────────────────────────────────────────────
 
-export async function queryTransactionStatus(transactionId: string): Promise<unknown> {
+export async function queryTransactionStatus(
+  transactionId: string,
+): Promise<unknown> {
   const token = await getAccessToken()
 
   const payload = {
-    Initiator:          MPESA_INITIATOR_NAME,
+    Initiator: MPESA_INITIATOR_NAME,
     SecurityCredential: MPESA_INITIATOR_PASSWORD,
-    CommandID:          "TransactionStatusQuery",
-    TransactionID:      transactionId,
-    PartyA:             MPESA_BUSINESS_SHORT_CODE,
-    IdentifierType:     "4",
-    ResultURL:          `${MPESA_CALLBACK_URL}/status-callback`,
-    QueueTimeOutURL:    `${MPESA_CALLBACK_URL}/status-timeout`,
-    Remarks:            "Status check",
-    Occasion:           "Status",
+    CommandID: "TransactionStatusQuery",
+    TransactionID: transactionId,
+    PartyA: MPESA_BUSINESS_SHORT_CODE,
+    IdentifierType: "4",
+    ResultURL: `${MPESA_CALLBACK_URL}/status-callback`,
+    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/status-timeout`,
+    Remarks: "Status check",
+    Occasion: "Status",
   }
 
   const res = await fetch(`${BASE_URL}/mpesa/transactionstatus/v1/query`, {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   return res.json()

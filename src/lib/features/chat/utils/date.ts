@@ -2,23 +2,23 @@
 /*                                  TYPES                                     */
 /* -------------------------------------------------------------------------- */
 
-type Timestamp = number; // unix seconds
+type Timestamp = number // unix seconds
 
-type DateFormatOptions = Intl.DateTimeFormatOptions;
+type DateFormatOptions = Intl.DateTimeFormatOptions
 
 /* -------------------------------------------------------------------------- */
 /*                              CORE FORMATTER                                */
 /* -------------------------------------------------------------------------- */
 
 const DEFAULT_OPTIONS: DateFormatOptions = {
-  hour: '2-digit',
-  minute: '2-digit',
-  day: 'numeric',
-  month: 'short'
-};
+  hour: "2-digit",
+  minute: "2-digit",
+  day: "numeric",
+  month: "short",
+}
 
 function isValidTimestamp(ts: unknown): ts is Timestamp {
-  return typeof ts === 'number' && Number.isFinite(ts) && ts > 0;
+  return typeof ts === "number" && Number.isFinite(ts) && ts > 0
 }
 
 /**
@@ -26,18 +26,18 @@ function isValidTimestamp(ts: unknown): ts is Timestamp {
  */
 export function formatChatTimestamp(
   unixSeconds: Timestamp,
-  options: DateFormatOptions = {}
+  options: DateFormatOptions = {},
 ): string {
-  if (!isValidTimestamp(unixSeconds)) return '';
+  if (!isValidTimestamp(unixSeconds)) return ""
 
-  const date = new Date(unixSeconds * 1000);
+  const date = new Date(unixSeconds * 1000)
 
   const merged: DateFormatOptions = {
     ...DEFAULT_OPTIONS,
-    ...options
-  };
+    ...options,
+  }
 
-  return new Intl.DateTimeFormat(undefined, merged).format(date);
+  return new Intl.DateTimeFormat(undefined, merged).format(date)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -45,6 +45,9 @@ export function formatChatTimestamp(
 /* -------------------------------------------------------------------------- */
 
 export function formatLastActivity(unixSeconds: Timestamp): string {
-  if (!isValidTimestamp(unixSeconds)) return 'Never'
-  return formatChatTimestamp(unixSeconds, { hour: undefined, minute: undefined })
+  if (!isValidTimestamp(unixSeconds)) return "Never"
+  return formatChatTimestamp(unixSeconds, {
+    hour: undefined,
+    minute: undefined,
+  })
 }

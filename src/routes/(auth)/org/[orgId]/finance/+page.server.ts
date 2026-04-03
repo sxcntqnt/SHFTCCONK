@@ -73,7 +73,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   // ── Reconciliation rows (for table + totals) ─────────────────────────
   const { data: reconciliation, error: recError } = await supabase
     .from("reconciliation_events")
-    .select("vehicleId, totalCollected, expectedAmount, variance, status, created_at")
+    .select(
+      "vehicleId, totalCollected, expectedAmount, variance, status, created_at",
+    )
     .eq("organizationId", orgId)
     .order("created_at", { ascending: false })
     .limit(50)
@@ -83,19 +85,24 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   }
 
   const recRows = reconciliation ?? []
-  const totalCollected = recRows.reduce((s, r) => s + (r.totalCollected ?? 0), 0)
-  const totalExpected  = recRows.reduce((s, r) => s + (r.expectedAmount  ?? 0), 0)
+  const totalCollected = recRows.reduce(
+    (s, r) => s + (r.totalCollected ?? 0),
+    0,
+  )
+  const totalExpected = recRows.reduce((s, r) => s + (r.expectedAmount ?? 0), 0)
 
   // ── Vehicle revenue joined with route (single query, not N+1) ────────
   const { data: vehicleRevenue, error: vrError } = await supabase
     .from("reconciliation_events")
-    .select(`
+    .select(
+      `
       vehicleId,
       totalCollected,
       expectedAmount,
       variance,
       vehicles ( route, registration )
-    `)
+    `,
+    )
     .eq("organizationId", orgId)
     .order("created_at", { ascending: false })
 
@@ -104,24 +111,27 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   }
 
   // ── Per-vehicle summary (latest entry per vehicle) ───────────────────
-  const vehicleMap: Record<string, {
-    vehicleId: string
-    registration: string
-    route: string
-    collected: number
-    target: number
-    variance: number
-  }> = {}
+  const vehicleMap: Record<
+    string,
+    {
+      vehicleId: string
+      registration: string
+      route: string
+      collected: number
+      target: number
+      variance: number
+    }
+  > = {}
 
   for (const row of vehicleRevenue ?? []) {
     if (!vehicleMap[row.vehicleId]) {
       vehicleMap[row.vehicleId] = {
-        vehicleId:    row.vehicleId,
+        vehicleId: row.vehicleId,
         registration: (row.vehicles as any)?.registration ?? row.vehicleId,
-        route:        (row.vehicles as any)?.route ?? "Unknown",
-        collected:    row.totalCollected ?? 0,
-        target:       row.expectedAmount ?? 0,
-        variance:     row.variance ?? 0,
+        route: (row.vehicles as any)?.route ?? "Unknown",
+        collected: row.totalCollected ?? 0,
+        target: row.expectedAmount ?? 0,
+        variance: row.variance ?? 0,
       }
     }
   }
@@ -133,22 +143,31 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
   // ── Route intelligence (aggregate by route) ──────────────────────────
   // Computed server-side so the page receives ready-to-render numbers.
   // The client finance stores can still provide live updates on top of this.
-  const routeMap: Record<string, {
-    route: string
-    collected: number
-    target: number
-    variance: number
-    vehicleCount: number
-  }> = {}
+  const routeMap: Record<
+    string,
+    {
+      route: string
+      collected: number
+      target: number
+      variance: number
+      vehicleCount: number
+    }
+  > = {}
 
   for (const v of vehicleSummaries) {
     const r = v.route
     if (!routeMap[r]) {
-      routeMap[r] = { route: r, collected: 0, target: 0, variance: 0, vehicleCount: 0 }
+      routeMap[r] = {
+        route: r,
+        collected: 0,
+        target: 0,
+        variance: 0,
+        vehicleCount: 0,
+      }
     }
-    routeMap[r].collected    += v.collected
-    routeMap[r].target       += v.target
-    routeMap[r].variance     += v.variance
+    routeMap[r].collected += v.collected
+    routeMap[r].target += v.target
+    routeMap[r].variance += v.variance
     routeMap[r].vehicleCount += 1
   }
 
@@ -160,7 +179,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     orgId,
 
     // payments table
-    payments:      payments ?? [],
+    payments: payments ?? [],
     totalPayments: totalPayments ?? 0,
     page,
     pageSize: PAGE_SIZE,
@@ -169,8 +188,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
     // stat cards
     counts: {
       completed: completedCount ?? 0,
-      pending:   pendingCount   ?? 0,
-      failed:    failedCount    ?? 0,
+      pending: pendingCount ?? 0,
+      failed: failedCount ?? 0,
     },
 
     // summary totals

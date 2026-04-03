@@ -22,7 +22,8 @@ export type BlogPost = {
 const blogPosts: BlogPost[] = [
   // ── 2025 ──
   {
-    title: "How Real-Time Matatu Tracking Is Changing Nairobi's Morning Commute",
+    title:
+      "How Real-Time Matatu Tracking Is Changing Nairobi's Morning Commute",
     description:
       "We analysed six months of GPS telemetry across 340 tracked vehicles. Here's what the data says about peak-hour congestion, route deviation, and why predictability is the single most valuable thing we can give a rider.",
     link: "/blog/real-time-tracking-nairobi-commute",
@@ -31,7 +32,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "Introducing Operator Dashboards: Fleet Intelligence for Every Sacco",
+    title:
+      "Introducing Operator Dashboards: Fleet Intelligence for Every Sacco",
     description:
       "Today we're launching a fully redesigned operator dashboard — live fleet maps, delay heatmaps, trip-cycle analytics, and driver behaviour reports, all in one place. Here's a complete walkthrough.",
     link: "/blog/operator-dashboards-launch",
@@ -40,7 +42,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "Why Matatu Saccos Lose Revenue on Empty Return Trips (And How to Fix It)",
+    title:
+      "Why Matatu Saccos Lose Revenue on Empty Return Trips (And How to Fix It)",
     description:
       "Empty mileage is the silent profit killer in Nairobi's matatu ecosystem. Using route telemetry from our partner saccos, we quantify the problem and outline the demand-matching strategies that are already working.",
     link: "/blog/empty-return-trips-revenue",
@@ -58,7 +61,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "2-Minute Arrival Alerts: The Engineering Behind Our Notification System",
+    title:
+      "2-Minute Arrival Alerts: The Engineering Behind Our Notification System",
     description:
       "Getting a push notification to a commuter exactly 2–3 minutes before a matatu arrives sounds simple. The infrastructure behind it — GPS polling intervals, ETA modelling, fallback logic — is anything but. We open the hood.",
     link: "/blog/arrival-alerts-engineering",
@@ -85,7 +89,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "GPS Tracker Hardware: What We Evaluated Before Choosing Our Fleet Device",
+    title:
+      "GPS Tracker Hardware: What We Evaluated Before Choosing Our Fleet Device",
     description:
       "We tested seven GPS tracker models over four months across Nairobi road conditions. Battery life, signal dropout in the CBD, tamper resistance, and cost-per-unit — here's the full breakdown.",
     link: "/blog/gps-tracker-hardware-evaluation",
@@ -94,7 +99,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "NTSA Compliance Made Easier: How Digitisation Helps Sacco Managers Stay Ahead",
+    title:
+      "NTSA Compliance Made Easier: How Digitisation Helps Sacco Managers Stay Ahead",
     description:
       "Regulatory overhead is one of the biggest pain points for matatu operators. We spoke to sacco managers about what compliance actually costs them — and how digital fleet records are cutting that burden.",
     link: "/blog/ntsa-compliance-digital-fleet",
@@ -123,7 +129,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "From Chaos to Clockwork: A Commuter's Guide to Surviving Nairobi Rush Hour",
+    title:
+      "From Chaos to Clockwork: A Commuter's Guide to Surviving Nairobi Rush Hour",
     description:
       "Using real route data, we built a time-of-day guide to the ten busiest commuter routes in Nairobi — the best departure windows, stages to avoid, and which routes have the most consistent ETAs.",
     link: "/blog/survive-nairobi-rush-hour-guide",
@@ -159,7 +166,8 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title: "Driver Experience Matters: How Operator Alerts Reduce Stress Behind the Wheel",
+    title:
+      "Driver Experience Matters: How Operator Alerts Reduce Stress Behind the Wheel",
     description:
       "We ran a structured survey with 80 matatu drivers across five saccos. The insights about information overload, route pressure, and what alerts actually help (versus distract) shaped how we redesigned our driver-side notifications.",
     link: "/blog/driver-experience-operator-alerts",
@@ -186,10 +194,10 @@ export const sortedBlogPosts = [...blogPosts].sort(
 
 /** Filter posts by category */
 export function getPostsByCategory(category: string): BlogPost[] {
-  return sortedBlogPosts.filter(p => p.category === category)
+  return sortedBlogPosts.filter((p) => p.category === category)
 }
 
 /** All unique categories in the post list */
 export const allCategories: string[] = [
-  ...new Set(blogPosts.map(p => p.category).filter(Boolean) as string[]),
+  ...new Set(blogPosts.map((p) => p.category).filter(Boolean) as string[]),
 ]

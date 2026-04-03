@@ -1,40 +1,41 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
-  import { createDropdownMenu, melt } from '@melt-ui/svelte';
-  import { ChevronDown, Users, Building2, User } from 'lucide-svelte';
+  import { enhance } from "$app/forms"
+  import { createDropdownMenu, melt } from "@melt-ui/svelte"
+  import { ChevronDown, Users, Building2, User } from "lucide-svelte"
 
-  export let userState;
-  export let currentContext: string;
+  export let userState
+  export let currentContext: string
 
   // Melt UI Dropdown Menu (Runes mode)
   const {
     elements: { trigger, menu, item, separator, arrow },
-    states: { open }
+    states: { open },
   } = createDropdownMenu({
-    positioning: { placement: 'bottom-start' },
-    forceVisible: true
-  });
+    positioning: { placement: "bottom-start" },
+    forceVisible: true,
+  })
 
   // Derived label
   let activeLabel = $derived(() => {
-    if (currentContext === 'passenger') return 'Passenger View';
-    if (['driver', 'conductor'].includes(currentContext)) return 'Crew Dashboard';
-    if (currentContext === 'org_staff') {
+    if (currentContext === "passenger") return "Passenger View"
+    if (["driver", "conductor"].includes(currentContext))
+      return "Crew Dashboard"
+    if (currentContext === "org_staff") {
       return (
         userState.assignments?.find((a) => a.organization_id)?.org_name ??
-        'Sacco Admin'
-      );
+        "Sacco Admin"
+      )
     }
-    return 'Switch Workspace';
-  });
+    return "Switch Workspace"
+  })
 
   // Derived icon
   let activeIcon = $derived(() => {
-    if (currentContext === 'passenger') return User;
-    if (['driver', 'conductor'].includes(currentContext)) return Users;
-    if (currentContext === 'org_staff') return Building2;
-    return User;
-  });
+    if (currentContext === "passenger") return User
+    if (["driver", "conductor"].includes(currentContext)) return Users
+    if (currentContext === "org_staff") return Building2
+    return User
+  })
 </script>
 
 <div class="context-switcher">
@@ -69,7 +70,7 @@
 
       <ChevronDown
         class={`h-5 w-5 text-zinc-400 transition-transform ${
-          $open ? 'rotate-180' : ''
+          $open ? "rotate-180" : ""
         }`}
       />
     </button>
@@ -91,7 +92,7 @@
       </button>
 
       <!-- Crew -->
-      {#if userState.actors?.some((a) => ['driver', 'conductor'].includes(a.type))}
+      {#if userState.actors?.some( (a) => ["driver", "conductor"].includes(a.type), )}
         <button
           use:melt={$item}
           name="context"
@@ -119,7 +120,7 @@
           <input type="hidden" name="orgId" value={org.organization_id} />
           <Building2 class="h-5 w-5" />
           <span class="font-medium truncate">
-            {org.org_name || 'Sacco Admin'}
+            {org.org_name || "Sacco Admin"}
           </span>
         </button>
       {/each}

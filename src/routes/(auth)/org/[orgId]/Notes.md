@@ -1,20 +1,22 @@
 Backend Pseudocode (SvelteKit Actions + Prisma-like)
 src/routes/join-sacco/+page.server.ts
--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---
+
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma'; // or supabase
 import { hashPassword } from '$lib/auth'; // hypothetical
 
 export const actions = {
-  default: async ({ request }) => {
-    const form = await request.formData();
-    const joinCode = form.get('joinCode')?.toString().trim();
-    const fullName = form.get('fullName')?.toString().trim();
-    const nationalId = form.get('nationalId')?.toString().trim();
-    const phone = form.get('phone')?.toString().trim();
-    const email = form.get('email')?.toString().trim() || null;
-    const vehicleReg = form.get('vehicleReg')?.toString().trim() || null;
-    // ...
+default: async ({ request }) => {
+const form = await request.formData();
+const joinCode = form.get('joinCode')?.toString().trim();
+const fullName = form.get('fullName')?.toString().trim();
+const nationalId = form.get('nationalId')?.toString().trim();
+const phone = form.get('phone')?.toString().trim();
+const email = form.get('email')?.toString().trim() || null;
+const vehicleReg = form.get('vehicleReg')?.toString().trim() || null;
+// ...
 
     if (!joinCode || !fullName || !nationalId || !phone) {
       return fail(400, { error: 'Missing required fields' });
@@ -69,24 +71,26 @@ export const actions = {
 
     // 6. Redirect or return success
     throw redirect(303, `/join-success?sacco=${encodeURIComponent(sacco.name)}&code=${encodeURIComponent(joinCode)}`);
-  }
+
+}
 };
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---
+
 RBAC Enforcement Reminder (in hooks or middleware)
 // Every protected route: check current user → attach saccoId & role
 if (user.role === 'owner' && requestedResource.ownerId !== user.ownerId) {
-  throw error(403, 'You can only access your own vehicles/revenue');
+throw error(403, 'You can only access your own vehicles/revenue');
 }
-
 
 //Backend Pairing Flow (Pseudocode – SvelteKit Action)
 // +page.server.ts or api/pair/+server.ts
 export const actions = {
-  default: async ({ request, locals }) => {
-    const form = await request.formData();
-    const deviceId = form.get('deviceId');
-    const plate = form.get('plateNumber')?.toString().toUpperCase().replace(/\s/g, '');
-    const attestation = form.get('attestation'); // e.g. signed JWT or cert chain from device
+default: async ({ request, locals }) => {
+const form = await request.formData();
+const deviceId = form.get('deviceId');
+const plate = form.get('plateNumber')?.toString().toUpperCase().replace(/\s/g, '');
+const attestation = form.get('attestation'); // e.g. signed JWT or cert chain from device
 
     // 1. Verify device attestation (anti-spoof)
     const verified = await verifyDeviceAttestation(deviceId, attestation); // crypto lib
@@ -111,24 +115,25 @@ export const actions = {
     // Emit welcome telemetry config via MQTT
 
     return { success: true, plate, deviceId };
-  }
+
+}
 };
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 src/
 ├── routes/
-│   ├── devices/                  ← group related device flows
-│   │   ├── pair/                 ← pairing wizard
-│   │   │   └── +page.svelte      ← ← ← put your full code here
-│   │   ├── list/                 (future: list of paired trackers)
-│   │   │   └── +page.svelte
-│   │   └── [id]/                 (future: view single tracker details)
-│   │       └── +page.svelte
-│   ├── dashboard/
-│   │   └── +page.svelte
-│   ├── join-sacco/
-│   │   └── +page.svelte          (from earlier join flow)
-│   └── +page.svelte              (home / landing)
+│ ├── devices/ ← group related device flows
+│ │ ├── pair/ ← pairing wizard
+│ │ │ └── +page.svelte ← ← ← put your full code here
+│ │ ├── list/ (future: list of paired trackers)
+│ │ │ └── +page.svelte
+│ │ └── [id]/ (future: view single tracker details)
+│ │ └── +page.svelte
+│ ├── dashboard/
+│ │ └── +page.svelte
+│ ├── join-sacco/
+│ │ └── +page.svelte (from earlier join flow)
+│ └── +page.svelte (home / landing)
 ├── lib/
-│   ├── components/               ← reusable small pieces (Button, Card, etc.)
-│   └── server/                   ← server-only utils
+│ ├── components/ ← reusable small pieces (Button, Card, etc.)
+│ └── server/ ← server-only utils
 └── app.html

@@ -6,13 +6,13 @@ export interface PricingPlan {
   id: string
   name: string
   description: string
-  price: string               // display string e.g. "KES 900"
+  price: string // display string e.g. "KES 900"
   priceIntervalName: string
-  mpesaAmount: number | null  // numeric KES for STK push — null = no payment
+  mpesaAmount: number | null // numeric KES for STK push — null = no payment
   note: string | null
   features: string[]
   targetUser: string
-  contactSales?: boolean      // true = skip STK, show contact link instead
+  contactSales?: boolean // true = skip STK, show contact link instead
 }
 
 export const pricingPlans: PricingPlan[] = [
@@ -57,7 +57,8 @@ export const pricingPlans: PricingPlan[] = [
   {
     id: "pro",
     name: "Pro",
-    description: "Unlimited everything for professionals demanding full control.",
+    description:
+      "Unlimited everything for professionals demanding full control.",
     price: "KES 2,900",
     priceIntervalName: "per month",
     mpesaAmount: 2900,

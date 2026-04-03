@@ -11,7 +11,10 @@ import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
 import { PUBLIC_SUPABASE_URL } from "$env/static/public"
 
 // Service role client — intentional, no user session in a Safaricom webhook
-const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, PRIVATE_SUPABASE_SERVICE_ROLE)
+const supabaseAdmin = createClient(
+  PUBLIC_SUPABASE_URL,
+  PRIVATE_SUPABASE_SERVICE_ROLE,
+)
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: any
@@ -23,7 +26,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
   const callback = body?.Body?.stkCallback
   if (!callback) {
-    return json({ ResultCode: 1, ResultDesc: "Malformed payload" }, { status: 400 })
+    return json(
+      { ResultCode: 1, ResultDesc: "Malformed payload" },
+      { status: 400 },
+    )
   }
 
   const { CheckoutRequestID, ResultCode, ResultDesc } = callback

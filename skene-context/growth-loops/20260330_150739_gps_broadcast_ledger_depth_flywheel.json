@@ -4,11 +4,7 @@
   "description": "Drives operator activation by removing all friction from the first GPS ping: a zero-auth sub-200KB driver PWA broadcasts location over 3G with IndexedDB offline queuing, each ping is written to PostgreSQL and atomically enqueued for Hyperledger Fabric ledger inscription, V/T ratio instrumentation in PostHog surfaces fleet coverage health, and a compliance-framed free-tier gate with loss-aversion copy converts operators who reach Day 28 of ledger history into paid subscribers. Upstash Redis delayed jobs fire Hour-4 and Hour-24 SMS nudges to accounts with no first ping, cancelling automatically on activation. The flywheel: more pings → deeper ledger history → stronger compliance narrative → higher upgrade conversion → more operators onboarded → more pings.",
   "linked_feature": "GPS SSE Stream Client",
   "linked_feature_id": "gps_sse_stream_client",
-  "growth_pillars": [
-    "onboarding",
-    "engagement",
-    "retention"
-  ],
+  "growth_pillars": ["onboarding", "engagement", "retention"],
   "requirements": {
     "files": [
       {
@@ -382,9 +378,7 @@
     ]
   },
   "metrics": {
-    "data_actions": [
-      "gps_first_ping_received"
-    ],
+    "data_actions": ["gps_first_ping_received"],
     "success_criteria": [
       "Time to First GPS Ping < 48 hours for > 60% of new operator accounts, measured from account created_at to first trip_events INSERT timestamp",
       "Driver PWA initial load time < 4 seconds on Safaricom 3G (measured via Lighthouse CI on 3G throttle profile)",

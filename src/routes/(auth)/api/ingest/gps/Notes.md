@@ -20,7 +20,6 @@ If you have:
 
 That’s:
 
- 
 10,000 / 5 = 2,000 writes per second
 
 If every write triggers:
@@ -38,7 +37,6 @@ You will melt your backend.
 
 We need to separate:
 
- 
 HOT PATH (live updates) COLD PATH (historical storage)
 🏗 Production-Grade Architecture
 
@@ -48,7 +46,6 @@ Device → Supabase → UI
 
 We move to:
 
- 
 Device → Ingestion API → In-Memory Buffer → → Realtime Stream (Operators) → Batched DB Writer (Historical logs)
 
 This is how Uber, Bolt, etc. do it.
@@ -56,7 +53,6 @@ This is how Uber, Bolt, etc. do it.
 
 Create a dedicated endpoint:
 
- 
 POST /api/gps/ingest
 
 This endpoint:
@@ -71,7 +67,6 @@ This endpoint:
 
 Example (SvelteKit + Redis style logic)
 
- 
 // src/routes/api/gps/ingest/+server.ts import { json } from '@sveltejs/kit'; import { publishPosition } from '$lib/realtime/publisher'; export async function POST({ request }) { const { vehicleId, lat, lng, organizationId } = await request.json(); // 1️⃣ Publish immediately to realtime channel (HOT PATH) await publishPosition(organizationId, vehicleId, lat, lng); // 2️⃣ Push to queue for batch storage (COLD PATH) await queueGPSForBatchInsert({ vehicleId, lat, lng, organizationId }); return json({ status: 'ok' }); }
 2️⃣ Batch Database Writer (Cold Path)
 
@@ -79,7 +74,6 @@ Instead of writing 2,000 rows per second:
 
 We batch every 5–10 seconds.
 
- 
 setInterval(async () => { const batch = drainQueue(); if (batch.length > 0) { await db.insert('gps_logs', batch); } }, 5000);
 
 Now instead of:
@@ -138,7 +132,6 @@ At 50,000 vehicles:
 
 You move to:
 
- 
 Device → Load Balancer → Ingestion Service → Kafka / Redis Stream → Worker Consumers → Realtime Gateway → Batch Storage
 
 But you don’t need Kafka yet.

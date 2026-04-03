@@ -42,14 +42,20 @@ export const load: PageLoad = async ({ parent, url }) => {
   // ─── Subscription status ──────────────────
   // This should come from the session bootstrap or layout data.
   // Check if the session has subscription info from custom_access_token_hook
-  const hasActiveSubscription = (s as any).hasActiveSubscription ?? (s as any).subscription?.status === 'active' ?? false
+  const hasActiveSubscription =
+    (s as any).hasActiveSubscription ??
+    (s as any).subscription?.status === "active" ??
+    false
 
   // ─── Onboarding ──────────────────
   const onboardingComplete = url.searchParams.get("onboarding") === "complete"
   const requestedRole = url.searchParams.get("role") ?? null
 
   // ─── Single clear destination → redirect ──────────────────
-  if (actorTypes.size === 0 || (actorTypes.size === 1 && actorTypes.has(ROLES.PASSENGER))) {
+  if (
+    actorTypes.size === 0 ||
+    (actorTypes.size === 1 && actorTypes.has(ROLES.PASSENGER))
+  ) {
     return {
       destinations: [],
       reason,
@@ -68,7 +74,8 @@ export const load: PageLoad = async ({ parent, url }) => {
   const hasOnlyCrew =
     [...actorTypes].every((t) =>
       [ROLES.DRIVER, ROLES.CONDUCTOR, ROLES.PASSENGER].includes(t as any),
-    ) && (actorTypes.has(ROLES.DRIVER) || actorTypes.has(ROLES.CONDUCTOR))
+    ) &&
+    (actorTypes.has(ROLES.DRIVER) || actorTypes.has(ROLES.CONDUCTOR))
   if (hasOnlyCrew) {
     redirect(303, "/crew/dashboard")
   }
@@ -80,7 +87,12 @@ export const load: PageLoad = async ({ parent, url }) => {
   }
 
   // ─── Multiple destinations → show selector ────────────────
-  const destinations: Array<{ label: string; href: string; icon: string; description: string }> = []
+  const destinations: Array<{
+    label: string
+    href: string
+    icon: string
+    description: string
+  }> = []
 
   if (actorTypes.has(ROLES.ADMIN)) {
     destinations.push({

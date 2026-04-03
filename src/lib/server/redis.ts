@@ -51,7 +51,7 @@ declare global {
   // eslint-disable-next-line no-var
   var _streamClient: Redis | undefined
   // eslint-disable-next-line no-var
-  var _geoClient:    Redis | undefined
+  var _geoClient: Redis | undefined
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
@@ -61,59 +61,53 @@ declare global {
 
 function createStreamClient(): Redis {
   // Read env inside the function — not at module load time
-  const {
-    UPSTASH_REDIS_REST_URL,
-    UPSTASH_REDIS_REST_TOKEN,
-  } = process.env
+  const { UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN } = process.env
 
   if (!UPSTASH_REDIS_REST_URL) {
-    throw new Error('[stream] UPSTASH_REDIS_REST_URL is not defined')
+    throw new Error("[stream] UPSTASH_REDIS_REST_URL is not defined")
   }
 
   const client = new Redis(UPSTASH_REDIS_REST_URL, {
-    password:             UPSTASH_REDIS_REST_TOKEN || undefined,
+    password: UPSTASH_REDIS_REST_TOKEN || undefined,
     maxRetriesPerRequest: 3,
-    enableReadyCheck:     true,
-    lazyConnect:          false,
+    enableReadyCheck: true,
+    lazyConnect: false,
     retryStrategy: (times) => Math.min(times * 500, 30_000),
   })
 
-  client.on("connect",      () => console.info("[stream] Redis connected"))
-  client.on("ready",        () => console.info("[stream] Redis ready"))
-  client.on("error",        (err) => console.error("[stream] Redis error:", err.message))
-  client.on("close",        () => console.warn("[stream] Redis connection closed"))
+  client.on("connect", () => console.info("[stream] Redis connected"))
+  client.on("ready", () => console.info("[stream] Redis ready"))
+  client.on("error", (err) =>
+    console.error("[stream] Redis error:", err.message),
+  )
+  client.on("close", () => console.warn("[stream] Redis connection closed"))
   client.on("reconnecting", () => console.warn("[stream] Redis reconnecting…"))
 
   return client
 }
 
 function createGeoClient(): Redis {
-  const {
-    TILE38_HOST,
-    TILE38_PORT,
-    TILE38_PASSWORD,
-    TILE38_TLS,
-  } = process.env
+  const { TILE38_HOST, TILE38_PORT, TILE38_PASSWORD, TILE38_TLS } = process.env
 
   if (!TILE38_HOST) {
-    throw new Error('[geo] TILE38_HOST is not defined')
+    throw new Error("[geo] TILE38_HOST is not defined")
   }
 
   const client = new Redis({
-    host:     TILE38_HOST,
-    port:     Number(TILE38_PORT ?? 9851),
+    host: TILE38_HOST,
+    port: Number(TILE38_PORT ?? 9851),
     password: TILE38_PASSWORD || undefined,
-    tls:      TILE38_TLS === "true" ? {} : undefined,
+    tls: TILE38_TLS === "true" ? {} : undefined,
     maxRetriesPerRequest: null,
-    enableReadyCheck:     true,
-    lazyConnect:          false,
+    enableReadyCheck: true,
+    lazyConnect: false,
     retryStrategy: (times) => Math.min(times * 200, 2_000),
   })
 
-  client.on("connect",      () => console.info("[geo] Tile38 connected"))
-  client.on("ready",        () => console.info("[geo] Tile38 ready"))
-  client.on("error",        (err) => console.error("[geo] Tile38 error:", err.message))
-  client.on("close",        () => console.warn("[geo] Tile38 connection closed"))
+  client.on("connect", () => console.info("[geo] Tile38 connected"))
+  client.on("ready", () => console.info("[geo] Tile38 ready"))
+  client.on("error", (err) => console.error("[geo] Tile38 error:", err.message))
+  client.on("close", () => console.warn("[geo] Tile38 connection closed"))
   client.on("reconnecting", () => console.warn("[geo] Tile38 reconnecting…"))
 
   return client
@@ -137,8 +131,12 @@ export function getGeoClient(): Redis {
 // triggering a connection — the connection is deferred until first use.
 
 export const clients = {
-  get stream(): Redis { return getStreamClient() },
-  get geo():    Redis { return getGeoClient()    },
+  get stream(): Redis {
+    return getStreamClient()
+  },
+  get geo(): Redis {
+    return getGeoClient()
+  },
 }
 
 // Convenience destructurable aliases — still lazy.
@@ -170,7 +168,7 @@ export const geoClient = new Proxy({} as Redis, {
  */
 export async function checkConnectionHealth(): Promise<{
   streams: boolean
-  geo:     boolean
+  geo: boolean
 }> {
   const [streamsResult, geoResult] = await Promise.allSettled([
     getStreamClient().ping(),
@@ -178,8 +176,9 @@ export async function checkConnectionHealth(): Promise<{
   ])
 
   return {
-    streams: streamsResult.status === "fulfilled" && streamsResult.value === "PONG",
-    geo:     geoResult.status     === "fulfilled" && geoResult.value     === "PONG",
+    streams:
+      streamsResult.status === "fulfilled" && streamsResult.value === "PONG",
+    geo: geoResult.status === "fulfilled" && geoResult.value === "PONG",
   }
 }
 
@@ -199,5 +198,5 @@ export async function disconnectAll(): Promise<void> {
     global._geoClient?.quit(),
   ])
   global._streamClient = undefined
-  global._geoClient    = undefined
+  global._geoClient = undefined
 }

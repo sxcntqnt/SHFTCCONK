@@ -112,7 +112,7 @@ export const geofencesGeoJSON = derived(geofences, ($geofences) => ({
     // Polygon — close ring if not already closed
     const ring = g.coords.map((c) => [c.lng, c.lat] as [number, number])
     const first = ring[0]
-    const last  = ring[ring.length - 1]
+    const last = ring[ring.length - 1]
     if (first[0] !== last[0] || first[1] !== last[1]) ring.push(first)
     return {
       type: "Feature" as const,
@@ -144,9 +144,9 @@ export const routesGeoJSON = derived(mapRoutes, ($routes) => ({
       type: "Feature" as const,
       id: r.id,
       properties: {
-        id:      r.id,
-        color:   r.color   ?? "#f26522",
-        weight:  r.weight  ?? 4,
+        id: r.id,
+        color: r.color ?? "#f26522",
+        weight: r.weight ?? 4,
         opacity: r.opacity ?? 0.8,
       },
       geometry: {

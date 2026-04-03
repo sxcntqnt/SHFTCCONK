@@ -24,9 +24,9 @@ import { isAuthApiError } from "@supabase/supabase-js"
 import type { RequestHandler } from "./$types"
 
 export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
-  const code        = url.searchParams.get("code")
+  const code = url.searchParams.get("code")
   const inviteToken = url.searchParams.get("invite")
-  const next        = url.searchParams.get("next")
+  const next = url.searchParams.get("next")
 
   // ─── 1. Exchange code for session ────────────────────────────
   if (code) {
@@ -81,16 +81,12 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
   } | null = null
 
   if (inviteToken) {
-    const { data, error: inviteError } = await supabase.rpc(
-      "redeem_invite",
-      { invite_token: inviteToken },
-    )
+    const { data, error: inviteError } = await supabase.rpc("redeem_invite", {
+      invite_token: inviteToken,
+    })
 
     if (inviteError) {
-      console.error(
-        "[auth/callback] Invite redemption failed:",
-        inviteError,
-      )
+      console.error("[auth/callback] Invite redemption failed:", inviteError)
       // Non-blocking: user proceeds with existing permissions.
       // The invite error can be surfaced in the landing page
       // via a query param if desired.
@@ -103,9 +99,8 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
   // ─── 4. Bootstrap session ────────────────────────────────────
   // Returns: profile, actors, jurisdictions, org_memberships,
   //          policy_groups, permissions (post-optimization: aggregated)
-  const { data: bootstrapData, error: bootstrapError } = await supabase.rpc(
-    "bootstrap_session",
-  )
+  const { data: bootstrapData, error: bootstrapError } =
+    await supabase.rpc("bootstrap_session")
 
   if (bootstrapError || !bootstrapData) {
     console.error("[auth/callback] Bootstrap failed:", bootstrapError)
@@ -124,15 +119,12 @@ export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
     redirect(303, sanitizeRedirect(next))
   }
 
-  const destination = resolveDestination(
-    bootstrapData as BootstrapPayload,
-    {
-      inviteRedeemed,
-      inviteResult,
-      inviteToken,
-      next,
-    },
-  )
+  const destination = resolveDestination(bootstrapData as BootstrapPayload, {
+    inviteRedeemed,
+    inviteResult,
+    inviteToken,
+    next,
+  })
 
   redirect(303, destination)
 }

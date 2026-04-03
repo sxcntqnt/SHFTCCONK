@@ -20,8 +20,8 @@
 //   2. Forward — userState + activeContext to child routes
 //   No domain data fetched here — pages fetch their own data.
 
-import type { LayoutServerLoad } from './$types'
-import { redirect }              from '@sveltejs/kit'
+import type { LayoutServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const { userState, activeContext } = locals
@@ -33,7 +33,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   //      authGuardHandle protects /app)
   // Either way, /login is the safe fallback.
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   // No actor type check here — PASSENGER and GUEST are both valid.

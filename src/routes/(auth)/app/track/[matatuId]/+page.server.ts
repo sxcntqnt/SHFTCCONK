@@ -33,12 +33,12 @@
 //   - parquetUrl from org.metadata not compliance API route
 
 import type { PageServerLoad } from "./$types"
-import { error, redirect }     from "@sveltejs/kit"
-import { latLngToCell }        from "h3-js"
+import { error, redirect } from "@sveltejs/kit"
+import { latLngToCell } from "h3-js"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const { safeGetSession, supabase } = locals
-  const { session }                  = await safeGetSession()
+  const { session } = await safeGetSession()
 
   if (!session) throw redirect(303, "/login/sign_in")
 
@@ -48,7 +48,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // ── Fetch vehicle by reg_number ───────────────────────────────────────────
   const { data: vehicle, error: vehicleErr } = await supabase
     .from("vehicles")
-    .select("id, reg_number, organization_id, status, active, capacity, gps_lat, gps_lng, metadata")
+    .select(
+      "id, reg_number, organization_id, status, active, capacity, gps_lat, gps_lng, metadata",
+    )
     .eq("reg_number", matatuId)
     .maybeSingle()
 
@@ -85,7 +87,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!booking) {
     // 402 Payment Required — more accurate than 403 (which implies auth failure).
     // The booking page should intercept this and redirect to payment flow.
-    throw error(402, "A confirmed M-Pesa booking is required to track this matatu")
+    throw error(
+      402,
+      "A confirmed M-Pesa booking is required to track this matatu",
+    )
   }
 
   const bookingMeta = (booking.metadata as Record<string, unknown> | null) ?? {}
@@ -97,9 +102,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // H3 cell at resolution 9 — used to scope DuckDB tile history queries.
   // Null when GPS hasn't reported yet — client waits for realtime.
-  const hex = lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)
-    ? latLngToCell(lat, lng, 9)
-    : null
+  const hex =
+    lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)
+      ? latLngToCell(lat, lng, 9)
+      : null
 
   // ── Org-level context for the map ─────────────────────────────────────────
   // All three run in parallel — a failing compliance query doesn't block the map.
@@ -123,9 +129,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       .in("status", ["EXPIRED", "WARNING"]),
   ])
 
-  const org          = orgRes.status          === "fulfilled" ? orgRes.value.data            : null
-  const vehicleCount = vehicleCountRes.status === "fulfilled" ? (vehicleCountRes.value.count ?? 0) : 0
-  const compliance   = complianceRes.status   === "fulfilled" ? (complianceRes.value.data    ?? []) : []
+  const org = orgRes.status === "fulfilled" ? orgRes.value.data : null
+  const vehicleCount =
+    vehicleCountRes.status === "fulfilled"
+      ? (vehicleCountRes.value.count ?? 0)
+      : 0
+  const compliance =
+    complianceRes.status === "fulfilled" ? (complianceRes.value.data ?? []) : []
 
   const nonCompliantIds = [
     ...new Set(compliance.map((c: { vehicle_id: string }) => c.vehicle_id)),
@@ -133,30 +143,33 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // parquetUrl from org metadata — set when a DuckDB export is triggered.
   // Falls back to null — map renders with live GPS overlay only.
-  const parquetUrl = vehicleCount > 0
-    ? ((org?.metadata as Record<string, unknown> | null)?.parquet_url as string | null ?? null)
-    : null
+  const parquetUrl =
+    vehicleCount > 0
+      ? (((org?.metadata as Record<string, unknown> | null)?.parquet_url as
+          | string
+          | null) ?? null)
+      : null
 
   return {
     matatuId,
     vehicle: {
-      id:             vehicle.id,
-      regNumber:      vehicle.reg_number,
+      id: vehicle.id,
+      regNumber: vehicle.reg_number,
       organizationId: orgId,
-      status:         vehicle.status,
-      active:         vehicle.active,
-      capacity:       vehicle.capacity,
-      metadata:       vehicle.metadata,
+      status: vehicle.status,
+      active: vehicle.active,
+      capacity: vehicle.capacity,
+      metadata: vehicle.metadata,
     },
     // Surfaced in the tracking UI — "Booking ref: QBW2NL · 2 seats · 22 Mar"
     booking: {
-      id:          booking.id,
-      mpesaRef:    booking.mpesa_ref as string,
-      tripDate:    booking.trip_date as string,
+      id: booking.id,
+      mpesaRef: booking.mpesa_ref as string,
+      tripDate: booking.trip_date as string,
       seatsBooked,
     },
     orgId,
-    orgName:      org?.name ?? orgId,
+    orgName: org?.name ?? orgId,
     lat,
     lng,
     hex,
