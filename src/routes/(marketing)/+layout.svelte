@@ -348,7 +348,7 @@
       <a href="/terms">Terms of Service</a>
       <a href="/security">Security</a>
       <a href="/legal/gdpr">Legal</a>
-      <a href="/legal/gdpr/structure">More Info</a>
+      <a href="/legal/structure">More Info</a>
     </div>
 
     <!-- Resources — now a proper 5th column, same row -->

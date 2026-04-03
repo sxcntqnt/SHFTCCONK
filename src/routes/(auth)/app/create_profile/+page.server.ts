@@ -21,7 +21,7 @@ import {
   _hasFullProfile,
   type Organization,
 }                                    from '$lib/features/profile/profile.service'
-import { intentToDashboard }         from '$lib/features/onboarding/routing'
+import { intentToDashboard }         from '$lib/features/onboarding/intents'
 export type { Organization }
 
 // ── Load ──────────────────────────────────────────────────────────────────────

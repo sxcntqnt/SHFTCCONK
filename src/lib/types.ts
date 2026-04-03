@@ -88,20 +88,20 @@ export interface PendingInvite {
    Used to determine where to send each role after login.
 ───────────────────────────────────────────────────────────────────── */
 export const ROLE_ROUTES: Record<Role, string> = {
-  PASSENGER:           "/account",
-  DRIVER:              "/driver/dashboard",
-  CONDUCTOR:           "/driver/dashboard",          // shared driver UI
-  OWNER:               "/operator/fleet",
-  VEHICLE_OWNER:       "/operator/vehicles",
-  ORGANIZATION:        "/operator/dashboard",
-  ORG_CHAIR:           "/operator/dashboard",
-  OPERATIONS_MANAGER:  "/operator/operations",
-  COMPLIANCE_OFFICER:  "/operator/compliance",
-  ACCOUNTANT:          "/operator/finance",
-  ROUTE_SUPERVISOR:    "/operator/routes",
-  STAGE_OPERATOR:      "/operator/stages",
-  REGULATOR:           "/regulator/dashboard",
-  PLANNER:             "/planner/dashboard",
+  PASSENGER:           "/app/dashboard",
+  DRIVER:              "/crew/dashboard",
+  CONDUCTOR:           "/crew/dashboard",          // shared driver UI
+  OWNER:               "/org/select",
+  VEHICLE_OWNER:       "/org/select",
+  ORGANIZATION:        "/org/select",              // org-level users select which org to manage if they have access to multiple
+  ORG_CHAIR:           "/org/select",
+  OPERATIONS_MANAGER:  "/org/select",
+  COMPLIANCE_OFFICER:  "/org/select",
+  ACCOUNTANT:          "/org/select",
+  ROUTE_SUPERVISOR:    "/org/select",
+  STAGE_OPERATOR:      "/org/select",
+  REGULATOR:           "/org/select",
+  PLANNER:             "/org/select",
   ADMIN:               "/admin/dashboard",
 }
 
