@@ -1,4 +1,4 @@
-Src lib input
+//src/lib/features/race/stores/input.ts
 import { writable } from 'svelte/store';
 
 export const leftPressed = writable(false);
