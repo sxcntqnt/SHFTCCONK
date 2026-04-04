@@ -1,3 +1,37 @@
+<script>
+  import AnalyticsDashboard from "./AnalyticsDashboard.svelte"
+  import RouteIntelligence from "./RouteIntelligence.svelte"
+  import ArrivalAlerts from "./ArrivalAlert.svelte"
+  import LiveTrackingMap from "./LiveTrackingMap.svelte"
+
+  // 🔥 TEMP MOCK DATA (replace with your real engine later)
+  let routes = Array(8).fill({ route_number: Math.floor(Math.random() * 50) })
+
+  let vehicles = Array(20)
+    .fill(0)
+    .map((_, i) => ({
+      x: Math.random() * 600,
+      y: Math.random() * 380,
+      color: i % 2 ? "#f26522" : "#00b09b",
+      pulse: Math.random() * 3,
+    }))
+
+  let alerts = [
+    {
+      routeNum: "14",
+      message: "Arriving in 2 min",
+      eta: "2 min",
+      severity: "early",
+    },
+    {
+      routeNum: "27",
+      message: "Delayed 5 min",
+      eta: "10 min",
+      severity: "delay",
+    },
+  ]
+</script>
+
 <svelte:head>
   <title
     >Platform Features — Matatu Pulse | Real-Time Matatu Tracking Features</title
@@ -50,8 +84,8 @@
       </p>
 
       <div class="feature-row">
-        <div class="feature-panel">
-          <span class="panel-label">Live Tracking Map</span>
+        <div class="feature-panel live">
+          <LiveTrackingMap {vehicles} />
         </div>
         <div class="feature-copy">
           <div class="feature-icon-wrap">
@@ -95,7 +129,7 @@
 
       <div class="feature-row flip">
         <div class="feature-panel">
-          <span class="panel-label">Arrival Alert</span>
+          <ArrivalAlerts {alerts} />
         </div>
         <div class="feature-copy">
           <div class="feature-icon-wrap">
@@ -139,7 +173,7 @@
 
       <div class="feature-row">
         <div class="feature-panel">
-          <span class="panel-label">Route Intelligence</span>
+          <RouteIntelligence {routes} />
         </div>
         <div class="feature-copy">
           <div class="feature-icon-wrap">
@@ -181,7 +215,15 @@
 
       <div class="feature-row flip">
         <div class="feature-panel">
-          <span class="panel-label">Analytics Dashboard</span>
+          <AnalyticsDashboard
+            totalRoutes={routes.length}
+            activeVehicles={vehicles.length}
+            avgCongestion={62}
+            onTimeRate={94}
+            timeStr="10:30 AM"
+            peakLabel="🔥 PEAK"
+            peakColor="#f26522"
+          />
         </div>
         <div class="feature-copy">
           <div class="feature-icon-wrap">
@@ -569,6 +611,17 @@
     gap: 10px;
     font-size: 0.875rem;
     color: var(--text-2);
+  }
+  .feature-panel {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .feature-panel :global(.map),
+  .feature-panel :global(.dash),
+  .feature-panel :global(.alerts),
+  .feature-panel :global(.intel) {
+    height: 100%;
   }
   .check {
     flex-shrink: 0;

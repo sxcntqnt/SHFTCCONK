@@ -27,6 +27,11 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Auto-update updated_at on org_news
+create trigger on_org_news_update
+  before update on public.org_news
+  for each row execute function public.handle_org_news_updated_at();
+
 
 -- ═══════════════════════════════════════════════════════════
 -- B. AUDIT (permission change logging)

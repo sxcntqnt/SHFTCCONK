@@ -492,9 +492,6 @@ create policy "driver_assignments_select" on driver_assignments
   );
 
 
--- ═══════════════════════════════════════════════════════════
--- CONDUCTOR ASSIGNMENTS [BUG 2 FIX: JOIN through vehicle_id]
--- ═══════════════════════════════════════════════════════════
 -- Same fix as driver_assignments.
 
 alter table conductor_assignments enable row level security;
@@ -544,9 +541,6 @@ create policy "fleet_ownership_select" on fleet_ownership
     )
   );
 
-
--- ═══════════════════════════════════════════════════════════
--- COMPLIANCE EVENTS
 -- ═══════════════════════════════════════════════════════════
 
 alter table compliance_events enable row level security;
@@ -591,9 +585,6 @@ create policy "compliance_insert" on compliance_events
   );
 
 
--- ═══════════════════════════════════════════════════════════
--- RECONCILIATION EVENTS
--- ═══════════════════════════════════════════════════════════
 
 alter table reconciliation_events enable row level security;
 

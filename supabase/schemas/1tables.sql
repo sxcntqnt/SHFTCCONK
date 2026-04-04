@@ -27,6 +27,28 @@ create table profiles (
   website text,
   unsubscribed boolean not null default false,
   permissions_version int not null default 1,  -- JWT kill-switch
+  onboarding_status text
+    not null default 'GUEST'
+    check (onboarding_status in ('GUEST','AWAITING_KYC','ACTIVE')),
+  kyc_intent text
+    check (kyc_intent in ('passenger','crew','operator','org_staff')),
+  date_of_birth date,
+  guardian_profile_id uuid references profiles(id) on delete set null,
+  kyc_status text
+    check (kyc_status in ('pending','approved','rejected','expired')),
+  ballerine_case_id text unique,
+  phone text,
+  starting_locations text,
+  destinations text,
+  highway_corridors text[],
+  routes_to_track text[],
+  preferred_vehicle_type text[],
+  social_media_links text,
+  emergency_contacts text,
+  languages_spoken text[],
+  time_zone text default 'Africa/Nairobi',
+  working_hours_start time,
+  working_hours_end time,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -83,6 +105,9 @@ create table actor_jurisdictions (
   level jurisdiction_level not null,
   scope_id uuid,  -- NULL = federal
   created_at timestamptz default now(),
+  max_vehicles integer
+    check (max_vehicles > 0),
+  metadata jsonb,
   unique (actor_id, level, scope_id)
 );
 
@@ -328,11 +353,115 @@ create table stripe_customers (
 
 create table contact_requests (
   id uuid primary key default gen_random_uuid(),
-  first_name text,
-  last_name text,
-  email text,
+  first text NOT NULL,
+  last text NOT NULL,
+  email text NOT NULL,
   phone text,
-  company_name text,
-  message_body text,
+  org text,
+  type text,
+  message text NOT NULL,
+  ip_address text NOT NULL,
   created_at timestamptz default now()
 );
+
+-- Organization news / updates
+create table if not exists public.org_news (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  author_id uuid references public.profiles(id),
+  title text not null,
+  body text not null,
+  category text not null default 'general',
+  severity text default 'info',
+  pinned boolean default false,
+  published boolean default true,
+  route_ids uuid[] default '{}',
+  metadata jsonb default '{}',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Actor verification tokens (OTP / magic link)
+create table if not exists actor_verification_tokens (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid not null references actors(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  method text not null check (method in ('email', 'sms')),
+  token_hash text not null,
+  destination text not null,
+  expires_at timestamptz not null default (now() + interval '15 minutes'),
+  used_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint one_active_token_per_actor unique (actor_id, method)
+);
+
+-- M-Pesa billing and payouts
+create table if not exists public.mpesa_customers (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  phone_number text,
+  mpesa_customer_id text,
+  subscription_code text,
+  subscription_status text check (subscription_status in ('active','inactive','pending','cancelled')),
+  is_minor_account boolean default false,
+  guardian_phone text,
+  daily_limit numeric,
+  per_transaction_limit numeric,
+  send_money_enabled boolean default true,
+  lipa_na_mpesa_enabled boolean default true,
+  documents_submitted boolean default false,
+  documents_due_by timestamptz,
+  updated_at timestamptz default now()
+);
+
+create table mpesa_payouts (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id text not null unique,
+  originator_id text,
+  actor_id uuid references actors(id) on delete set null,
+  phone text not null,
+  amount numeric not null check (amount > 0),
+  role text not null,
+  trip_id uuid,
+  organization_id uuid references organizations(id) on delete set null,
+  remarks text,
+  status text not null default 'processing' check (status in ('processing','completed','failed')),
+  result_code integer,
+  result_description text,
+  transaction_id text,
+  completed_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table mpesa_settlements (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id text not null unique,
+  originator_id text,
+  shortcode text not null,
+  amount numeric not null check (amount > 0),
+  reference text,
+  organization_id uuid references organizations(id) on delete set null,
+  initiated_by uuid references actors(id) on delete set null,
+  remarks text,
+  status text not null default 'processing' check (status in ('processing','completed','failed')),
+  result_code integer,
+  result_description text,
+  transaction_id text,
+  completed_at timestamptz,
+  created_at timestamptz default now()
+);
+
+-- Geofences
+create table if not exists public.geofences (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  coords jsonb not null,
+  scope text not null default 'personal' check (scope in ('personal','org')),
+  profile_id uuid references public.profiles(id) on delete cascade,
+  org_id uuid references public.organizations(id) on delete cascade,
+  vehicle_id uuid references public.vehicles(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table public.geofences
+  add constraint geofence_personal_needs_profile check (scope != 'personal' or profile_id is not null),
+  add constraint geofence_org_needs_org check (scope != 'org' or org_id is not null);

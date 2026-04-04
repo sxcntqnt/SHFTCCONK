@@ -1,6 +1,6 @@
 <script lang="ts">
-  import HeatMap from '$lib/components/HeatMap.svelte';
-  import RouteTracker from '$lib/components/Route tracker.svelte';
+  import HeatMap from "./HeatMap.svelte"
+  import RouteTracker from "./RouteTracker.svelte"
 </script>
 
 <svelte:head>

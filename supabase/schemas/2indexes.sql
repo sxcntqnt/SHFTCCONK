@@ -26,6 +26,11 @@ create index idx_actor_jurisdictions_covering
   on actor_jurisdictions (actor_id)
   include (level, scope_id);
 
+-- Operator cap index (only rows with max_vehicles set)
+create index if not exists idx_actor_jurisdictions_operator
+  on actor_jurisdictions(actor_id, level, scope_id)
+  where max_vehicles is not null;
+
 -- Permission action lookups (used by every permission check)
 create index idx_permissions_action_covering
   on permissions (action)
@@ -70,6 +75,31 @@ create index idx_org_members_org on organization_members(organization_id);
 create index idx_compliance_vehicle on compliance_events(vehicle_id);
 create index idx_invite_tokens_org on invite_tokens(organization_id);
 
+-- Org news
+create index if not exists idx_org_news_org on public.org_news(organization_id);
+create index if not exists idx_org_news_created on public.org_news(created_at desc);
+create index if not exists idx_org_news_category on public.org_news(category);
+create index if not exists idx_org_news_published on public.org_news(published) where published = true;
+
+-- Actor verification tokens
+create index if not exists idx_avt_token_hash on actor_verification_tokens (token_hash) where used_at is null;
+
+-- M-Pesa indexes
+create index if not exists idx_mpesa_customers_user_id
+  on public.mpesa_customers(user_id);
+create index on mpesa_payouts    (actor_id);
+create index on mpesa_payouts    (organization_id);
+create index on mpesa_payouts    (status);
+create index on mpesa_payouts    (created_at desc);
+create index on mpesa_settlements (organization_id);
+create index on mpesa_settlements (status);
+create index on mpesa_settlements (created_at desc);
+
+-- Geofences
+create index if not exists idx_geofences_profile on public.geofences(profile_id);
+create index if not exists idx_geofences_org on public.geofences(org_id);
+create index if not exists idx_geofences_created on public.geofences(created_at desc);
+
 -- ── Audit & Monitoring ─────────────────────────────────────
 create index idx_audit_logs_created on audit_logs(created_at desc);
 create index idx_audit_logs_event on audit_logs(event_type, created_at desc);
@@ -79,3 +109,15 @@ create index idx_access_denied_actor on access_denied_log(actor_id, created_at d
 create index idx_access_denied_monitoring
   on access_denied_log (denial_reason, created_at desc)
   include (actor_id, action_attempted);
+
+-- Profile indexes
+create index if not exists idx_profiles_onboarding_status
+  on public.profiles(onboarding_status);
+
+create index if not exists idx_profiles_ballerine_case
+  on public.profiles(ballerine_case_id)
+  where ballerine_case_id is not null;
+
+create index if not exists idx_profiles_guardian
+  on public.profiles(guardian_profile_id)
+  where guardian_profile_id is not null;

@@ -467,6 +467,71 @@ exception when others then
 end;
 $$;
 
+-- Client-facing profile enrichment / create_profile
+create or replace function public.create_profile(
+  p_profile_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  _row public.profiles%rowtype;
+begin
+  if auth.uid() is null or auth.uid()::uuid <> p_profile_id then
+    raise exception 'permission denied: caller must match profile id';
+  end if;
+
+  update public.profiles set
+    full_name = coalesce(p_payload->>'full_name', full_name),
+    company_name = coalesce(p_payload->>'company_name', company_name),
+    avatar_url = coalesce(p_payload->>'avatar_url', avatar_url),
+    website = coalesce(p_payload->>'website', website),
+    onboarding_status = coalesce(p_payload->>'onboarding_status', onboarding_status),
+    kyc_intent = coalesce(p_payload->>'kyc_intent', kyc_intent),
+    date_of_birth = coalesce((p_payload->>'date_of_birth')::date, date_of_birth),
+    guardian_profile_id = coalesce((p_payload->>'guardian_profile_id')::uuid, guardian_profile_id),
+    kyc_status = coalesce(p_payload->>'kyc_status', kyc_status),
+    ballerine_case_id = coalesce(p_payload->>'ballerine_case_id', ballerine_case_id),
+    phone = coalesce(p_payload->>'phone', phone),
+    unsubscribed = coalesce((p_payload->>'unsubscribed')::boolean, unsubscribed),
+    starting_locations = coalesce(p_payload->>'starting_locations', starting_locations),
+    destinations = coalesce(p_payload->>'destinations', destinations),
+    social_media_links = coalesce(p_payload->>'social_media_links', social_media_links),
+    emergency_contacts = coalesce(p_payload->>'emergency_contacts', emergency_contacts),
+    time_zone = coalesce(p_payload->>'time_zone', time_zone),
+    working_hours_start = coalesce((p_payload->>'working_hours_start')::time, working_hours_start),
+    working_hours_end = coalesce((p_payload->>'working_hours_end')::time, working_hours_end),
+    updated_at = now(),
+    highway_corridors = coalesce(
+      (select array_agg(x) from jsonb_array_elements_text(coalesce(p_payload->'highway_corridors','[]'::jsonb)) x),
+      highway_corridors
+    ),
+    routes_to_track = coalesce(
+      (select array_agg(x) from jsonb_array_elements_text(coalesce(p_payload->'routes_to_track','[]'::jsonb)) x),
+      routes_to_track
+    ),
+    preferred_vehicle_type = coalesce(
+      (select array_agg(x) from jsonb_array_elements_text(coalesce(p_payload->'preferred_vehicle_type','[]'::jsonb)) x),
+      preferred_vehicle_type
+    ),
+    languages_spoken = coalesce(
+      (select array_agg(x) from jsonb_array_elements_text(coalesce(p_payload->'languages_spoken','[]'::jsonb)) x),
+      languages_spoken
+    )
+  where id = p_profile_id
+  returning * into _row;
+
+  return to_jsonb(_row);
+exception when others then
+  raise warning 'create_profile failed for %: %', p_profile_id, sqlerrm;
+  return jsonb_build_object('error', sqlerrm);
+end;
+$$;
+
+grant execute on function public.create_profile(uuid, jsonb) to authenticated;
+
 
 -- ─────────────────────────────────────────────────────────
 -- INVITE REDEMPTION
@@ -605,6 +670,19 @@ begin
 end;
 $$;
 
+-- org_news updated_at helper
+create or replace function public.handle_org_news_updated_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 -- Audit logger
 create or replace function public.log_permission_change()
 returns trigger
@@ -649,7 +727,10 @@ begin
       when 'actor_permissions'   then coalesce(new.actor_id, old.actor_id)
       when 'actor_policy_groups' then coalesce(new.actor_id, old.actor_id)
       when 'actor_jurisdictions' then coalesce(new.actor_id, old.actor_id)
-      when 'delegated_authority' then coalesce(new.to_actor_id, old.to_actor_id)
+      when 'delegated_authority' then coalesce(
+        (row_to_json(new) ->> 'to_actor_id')::uuid,
+        (row_to_json(old) ->> 'to_actor_id')::uuid
+      )
       else null
     end
   );

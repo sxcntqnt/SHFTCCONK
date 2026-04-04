@@ -20,7 +20,66 @@ export type BlogPost = {
 // Categories: "Product" | "Operations" | "City" | "Data" | "Guides"
 // ─────────────────────────────────────────────
 const blogPosts: BlogPost[] = [
-  // ── 2025 ──
+  {
+  title:
+    "Where Is the Matatu Right Now? Inside the Matatu Pulse Live Tracking Map",
+  description:
+    "Most commuters rely on guesswork to know when a matatu is coming. Our live tracking map replaces that with real-time GPS telemetry — showing exactly where vehicles are, how they’re moving, and what that means for your wait time.",
+  link: "/blog/live-tracking-map",
+  date: "2026-04-02",
+  category: "Product",
+  author: "Matatu Pulse Team",
+},
+{
+  title:
+    "Stop Waiting at the Stage: How Arrival Alerts Change the Matatu Experience",
+  description:
+    "Arrival Alerts notify you when your matatu is actually approaching — not based on schedules, but on live movement, congestion, and predictive ETA modelling. Here’s how it works and why it matters.",
+  link: "/blog/arrival-alerts",
+  date: "2026-04-01",
+  category: "Product",
+  author: "Matatu Pulse Team",
+},
+{
+  title:
+    "Choosing the Best Route in Real Time: Inside Matatu Pulse Route Intelligence",
+  description:
+    "Not all routes perform the same at every hour. Route Intelligence scores congestion, reliability, and travel time using live and historical data — helping commuters choose the fastest option right now.",
+  link: "/blog/route-intelligence",
+  date: "2026-03-30",
+  category: "Data",
+  author: "Matatu Pulse Team",
+},
+{
+  title:
+    "From GPS Pings to Decisions: Inside the Matatu Pulse Analytics Dashboard",
+  description:
+    "Operators generate massive amounts of vehicle data every day. Our analytics dashboard turns that raw telemetry into actionable insights — from congestion patterns to fleet performance and revenue opportunities.",
+  link: "/blog/analytics-dashboard",
+  date: "2026-03-29",
+  category: "Product",
+  author: "Matatu Pulse Team",
+},
+    {
+    title:
+      "Every Nairobi Matatu Route Number, Live: Introducing the Matatu Pulse Route Tracker",
+    description:
+      "We indexed every active matatu route in our partner SACCO network — route numbers, pickup stages, full destination lists, and live vehicle counts — into a searchable real-time tracker. Here's what we built and why route numbers are the right unit of navigation.",
+    link: "/blog/route-tracker",
+    date: "2026-03-18",
+    category: "Product",
+    author: "Matatu Pulse Team",
+  },
+  {
+    title:
+      "Nairobi Traffic Is More Predictable Than You Think: Inside Our Congestion Heatmap",
+    description:
+      "Using a Bayesian Beta-Binomial model trained on H3 hex-zone route density and time-of-day congestion priors, our heatmap shows which parts of Nairobi are likely gridlocked right now — and why that probability is more useful than a colour on a road line.",
+    link: "/blog/heatmap-analysis",
+    date: "2026-02-27",
+    category: "Data",
+    author: "Matatu Pulse Team",
+  },
   {
     title:
       "How Real-Time Matatu Tracking Is Changing Nairobi's Morning Commute",
