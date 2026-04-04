@@ -1,0 +1,398 @@
+{
+  "loop_id": "compliance_ledger_gate_monetisation",
+  "name": "Compliance Monetisation & Ledger Gate Loop",
+  "description": "A self-reinforcing monetisation loop that intercepts free-tier operators at the moment of maximum intent — anchoring a BUSINESS_RESERVATION — and presents a frictionless per-event M-Pesa escrow path (2.5% of agreed fare via STK push) as an immediate unblocking mechanism, while simultaneously surfacing quantified KES revenue-exposure figures to drive subscription conversion. The loop operates through six gate states: free-tier operators who hit the 5/month quota cap are shown their exact unverified revenue exposure and offered either a per-event escrow payment or a subscription upgrade. Completed per-event escrow payments anchor the reservation and accumulate monthly fee totals; when those totals exceed the Starter subscription cost (KES 1,200), an inline conversion prompt fires with operator-specific ROI copy. Every state transition emits a PostHog event, and the M-Pesa callback handler closes the loop by calling anchorBusinessReservation only after STK push ResultCode === 0, ensuring escrow reliability drives ledger integrity.",
+  "linked_feature": "M-Pesa Payment Store & STK Push Flow",
+  "linked_feature_id": "m_pesa_payment_store_stk_push_flow",
+  "growth_pillars": [
+    "engagement",
+    "retention"
+  ],
+  "requirements": {
+    "files": [
+      {
+        "path": "src/lib/server/billing/ledgerGate.ts",
+        "purpose": "Core gate evaluation module. Computes LedgerGateStatus by querying the monthly anchor count for an org against its tier cap, caches the result in Redis with a TTL, and exports assertLedgerNotGated which throws a typed error on QUOTA_EXCEEDED or resolves PER_EVENT_OFFER when agreed_fare > 0 and mpesa_account_linked.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "getLedgerGateStatus",
+            "description": "Function getLedgerGateStatus must exist to compute and cache gate evaluation result"
+          },
+          {
+            "type": "function_exists",
+            "pattern": "assertLedgerNotGated",
+            "description": "Function assertLedgerNotGated must exist to throw typed errors on quota breach"
+          },
+          {
+            "type": "contains",
+            "pattern": "QUOTA_EXCEEDED",
+            "description": "File must define or reference the QUOTA_EXCEEDED gate state enum value"
+          },
+          {
+            "type": "contains",
+            "pattern": "PER_EVENT_OFFER",
+            "description": "File must define or reference the PER_EVENT_OFFER gate state enum value"
+          },
+          {
+            "type": "contains",
+            "pattern": "redis",
+            "description": "File must use Redis client for caching gate evaluation results"
+          },
+          {
+            "type": "import_exists",
+            "pattern": "upstash",
+            "description": "File must import Upstash Redis client for distributed caching"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/server/billing/perEventEscrow.ts",
+        "purpose": "Per-event escrow orchestration module. Initiates an M-Pesa STK push for 2.5% of agreed_fare, stores a Redis intent record keyed by CheckoutRequestID with booking and org context, and inserts a pending row into per_event_escrow_records. Exports initiatePerEventEscrow and resolvePerEventEscrow (called by callback handler).",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "initiatePerEventEscrow",
+            "description": "Function initiatePerEventEscrow must exist to orchestrate STK push and Redis intent storage"
+          },
+          {
+            "type": "function_exists",
+            "pattern": "resolvePerEventEscrow",
+            "description": "Function resolvePerEventEscrow must exist to finalise escrow on successful M-Pesa callback"
+          },
+          {
+            "type": "contains",
+            "pattern": "per_event_escrow_records",
+            "description": "File must reference the per_event_escrow_records table for insert and update operations"
+          },
+          {
+            "type": "contains",
+            "pattern": "0.025",
+            "description": "File must apply the 2.5% fee rate to agreed_fare when computing escrow amount"
+          },
+          {
+            "type": "contains",
+            "pattern": "CheckoutRequestID",
+            "description": "File must store and retrieve M-Pesa CheckoutRequestID as the Redis intent key"
+          }
+        ]
+      },
+      {
+        "path": "src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts",
+        "purpose": "POST endpoint that routes anchor-ledger requests between SUBSCRIPTION and PER_EVENT paths. Calls assertLedgerNotGated server-side, returns gate status on quota breach, initiates per-event escrow when path is PER_EVENT, and calls anchorBusinessReservation directly on SUBSCRIPTION path. Enforces p95 latency targets via early Redis cache hits.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "POST",
+            "description": "SvelteKit POST handler must be exported as the named export POST"
+          },
+          {
+            "type": "contains",
+            "pattern": "assertLedgerNotGated",
+            "description": "Endpoint must call assertLedgerNotGated before processing any anchor request"
+          },
+          {
+            "type": "contains",
+            "pattern": "initiatePerEventEscrow",
+            "description": "Endpoint must call initiatePerEventEscrow when routing to PER_EVENT path"
+          },
+          {
+            "type": "contains",
+            "pattern": "anchorBusinessReservation",
+            "description": "Endpoint must call anchorBusinessReservation directly on SUBSCRIPTION path"
+          },
+          {
+            "type": "contains",
+            "pattern": "SUBSCRIPTION",
+            "description": "Endpoint must handle the SUBSCRIPTION routing path explicitly"
+          }
+        ]
+      },
+      {
+        "path": "src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts",
+        "purpose": "M-Pesa Daraja callback handler for per-event escrow STK push results. Reads the Redis intent record by CheckoutRequestID, validates ResultCode === 0, calls anchorBusinessReservation, updates the per_event_escrow_records row to completed status, and updates fleet_booking with anchored state. Emits PostHog server-side event on success and failure.",
+        "required": true,
+        "checks": [
+          {
+            "type": "function_exists",
+            "pattern": "POST",
+            "description": "SvelteKit POST handler must be exported for the Daraja webhook to invoke"
+          },
+          {
+            "type": "contains",
+            "pattern": "ResultCode",
+            "description": "Handler must check M-Pesa ResultCode to determine payment success or failure"
+          },
+          {
+            "type": "contains",
+            "pattern": "anchorBusinessReservation",
+            "description": "Handler must call anchorBusinessReservation only after confirming ResultCode === 0"
+          },
+          {
+            "type": "contains",
+            "pattern": "resolvePerEventEscrow",
+            "description": "Handler must call resolvePerEventEscrow to finalise the escrow record"
+          },
+          {
+            "type": "contains",
+            "pattern": "fleet_booking",
+            "description": "Handler must update the fleet_booking record with anchored state after successful escrow"
+          }
+        ]
+      },
+      {
+        "path": "src/lib/components/fleet/LedgerAnchorButton.svelte",
+        "purpose": "Six-state Svelte UI component (IDLE, LOADING, SUCCESS, ERROR, QUOTA_EXCEEDED, PER_EVENT_OFFER) that drives the operator anchor interaction. Derives initial state from gateStatus prop, renders operator-specific KES exposure figures on QUOTA_EXCEEDED, initiates STK push on PER_EVENT_OFFER selection, and captures every state transition to PostHog.",
+        "required": true,
+        "checks": [
+          {
+            "type": "contains",
+            "pattern": "QUOTA_EXCEEDED",
+            "description": "Component must render a distinct UI branch for the QUOTA_EXCEEDED state"
+          },
+          {
+            "type": "contains",
+            "pattern": "PER_EVENT_OFFER",
+            "description": "Component must render the per-event escrow offer UI branch"
+          },
+          {
+            "type": "contains",
+            "pattern": "deriveInitialState",
+            "description": "Component must call or define deriveInitialState to map gateStatus prop to initial UI state"
+          },
+          {
+            "type": "contains",
+            "pattern": "posthog.capture",
+            "description": "Component must call posthog.capture on every state transition for funnel analytics"
+          },
+          {
+            "type": "contains",
+            "pattern": "unverified_revenue_exposure_kes",
+            "description": "Component must display operator-specific KES exposure figure on QUOTA_EXCEEDED state"
+          },
+          {
+            "type": "contains",
+            "pattern": "LOADING",
+            "description": "Component must handle the LOADING state during async STK push initiation"
+          }
+        ]
+      },
+      {
+        "path": "supabase/migrations/add_per_event_escrow.sql",
+        "purpose": "Database migration that creates the per_event_escrow_records table with columns for booking_id, org_id, agreed_fare, escrow_amount_kes, checkout_request_id, status, and timestamps. Also adds the monthly anchor count query view or function used by getLedgerGateStatus, and the telemetry trigger on per_event_escrow_records INSERT.",
+        "required": true,
+        "checks": [
+          {
+            "type": "contains",
+            "pattern": "per_event_escrow_records",
+            "description": "Migration must CREATE TABLE per_event_escrow_records"
+          },
+          {
+            "type": "contains",
+            "pattern": "checkout_request_id",
+            "description": "Migration must define checkout_request_id column for M-Pesa intent correlation"
+          },
+          {
+            "type": "contains",
+            "pattern": "escrow_amount_kes",
+            "description": "Migration must define escrow_amount_kes column to store the 2.5% fee amount"
+          },
+          {
+            "type": "contains",
+            "pattern": "ledger_anchor_usage",
+            "description": "Migration must define ledger_anchor_usage view or function for monthly count queries"
+          },
+          {
+            "type": "contains",
+            "pattern": "CREATE TRIGGER",
+            "description": "Migration must create a database trigger for telemetry on per_event_escrow_records"
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "file": "src/lib/server/billing/ledgerGate.ts",
+        "name": "getLedgerGateStatus",
+        "required": true,
+        "signature": "getLedgerGateStatus(orgId: string, bookingId: string, context: { agreedFare: number; mpesaAccountLinked: boolean }) => Promise<LedgerGateStatus>",
+        "logic": "Accepts orgId, bookingId, and a context object containing agreedFare and mpesaAccountLinked boolean. First attempts to read a cached LedgerGateStatus from Redis using key pattern 'ledger_gate:{orgId}:{currentMonthISO}'. On cache hit, returns the parsed status immediately. On cache miss, queries the database via the ledger_anchor_usage view to get the org's anchor count for the current calendar month and retrieves the org's subscription tier to determine the monthly cap (free tier cap is 5). If anchorCount < cap, returns { status: 'ALLOWED', anchorCount, cap } and caches for 60 seconds. If anchorCount >= cap, checks context: if agreedFare > 0 AND mpesaAccountLinked is true, returns { status: 'PER_EVENT_OFFER', escrowAmountKes: agreedFare * 0.025, anchorCount, cap } and caches for 30 seconds. Otherwise returns { status: 'QUOTA_EXCEEDED', anchorCount, cap } and caches for 30 seconds. On any database error, logs the error and returns { status: 'ALLOWED' } as a fail-open fallback to avoid blocking legitimate operators."
+      },
+      {
+        "file": "src/lib/server/billing/ledgerGate.ts",
+        "name": "assertLedgerNotGated",
+        "required": true,
+        "signature": "assertLedgerNotGated(orgId: string, bookingId: string, context: { agreedFare: number; mpesaAccountLinked: boolean }) => Promise<LedgerGateStatus>",
+        "logic": "Calls getLedgerGateStatus with the provided arguments. If the returned status is 'ALLOWED', returns the status object so the caller can proceed. If the status is 'PER_EVENT_OFFER', throws a typed LedgerGateError with code 'PER_EVENT_OFFER' and attaches the full gate status (including escrowAmountKes) to the error payload so the API endpoint can return it to the client for UI rendering. If the status is 'QUOTA_EXCEEDED', throws a typed LedgerGateError with code 'QUOTA_EXCEEDED'. The thrown error must be an instance of a named class (e.g., LedgerGateError extends Error) so catch blocks can use instanceof checks. Include the orgId and bookingId in the error payload for logging context."
+      },
+      {
+        "file": "src/lib/server/billing/perEventEscrow.ts",
+        "name": "initiatePerEventEscrow",
+        "required": true,
+        "signature": "initiatePerEventEscrow(params: { orgId: string; bookingId: string; agreedFare: number; operatorPhone: string; userId: string }) => Promise<{ checkoutRequestId: string; escrowAmountKes: number }>",
+        "logic": "Computes escrowAmountKes as Math.ceil(params.agreedFare * 0.025) to round up to the nearest KES integer. Calls the M-Pesa STK push provider (mpesa-provider.ts) with the operator's phone number, escrowAmountKes, a description string 'Ledger anchor escrow for booking {bookingId}', and the account reference set to bookingId. On successful STK push initiation (receiving a CheckoutRequestID from Daraja), stores a Redis hash at key 'per_event_intent:{CheckoutRequestID}' with fields: orgId, bookingId, agreedFare, escrowAmountKes, userId, initiatedAt (ISO timestamp), status: 'PENDING'. Sets Redis TTL to 600 seconds (10 minutes) to handle STK push timeout. Inserts a row into per_event_escrow_records with status 'PENDING', checkout_request_id, org_id, booking_id, agreed_fare, escrow_amount_kes, and created_at. Returns { checkoutRequestId, escrowAmountKes }. If the STK push call fails, throws an error with code 'STK_PUSH_FAILED' without inserting the database record. If the Redis write fails after a successful STK push, logs a critical error and still returns the checkoutRequestId so the callback can attempt a database-only lookup as fallback."
+      },
+      {
+        "file": "src/lib/server/billing/perEventEscrow.ts",
+        "name": "resolvePerEventEscrow",
+        "required": true,
+        "signature": "resolvePerEventEscrow(checkoutRequestId: string, mpesaReceiptNumber: string) => Promise<{ bookingId: string; orgId: string; escrowAmountKes: number }>",
+        "logic": "Reads the Redis hash at 'per_event_intent:{checkoutRequestId}'. If the key does not exist (TTL expired or Redis miss), falls back to querying per_event_escrow_records by checkout_request_id to reconstruct the context. Validates that the record status is 'PENDING'; if already 'COMPLETED' or 'FAILED', throws an idempotency error to prevent double-anchoring. Updates the per_event_escrow_records row: sets status to 'COMPLETED', mpesa_receipt_number to mpesaReceiptNumber, completed_at to now(). Deletes the Redis intent key to free memory. Returns { bookingId, orgId, escrowAmountKes } so the callback handler can call anchorBusinessReservation with the correct context. Does not call anchorBusinessReservation itself — that is the callback handler's responsibility to maintain single-responsibility separation."
+      },
+      {
+        "file": "src/routes/api/fleet/bookings/[id]/anchor-ledger/+server.ts",
+        "name": "POST",
+        "required": true,
+        "signature": "POST(event: RequestEvent) => Promise<Response>",
+        "logic": "Extracts bookingId from event.params.id and parses the request body for { path: 'SUBSCRIPTION' | 'PER_EVENT', agreedFare?: number }. Loads the session and org context from event.locals. Calls assertLedgerNotGated(orgId, bookingId, { agreedFare: body.agreedFare ?? 0, mpesaAccountLinked: locals.mpesaAccountLinked }). If assertLedgerNotGated throws a LedgerGateError with code 'QUOTA_EXCEEDED', returns a 402 JSON response with { gateStatus: 'QUOTA_EXCEEDED', unverifiedRevenueExposureKes: locals.vtSnapshot?.unverified_revenue_exposure_kes }. If it throws 'PER_EVENT_OFFER', returns a 402 JSON response with the full gate status including escrowAmountKes. If assertLedgerNotGated resolves (ALLOWED), branches on body.path: for 'SUBSCRIPTION', calls anchorBusinessReservation(bookingId, orgId) directly and returns 200 with { anchored: true, path: 'SUBSCRIPTION' }. For 'PER_EVENT', calls initiatePerEventEscrow with operator phone from locals and returns 200 with { path: 'PER_EVENT', checkoutRequestId, escrowAmountKes, message: 'STK push sent' }. Wraps the entire handler in try/catch; on unexpected errors returns 500. Measures and logs handler duration for p95 latency monitoring."
+      },
+      {
+        "file": "src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts",
+        "name": "POST",
+        "required": true,
+        "signature": "POST(event: RequestEvent) => Promise<Response>",
+        "logic": "Parses the Daraja callback body from event.request.json(). Extracts Body.stkCallback.ResultCode, Body.stkCallback.CheckoutRequestID, and Body.stkCallback.CallbackMetadata.Item array to find the MpesaReceiptNumber. If ResultCode !== 0, reads the Redis intent to get bookingId and orgId, updates per_event_escrow_records status to 'FAILED' with the ResultDesc, emits a PostHog server-side event 'per_event_escrow_failed' with { checkoutRequestId, resultCode, orgId }, and returns 200 (Daraja requires 200 even on business failures). If ResultCode === 0, calls resolvePerEventEscrow(checkoutRequestId, mpesaReceiptNumber) to get { bookingId, orgId, escrowAmountKes }. Then calls anchorBusinessReservation(bookingId, orgId). On anchorBusinessReservation success, updates the fleet_booking record: sets anchored_at to now(), anchor_path to 'PER_EVENT', anchor_escrow_amount_kes to escrowAmountKes. Emits PostHog server-side event 'per_event_escrow_completed' with { bookingId, orgId, escrowAmountKes, mpesaReceiptNumber }. Returns 200. If anchorBusinessReservation throws, logs the error, sets per_event_escrow_records status to 'ANCHOR_FAILED', emits 'per_event_anchor_failed' PostHog event, and returns 200 to prevent Daraja retry storms. All steps are wrapped in try/catch with structured error logging."
+      },
+      {
+        "file": "src/lib/components/fleet/LedgerAnchorButton.svelte",
+        "name": "deriveInitialState",
+        "required": true,
+        "signature": "deriveInitialState(gateStatus: LedgerGateStatus | null) => AnchorButtonState",
+        "logic": "Pure mapping function that takes a gateStatus object (or null for unevaluated state) and returns the corresponding AnchorButtonState string. Maps: null or undefined → 'IDLE'; gateStatus.status === 'ALLOWED' → 'IDLE'; gateStatus.status === 'QUOTA_EXCEEDED' → 'QUOTA_EXCEEDED'; gateStatus.status === 'PER_EVENT_OFFER' → 'PER_EVENT_OFFER'. Returns 'IDLE' as the safe default for any unrecognised status value. This function is called once on component mount using the gateStatus prop passed from the parent page, which has already fetched gate status server-side. The returned state is stored in a Svelte writable store or reactive variable that drives the component's conditional rendering blocks."
+      }
+    ],
+    "integrations": [
+      {
+        "type": "external_service",
+        "description": "Safaricom Daraja API for M-Pesa STK push initiation (LipaNaMpesa Online) and callback receipt. The per-event escrow flow initiates an STK push via the existing mpesa-provider.ts and receives the payment confirmation at the dedicated /api/mpesa/callbacks/per-event-escrow endpoint. The callback URL must be registered in the Daraja portal and must be publicly accessible (HTTPS).",
+        "verification": "curl -X POST https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest -H 'Authorization: Bearer {token}' -d '{...}' and confirm CheckoutRequestID is returned; then simulate callback to /api/mpesa/callbacks/per-event-escrow with ResultCode=0 and verify per_event_escrow_records row status becomes COMPLETED"
+      },
+      {
+        "type": "external_service",
+        "description": "Upstash Redis for distributed gate evaluation caching (ledger_gate:{orgId}:{month} keys) and per-event intent storage (per_event_intent:{CheckoutRequestID} hashes). Redis is the primary mechanism for achieving p95 latency targets by avoiding repeated database queries on the hot SUBSCRIPTION path.",
+        "verification": "redis-cli -u $UPSTASH_REDIS_REST_URL HGETALL per_event_intent:{testCheckoutRequestId} after initiating a test escrow; verify TTL is set with TTL per_event_intent:{testCheckoutRequestId}"
+      },
+      {
+        "type": "api_endpoint",
+        "description": "POST /api/fleet/bookings/[id]/anchor-ledger — the central routing endpoint that the LedgerAnchorButton component calls. Returns gate status on 402, STK push confirmation on 200 PER_EVENT path, or direct anchor confirmation on 200 SUBSCRIPTION path.",
+        "verification": "curl -X POST http://localhost:5173/api/fleet/bookings/{testBookingId}/anchor-ledger -H 'Content-Type: application/json' -H 'Cookie: {session}' -d '{\"path\":\"SUBSCRIPTION\",\"agreedFare\":1500}' and assert response body contains anchored:true or gateStatus field"
+      },
+      {
+        "type": "api_endpoint",
+        "description": "POST /api/mpesa/callbacks/per-event-escrow — Daraja webhook receiver. Must be publicly reachable and return HTTP 200 for all outcomes to prevent Daraja retry loops. Processes both success (ResultCode=0) and failure callbacks.",
+        "verification": "curl -X POST http://localhost:5173/api/mpesa/callbacks/per-event-escrow -H 'Content-Type: application/json' -d '{\"Body\":{\"stkCallback\":{\"ResultCode\":0,\"CheckoutRequestID\":\"ws_CO_test123\",\"CallbackMetadata\":{\"Item\":[{\"Name\":\"MpesaReceiptNumber\",\"Value\":\"QJH12345\"}]}}}}' and verify HTTP 200 response and per_event_escrow_records status=COMPLETED in database"
+      },
+      {
+        "type": "ui_component",
+        "description": "LedgerAnchorButton.svelte integrated into the fleet booking detail page or reservation management panel. Receives gateStatus as a prop (server-side evaluated), manages its own six-state machine, and triggers the anchor-ledger API call on user interaction. Renders inline upgrade prompt with operator-specific KES figures on QUOTA_EXCEEDED state.",
+        "verification": "Navigate to a booking detail page as a free-tier org that has consumed 5 anchors this month; confirm LedgerAnchorButton renders in QUOTA_EXCEEDED state with correct KES exposure figure; click per-event offer and confirm STK push is initiated (check M-Pesa sandbox for push notification)"
+      }
+    ],
+    "telemetry": [
+      {
+        "type": "supabase",
+        "action_name": "per_event_escrow_completed",
+        "table": "per_event_escrow_records",
+        "operation": "UPDATE",
+        "description": "Fires when a per-event escrow record transitions to COMPLETED status, indicating a successful M-Pesa STK push payment and subsequent ledger anchor. This is the single most meaningful signal for the growth loop: it confirms the entire escrow-to-anchor pipeline worked end-to-end, measures the per_event_escrow_first_completed conversion rate, and accumulates the monthly fee total used to trigger subscription conversion prompts.",
+        "properties": [
+          "id",
+          "org_id",
+          "booking_id",
+          "escrow_amount_kes",
+          "agreed_fare",
+          "checkout_request_id",
+          "mpesa_receipt_number",
+          "completed_at",
+          "created_at"
+        ]
+      }
+    ]
+  },
+  "dependencies": [
+    "m_pesa_payment_store_stk_push_flow",
+    "upstash_redis_rate_limiter",
+    "server_side_posthog_analytics_client",
+    "skene_growth_event_log_enrichment_pipeline"
+  ],
+  "verification_commands": [
+    "npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | grep -E 'ledgerGate|perEventEscrow|anchor-ledger' to verify TypeScript compilation of new billing modules",
+    "curl -X POST http://localhost:5173/api/fleet/bookings/{testBookingId}/anchor-ledger -H 'Content-Type: application/json' -H 'Cookie: {validSession}' -d '{\"path\":\"SUBSCRIPTION\",\"agreedFare\":2000}' | jq '.anchored' to verify SUBSCRIPTION path returns anchored:true",
+    "curl -X POST http://localhost:5173/api/fleet/bookings/{quotaExceededBookingId}/anchor-ledger -H 'Content-Type: application/json' -H 'Cookie: {freeTierSession}' -d '{\"path\":\"SUBSCRIPTION\",\"agreedFare\":2000}' | jq '.gateStatus' to verify QUOTA_EXCEEDED returns 402 with gate status",
+    "redis-cli -u $UPSTASH_REDIS_REST_URL GET 'ledger_gate:{testOrgId}:{currentMonth}' to verify Redis caching of gate evaluation result",
+    "curl -X POST http://localhost:5173/api/mpesa/callbacks/per-event-escrow -H 'Content-Type: application/json' -d '{\"Body\":{\"stkCallback\":{\"ResultCode\":0,\"CheckoutRequestID\":\"TEST_CID_001\",\"CallbackMetadata\":{\"Item\":[{\"Name\":\"MpesaReceiptNumber\",\"Value\":\"TESTRCPT001\"}]}}}}' and then SELECT status FROM per_event_escrow_records WHERE checkout_request_id='TEST_CID_001' in Supabase dashboard",
+    "SELECT COUNT(*), SUM(escrow_amount_kes) FROM per_event_escrow_records WHERE org_id='{testOrgId}' AND status='COMPLETED' AND DATE_TRUNC('month', completed_at) = DATE_TRUNC('month', NOW()) to verify monthly fee accumulation query",
+    "npx playwright test tests/ledger-gate.spec.ts --reporter=line to run E2E tests against the full anchor-ledger flow",
+    "SELECT * FROM ledger_anchor_usage WHERE org_id='{testOrgId}' AND month=DATE_TRUNC('month', NOW()) to verify the monthly count view returns correct anchor usage"
+  ],
+  "test_coverage": {
+    "unit_tests": [
+      "getLedgerGateStatus returns ALLOWED when monthly anchor count is below tier cap (mock DB returning count=3, cap=5)",
+      "getLedgerGateStatus returns PER_EVENT_OFFER when count >= cap AND agreedFare > 0 AND mpesaAccountLinked=true",
+      "getLedgerGateStatus returns QUOTA_EXCEEDED when count >= cap AND mpesaAccountLinked=false",
+      "getLedgerGateStatus returns cached value on Redis hit without querying database",
+      "getLedgerGateStatus returns ALLOWED as fail-open when database throws an error",
+      "assertLedgerNotGated resolves without throwing when getLedgerGateStatus returns ALLOWED",
+      "assertLedgerNotGated throws LedgerGateError with code PER_EVENT_OFFER when gate status is PER_EVENT_OFFER",
+      "assertLedgerNotGated throws LedgerGateError with code QUOTA_EXCEEDED when gate status is QUOTA_EXCEEDED",
+      "initiatePerEventEscrow computes escrowAmountKes as Math.ceil(agreedFare * 0.025)",
+      "initiatePerEventEscrow stores correct Redis hash fields including orgId, bookingId, status=PENDING",
+      "initiatePerEventEscrow sets Redis TTL to 600 seconds on intent key",
+      "initiatePerEventEscrow does not insert database record when STK push provider throws",
+      "resolvePerEventEscrow returns idempotency error when record status is already COMPLETED",
+      "resolvePerEventEscrow falls back to database lookup when Redis key has expired",
+      "resolvePerEventEscrow deletes Redis intent key after successful resolution",
+      "deriveInitialState maps null gateStatus to IDLE state",
+      "deriveInitialState maps QUOTA_EXCEEDED gateStatus to QUOTA_EXCEEDED state",
+      "deriveInitialState maps PER_EVENT_OFFER gateStatus to PER_EVENT_OFFER state",
+      "deriveInitialState returns IDLE for unrecognised status values"
+    ],
+    "integration_tests": [
+      "POST /api/fleet/bookings/[id]/anchor-ledger with SUBSCRIPTION path and free quota returns 200 with anchored:true and calls anchorBusinessReservation",
+      "POST /api/fleet/bookings/[id]/anchor-ledger with quota-exceeded free-tier org returns 402 with gateStatus=QUOTA_EXCEEDED",
+      "POST /api/fleet/bookings/[id]/anchor-ledger with PER_EVENT path initiates STK push and returns checkoutRequestId",
+      "POST /api/mpesa/callbacks/per-event-escrow with ResultCode=0 updates per_event_escrow_records to COMPLETED and calls anchorBusinessReservation",
+      "POST /api/mpesa/callbacks/per-event-escrow with ResultCode=1032 (cancelled) updates per_event_escrow_records to FAILED without calling anchorBusinessReservation",
+      "POST /api/mpesa/callbacks/per-event-escrow with duplicate CheckoutRequestID returns 200 without double-anchoring (idempotency test)",
+      "Redis cache invalidation: after anchor-ledger SUBSCRIPTION success, subsequent getLedgerGateStatus call reflects updated count",
+      "Monthly fee accumulation: after 3 completed per-event escrows totalling > KES 1200, query returns correct total for conversion prompt trigger",
+      "Full end-to-end flow: free-tier org hits quota → receives PER_EVENT_OFFER → initiates escrow → callback fires → booking anchored → per_event_escrow_records status=COMPLETED"
+    ],
+    "manual_tests": [
+      "Log in as a free-tier operator org that has 0 anchors this month; navigate to a booking with agreed_fare=2000; click LedgerAnchorButton; verify it renders in IDLE state and successfully anchors on click (SUBSCRIPTION path)",
+      "As the same operator, consume 4 more anchors to reach the 5/month cap; attempt a 6th anchor on a booking with agreed_fare=1500 and mpesa_account_linked=true; verify LedgerAnchorButton transitions to PER_EVENT_OFFER state showing KES 37.50 escrow amount",
+      "On the PER_EVENT_OFFER state, verify the operator-specific unverified_revenue_exposure_kes figure is displayed correctly in the inline upgrade prompt copy",
+      "Click the per-event escrow option; verify the component transitions to LOADING state; check M-Pesa sandbox for STK push notification on the registered test phone number",
+      "Simulate successful M-Pesa payment in sandbox; verify LedgerAnchorButton transitions to SUCCESS state; check Supabase dashboard that per_event_escrow_records row shows status=COMPLETED and fleet_booking shows anchored_at timestamp",
+      "Cancel the STK push on the test phone; verify LedgerAnchorButton transitions to ERROR state with appropriate message; verify per_event_escrow_records row shows status=FAILED",
+      "As a free-tier operator with mpesa_account_linked=false, hit the quota cap; verify LedgerAnchorButton renders QUOTA_EXCEEDED state (not PER_EVENT_OFFER) with subscription upgrade CTA",
+      "Accumulate per-event escrow fees exceeding KES 1,200 in a single month; verify the inline subscription conversion prompt fires with the correct monthly fee total and subscription cost comparison",
+      "Check PostHog dashboard for per_event_escrow_completed events; verify properties include org_id, booking_id, escrow_amount_kes, and mpesa_receipt_number",
+      "Measure anchor-ledger endpoint response time on SUBSCRIPTION path with warm Redis cache; verify p95 < 800ms using browser DevTools Network tab over 20 requests"
+    ]
+  },
+  "metrics": {
+    "data_actions": [
+      "per_event_escrow_completed"
+    ],
+    "success_criteria": [
+      "per_event_escrow_first_completed rate > 40% of operators who hit QUOTA_EXCEEDED state with a booking where agreed_fare > 0",
+      "Subscription conversion within 30 days of first QUOTA_EXCEEDED event > 25% of affected operators",
+      "Anchor-ledger endpoint p95 latency < 800ms on SUBSCRIPTION path (Redis cache warm)",
+      "Anchor-ledger endpoint p95 latency < 1200ms on PER_EVENT path (includes STK push initiation)",
+      "M-Pesa callback to ledger anchor completion rate > 95% measured as COMPLETED / (COMPLETED + ANCHOR_FAILED) in per_event_escrow_records",
+      "Monthly per-event fee total exceeding Starter subscription cost surfaced to operator within same billing period achieves > 15 percentage point conversion lift vs control group",
+      "Redis cache hit rate for getLedgerGateStatus > 80% on repeat anchor attempts within the same session",
+      "Zero double-anchor incidents: per_event_escrow_records idempotency check prevents duplicate anchorBusinessReservation calls on repeated callback delivery"
+    ]
+  },
+  "run_target": "supabase",
+  "_metadata": {
+    "source_plan_path": "C:\\Users\\El-capitan\\Documents\\sxcntqnts-FE\\SHFTCCONK\\apps\\web\\skene-context\\growth-plan.md",
+    "saved_at": "2026-04-04T15:26:13.158217",
+    "run_target": "supabase"
+  }
+}
