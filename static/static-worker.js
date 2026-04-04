@@ -1,4 +1,4 @@
-<!-- 
+/* 
   Combined & Enhanced Service Worker (sw.js)
   - Best of both originals:
     • Rich static pre-caching (HTML + heavy Parquet) from v1
@@ -9,7 +9,7 @@
     • Uses Cache-First at the exact hex the client requests
     • Reasonable resolution is handled client-side (fewer unique hexes = fewer fetches)
     • Once a hex’s buildings are fetched, they are served instantly forever (until cache is cleared)
--->
+*/
 import { openDB } from 'https://unpkg.com/idb?module';
 
 const CACHE_NAME = "nairobi-transport-v2";

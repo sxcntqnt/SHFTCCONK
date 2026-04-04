@@ -10,7 +10,10 @@ import { createClient } from "@supabase/supabase-js"
 import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
 import { PUBLIC_SUPABASE_URL } from "$env/static/public"
 
-const supabaseAdmin = createClient(PUBLIC_SUPABASE_URL, PRIVATE_SUPABASE_SERVICE_ROLE)
+const supabaseAdmin = createClient(
+  PUBLIC_SUPABASE_URL,
+  PRIVATE_SUPABASE_SERVICE_ROLE,
+)
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: unknown
@@ -20,15 +23,18 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ResultCode: 0, ResultDesc: "Received" })
   }
 
-  const conversationId = (body as Record<string, unknown>)?.ConversationID as string | undefined
+  const conversationId = (body as Record<string, unknown>)?.ConversationID as
+    | string
+    | undefined
 
   if (conversationId) {
     const { error } = await supabaseAdmin
       .from("mpesa_settlements")
       .update({
-        status:             "failed",
-        result_code:        null,
-        result_description: "Queue timeout — request did not reach Safaricom in time",
+        status: "failed",
+        result_code: null,
+        result_description:
+          "Queue timeout — request did not reach Safaricom in time",
       })
       .eq("conversation_id", conversationId)
 
@@ -37,7 +43,7 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     await supabaseAdmin.from("audit_logs").insert({
-      event_type:   "mpesa_b2b_timeout",
+      event_type: "mpesa_b2b_timeout",
       target_table: "mpesa_settlements",
       details: { conversation_id: conversationId },
     })

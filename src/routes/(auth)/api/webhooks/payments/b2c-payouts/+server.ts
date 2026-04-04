@@ -23,10 +23,7 @@ import { sendB2CPayment } from "$lib/server/mpesa-provider"
 import { ROLES } from "$lib/features/auth/stores/roles"
 
 // Roles eligible to receive B2C payouts
-const PAYOUT_ELIGIBLE_ROLES = new Set([
-  ROLES.DRIVER,
-  ROLES.CONDUCTOR,
-])
+const PAYOUT_ELIGIBLE_ROLES = new Set([ROLES.DRIVER, ROLES.CONDUCTOR])
 
 // KES payout limits (adjust per Daraja tier / Central Bank limits)
 const MIN_PAYOUT_KES = 10
@@ -38,7 +35,7 @@ const KE_PHONE_RE = /^\+254[17]\d{8}$/
 export const POST: RequestHandler = async ({ request, locals }) => {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const { session } = await locals.safeGetSession()
-  const supabase    = locals.supabase
+  const supabase = locals.supabase
 
   if (!session?.user?.id) {
     return json({ error: "Unauthorised" }, { status: 401 })
@@ -52,19 +49,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const {
-    phoneNumber,
-    amount,
-    role,
-    actorId,
-    orgId,
-    tripId,
-  } = body as Record<string, unknown>
+  const { phoneNumber, amount, role, actorId, orgId, tripId } = body as Record<
+    string,
+    unknown
+  >
 
   // Required fields
   if (!phoneNumber || !amount || !role || !actorId || !orgId) {
     return json(
-      { error: "Missing required fields: phoneNumber, amount, role, actorId, orgId" },
+      {
+        error:
+          "Missing required fields: phoneNumber, amount, role, actorId, orgId",
+      },
       { status: 400 },
     )
   }
@@ -79,9 +75,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // Amount validation (KES, positive integer)
   const amountKes = Number(amount)
-  if (!Number.isInteger(amountKes) || amountKes < MIN_PAYOUT_KES || amountKes > MAX_PAYOUT_KES) {
+  if (
+    !Number.isInteger(amountKes) ||
+    amountKes < MIN_PAYOUT_KES ||
+    amountKes > MAX_PAYOUT_KES
+  ) {
     return json(
-      { error: `amount must be a whole KES number between ${MIN_PAYOUT_KES} and ${MAX_PAYOUT_KES}` },
+      {
+        error: `amount must be a whole KES number between ${MIN_PAYOUT_KES} and ${MAX_PAYOUT_KES}`,
+      },
       { status: 400 },
     )
   }
@@ -89,7 +91,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // Role validation
   if (typeof role !== "string" || !PAYOUT_ELIGIBLE_ROLES.has(role as never)) {
     return json(
-      { error: `role must be one of: ${[...PAYOUT_ELIGIBLE_ROLES].join(", ")}` },
+      {
+        error: `role must be one of: ${[...PAYOUT_ELIGIBLE_ROLES].join(", ")}`,
+      },
       { status: 400 },
     )
   }
@@ -109,7 +113,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   }
 
   if (actor.profile_id !== session.user.id) {
-    return json({ error: "Actor does not belong to this session" }, { status: 403 })
+    return json(
+      { error: "Actor does not belong to this session" },
+      { status: 403 },
+    )
   }
 
   if (!PAYOUT_ELIGIBLE_ROLES.has(actor.type as never)) {
@@ -132,53 +139,60 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
 
     // ── Record payout (processing state) ─────────────────────────────────
-    const { error: insertError } = await supabase
-      .from("mpesa_payouts")
-      .insert({
-        conversation_id:  conversationId,
-        originator_id:    response.OriginatorConversationID ?? null,
-        actor_id:         actorId,
-        phone:            phoneNumber,
-        amount:           amountKes,
-        role,
-        trip_id:          tripId ?? null,
-        organization_id:  orgId,
-        remarks:          `Tip payout — ${roleLabel}`,
-        status:           "processing",
-      })
+    const { error: insertError } = await supabase.from("mpesa_payouts").insert({
+      conversation_id: conversationId,
+      originator_id: response.OriginatorConversationID ?? null,
+      actor_id: actorId,
+      phone: phoneNumber,
+      amount: amountKes,
+      role,
+      trip_id: tripId ?? null,
+      organization_id: orgId,
+      remarks: `Tip payout — ${roleLabel}`,
+      status: "processing",
+    })
 
     if (insertError) {
       // Payment was sent to Daraja but we failed to record it — log and alert
-      console.error("[b2c-payout] DB insert failed after Daraja call:", insertError)
+      console.error(
+        "[b2c-payout] DB insert failed after Daraja call:",
+        insertError,
+      )
       // Don't return 500 — the payment is in flight; return partial success
-      return json({
-        conversationId,
-        warning: "Payment initiated but recording failed — contact support with this ID",
-      }, { status: 202 })
+      return json(
+        {
+          conversationId,
+          warning:
+            "Payment initiated but recording failed — contact support with this ID",
+        },
+        { status: 202 },
+      )
     }
 
     // ── Audit log ─────────────────────────────────────────────────────────
     await supabase.from("audit_logs").insert({
-      event_type:   "mpesa_b2c_initiated",
-      actor_id:     actorId,
-      profile_id:   session.user.id,
+      event_type: "mpesa_b2c_initiated",
+      actor_id: actorId,
+      profile_id: session.user.id,
       performed_by: session.user.id,
       target_table: "mpesa_payouts",
       details: {
         conversation_id: conversationId,
-        amount_kes:      amountKes,
-        phone:           phoneNumber,
+        amount_kes: amountKes,
+        phone: phoneNumber,
         role,
-        org_id:          orgId,
-        trip_id:         tripId ?? null,
+        org_id: orgId,
+        trip_id: tripId ?? null,
       },
     })
 
     return json({ conversationId }, { status: 202 })
-
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error"
     console.error("[b2c-payout]", message)
-    return json({ error: "Payout initiation failed", detail: message }, { status: 500 })
+    return json(
+      { error: "Payout initiation failed", detail: message },
+      { status: 500 },
+    )
   }
 }

@@ -13,30 +13,32 @@
 //   redirect /app/select_plan → intentToDashboard(kyc_intent)
 //   role URL param          → removed (intent lives on profile now)
 
-import { fail, redirect }            from '@sveltejs/kit'
-import type { Actions, PageServerLoad } from './$types'
+import { fail, redirect } from "@sveltejs/kit"
+import type { Actions, PageServerLoad } from "./$types"
 import {
   loadProfileFormData,
   saveProfile,
   _hasFullProfile,
   type Organization,
-}                                    from '$lib/features/profile/profile.service'
-import { intentToDashboard }         from '$lib/features/onboarding/intents'
+} from "$lib/features/profile/profile.service"
+import { intentToDashboard } from "$lib/features/onboarding/intents"
 export type { Organization }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const { user, userState, supabase } = locals
-  if (!user) throw redirect(303, '/login')
+  if (!user) throw redirect(303, "/login")
 
   // Already complete — go to role dashboard
   if (userState && _hasFullProfile(userState.profile)) {
-    const next   = url.searchParams.get('next')
+    const next = url.searchParams.get("next")
     const intent = (userState.profile as any).kyc_intent as string | null
-    throw redirect(303, next
-      ? decodeURIComponent(next)
-      : intentToDashboard(intent ?? 'passenger')
+    throw redirect(
+      303,
+      next
+        ? decodeURIComponent(next)
+        : intentToDashboard(intent ?? "passenger"),
     )
   }
 
@@ -49,8 +51,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     profile,
     organizations,
     linkedOrgIds,
-    returnTo: url.searchParams.get('next') ?? null,
-    user:     { email: user.email ?? '' },
+    returnTo: url.searchParams.get("next") ?? null,
+    user: { email: user.email ?? "" },
   }
 }
 
@@ -59,43 +61,49 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
   updateProfile: async ({ request, locals }) => {
     const { user, supabase } = locals
-    if (!user) throw redirect(303, '/login')
+    if (!user) throw redirect(303, "/login")
 
     const formData = await request.formData()
-    const returnTo = (formData.get('returnTo') as string | null) ?? null
+    const returnTo = (formData.get("returnTo") as string | null) ?? null
 
     const input = {
-      fullName:             (formData.get('fullName')             as string | null)?.trim() ?? '',
-      phone:                (formData.get('phone')                as string | null)?.trim() ?? '',
-      companyName:          (formData.get('companyName')          as string | null)?.trim() ?? '',
-      website:              (formData.get('website')              as string | null)?.trim() ?? '',
-      startingLocations:    (formData.get('startingLocations')    as string | null)?.trim() ?? '',
-      destinations:         (formData.get('destinations')         as string | null)?.trim() ?? '',
-      highwayCorridors:     formData.getAll('highwayCorridors')   as string[],
-      routesToTrack:        formData.getAll('routesToTrack')      as string[],
-      preferredVehicleType: formData.getAll('preferredVehicleType') as string[],
-      socialMediaLinks:     (formData.get('socialMediaLinks')     as string | null)?.trim() ?? '',
-      emergencyContacts:    (formData.get('emergencyContacts')    as string | null)?.trim() ?? '',
-      languagesSpoken:      formData.getAll('languagesSpoken')    as string[],
-      timeZone:             (formData.get('timeZone')             as string | null)?.trim() ?? '',
-      workingHoursStart:    (formData.get('workingHoursStart')    as string | null)?.trim() ?? '',
-      workingHoursEnd:      (formData.get('workingHoursEnd')      as string | null)?.trim() ?? '',
-      orgIds:               formData.getAll('org_ids')            as string[],
+      fullName: (formData.get("fullName") as string | null)?.trim() ?? "",
+      phone: (formData.get("phone") as string | null)?.trim() ?? "",
+      companyName: (formData.get("companyName") as string | null)?.trim() ?? "",
+      website: (formData.get("website") as string | null)?.trim() ?? "",
+      startingLocations:
+        (formData.get("startingLocations") as string | null)?.trim() ?? "",
+      destinations:
+        (formData.get("destinations") as string | null)?.trim() ?? "",
+      highwayCorridors: formData.getAll("highwayCorridors") as string[],
+      routesToTrack: formData.getAll("routesToTrack") as string[],
+      preferredVehicleType: formData.getAll("preferredVehicleType") as string[],
+      socialMediaLinks:
+        (formData.get("socialMediaLinks") as string | null)?.trim() ?? "",
+      emergencyContacts:
+        (formData.get("emergencyContacts") as string | null)?.trim() ?? "",
+      languagesSpoken: formData.getAll("languagesSpoken") as string[],
+      timeZone: (formData.get("timeZone") as string | null)?.trim() ?? "",
+      workingHoursStart:
+        (formData.get("workingHoursStart") as string | null)?.trim() ?? "",
+      workingHoursEnd:
+        (formData.get("workingHoursEnd") as string | null)?.trim() ?? "",
+      orgIds: formData.getAll("org_ids") as string[],
     }
 
     const result = await saveProfile(supabase, user.id, input)
 
-    if (result && 'fields' in result) {
+    if (result && "fields" in result) {
       return fail(400, {
-        errorFields:  result.fields,
+        errorFields: result.fields,
         errorMessage: result.message,
         returnTo,
         ...input,
       })
     }
-    if (result && 'serverError' in result) {
+    if (result && "serverError" in result) {
       return fail(500, {
-        errorFields:  [],
+        errorFields: [],
         errorMessage: result.serverError,
         returnTo,
         ...input,
@@ -109,12 +117,15 @@ export const actions: Actions = {
 
     // Re-read intent — userState was resolved before this save
     const { data: fresh } = await supabase
-      .from('profiles')
-      .select('kyc_intent')
-      .eq('id', user.id)
+      .from("profiles")
+      .select("kyc_intent")
+      .eq("id", user.id)
       .single()
 
     const intent = fresh?.kyc_intent as string | null
-    throw redirect(303, `${intentToDashboard(intent ?? 'passenger')}?rebootstrap=1`)
+    throw redirect(
+      303,
+      `${intentToDashboard(intent ?? "passenger")}?rebootstrap=1`,
+    )
   },
 }

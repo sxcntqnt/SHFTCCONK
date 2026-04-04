@@ -1,4 +1,4 @@
-import * as THREE from 'three'
+import * as THREE from "three"
 
 interface SeatPlacement {
   position: THREE.Vector3
@@ -13,28 +13,31 @@ interface GridCell {
 
 export class BusSeats {
   interiorGroup: THREE.Group
-  seatGeometry:  THREE.BufferGeometry | null
-  seatMaterial:  THREE.MeshStandardMaterial | null
-  seatInstance:  THREE.InstancedMesh | null
-  seatIndexMap:  Map<number, number>
+  seatGeometry: THREE.BufferGeometry | null
+  seatMaterial: THREE.MeshStandardMaterial | null
+  seatInstance: THREE.InstancedMesh | null
+  seatIndexMap: Map<number, number>
 
   constructor(interiorGroup: THREE.Group) {
     this.interiorGroup = interiorGroup
-    this.seatGeometry  = null
-    this.seatMaterial  = null
-    this.seatInstance  = null
-    this.seatIndexMap  = new Map()
+    this.seatGeometry = null
+    this.seatMaterial = null
+    this.seatInstance = null
+    this.seatIndexMap = new Map()
   }
 
   setSeatModel(seatModel: THREE.Group) {
     let seatMesh: THREE.Mesh | null = null
     seatModel.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh && !seatMesh) seatMesh = child as THREE.Mesh
+      if ((child as THREE.Mesh).isMesh && !seatMesh)
+        seatMesh = child as THREE.Mesh
     })
-    if (!seatMesh) throw new Error('Seat model has no mesh')
+    if (!seatMesh) throw new Error("Seat model has no mesh")
 
     this.seatGeometry = (seatMesh as THREE.Mesh).geometry.clone()
-    this.seatMaterial = ((seatMesh as THREE.Mesh).material as THREE.MeshStandardMaterial).clone()
+    this.seatMaterial = (
+      (seatMesh as THREE.Mesh).material as THREE.MeshStandardMaterial
+    ).clone()
     this.seatMaterial.vertexColors = true
   }
 
@@ -50,19 +53,26 @@ export class BusSeats {
 
   createSeatInstances(seats: SeatPlacement[]) {
     if (seats.length === 0) {
-      console.warn('[BusSeats] No seats to create')
+      console.warn("[BusSeats] No seats to create")
       return
     }
 
     // Fall back to simple box geometry if no seat model was loaded
-    const geometry = this.seatGeometry ?? new THREE.BoxGeometry(0.45, 0.45, 0.45)
-    const material = this.seatMaterial ?? new THREE.MeshStandardMaterial({
-      color: 0x1a3a6e,
-      roughness: 0.8,
-    })
+    const geometry =
+      this.seatGeometry ?? new THREE.BoxGeometry(0.45, 0.45, 0.45)
+    const material =
+      this.seatMaterial ??
+      new THREE.MeshStandardMaterial({
+        color: 0x1a3a6e,
+        roughness: 0.8,
+      })
 
-    this.seatInstance = new THREE.InstancedMesh(geometry, material, seats.length)
-    this.seatInstance.castShadow    = true
+    this.seatInstance = new THREE.InstancedMesh(
+      geometry,
+      material,
+      seats.length,
+    )
+    this.seatInstance.castShadow = true
     this.seatInstance.receiveShadow = true
 
     const dummy = new THREE.Object3D()
@@ -71,7 +81,7 @@ export class BusSeats {
       dummy.rotation.y = Math.PI
       dummy.updateMatrix()
       this.seatInstance!.setMatrixAt(i, dummy.matrix)
-      this.seatIndexMap.set(i + 1, i)  // seatNumber → instanceIndex
+      this.seatIndexMap.set(i + 1, i) // seatNumber → instanceIndex
     })
 
     this.seatInstance.instanceMatrix.needsUpdate = true

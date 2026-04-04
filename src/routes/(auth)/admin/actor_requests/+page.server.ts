@@ -30,8 +30,8 @@
  *     New binding type 'sacco_chair' maps to admin_activate_org_member RPC.
  */
 
-import type { PageServerLoad, Actions } from './$types'
-import { fail, redirect }               from '@sveltejs/kit'
+import type { PageServerLoad, Actions } from "./$types"
+import { fail, redirect } from "@sveltejs/kit"
 
 const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
@@ -45,8 +45,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   // Fetch pending requests with profile info joined
   // (profile_id → profiles.full_name, avatar_url)
   const { data: requests, error: reqErr } = await supabase
-    .from('actor_requests')
-    .select(`
+    .from("actor_requests")
+    .select(
+      `
       id,
       profile_id,
       requested_type,
@@ -58,12 +59,13 @@ export const load: PageServerLoad = async ({ locals }) => {
         avatar_url,
         company_name
       )
-    `)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
 
   if (reqErr) {
-    console.error('[actor_requests] load error:', reqErr)
+    console.error("[actor_requests] load error:", reqErr)
   }
 
   // Resolve org names for requests that reference an org in payload
@@ -74,23 +76,23 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   if (orgIds.length > 0) {
     const { data: orgs } = await supabase
-      .from('organizations')
-      .select('id, name')
-      .in('id', orgIds)
+      .from("organizations")
+      .select("id, name")
+      .in("id", orgIds)
 
     orgMap = Object.fromEntries((orgs ?? []).map((o) => [o.id, o.name]))
   }
 
   // Vehicle + org dropdowns for binding selects
   const [{ data: vehicles }, { data: organizations }] = await Promise.all([
-    supabase.from('vehicles').select('id, reg_number, capacity').limit(200),
-    supabase.from('organizations').select('id, name, status').limit(200),
+    supabase.from("vehicles").select("id, reg_number, capacity").limit(200),
+    supabase.from("organizations").select("id, name, status").limit(200),
   ])
 
   return {
-    requests:      requests ?? [],
+    requests: requests ?? [],
     orgMap,
-    vehicles:      vehicles      ?? [],
+    vehicles: vehicles ?? [],
     organizations: organizations ?? [],
   }
 }
@@ -104,101 +106,128 @@ export const actions: Actions = {
     const { supabase, user } = locals
     const form = await request.formData()
 
-    const id            = form.get('request_id')    as string
-    const bindingType   = (form.get('binding_type') as string) || null
-    const bindingTarget = (form.get('binding_target') as string) || null
+    const id = form.get("request_id") as string
+    const bindingType = (form.get("binding_type") as string) || null
+    const bindingTarget = (form.get("binding_target") as string) || null
 
     if (!id || !UUID_RE.test(id)) {
-      return fail(400, { error: 'missing_or_invalid_request_id' })
+      return fail(400, { error: "missing_or_invalid_request_id" })
     }
-    if (!user) return fail(403, { error: 'not_authenticated' })
+    if (!user) return fail(403, { error: "not_authenticated" })
 
     // Validate binding target UUID when required
     const requiresTarget = [
-      'driver_assignment',
-      'conductor_assignment',
-      'fleet_ownership',
-      'organization_member',
-      'sacco_chair',
+      "driver_assignment",
+      "conductor_assignment",
+      "fleet_ownership",
+      "organization_member",
+      "sacco_chair",
     ]
     if (bindingType && requiresTarget.includes(bindingType)) {
-      if (!bindingTarget)           return fail(400, { error: 'binding_target_required' })
-      if (!UUID_RE.test(bindingTarget)) return fail(400, { error: 'binding_target_invalid_uuid' })
+      if (!bindingTarget) return fail(400, { error: "binding_target_required" })
+      if (!UUID_RE.test(bindingTarget))
+        return fail(400, { error: "binding_target_invalid_uuid" })
     }
 
     // ── Server-side existence + ownership checks ───────────────
     try {
       // Vehicle-binding checks
-      if (['driver_assignment', 'conductor_assignment', 'fleet_ownership'].includes(bindingType ?? '')) {
+      if (
+        [
+          "driver_assignment",
+          "conductor_assignment",
+          "fleet_ownership",
+        ].includes(bindingType ?? "")
+      ) {
         const { data: vehicle, error: vErr } = await supabase
-          .from('vehicles')
-          .select('id, organization_id')
-          .eq('id', bindingTarget)
+          .from("vehicles")
+          .select("id, organization_id")
+          .eq("id", bindingTarget)
           .maybeSingle()
 
-        if (vErr || !vehicle) return fail(400, { error: 'vehicle_not_found' })
+        if (vErr || !vehicle) return fail(400, { error: "vehicle_not_found" })
 
         if (vehicle.organization_id) {
-          const hasAccess = await _isOrgAdminOrPlatform(supabase, user.id, vehicle.organization_id)
-          if (!hasAccess) return fail(403, { error: 'not_org_admin_for_vehicle' })
+          const hasAccess = await _isOrgAdminOrPlatform(
+            supabase,
+            user.id,
+            vehicle.organization_id,
+          )
+          if (!hasAccess)
+            return fail(403, { error: "not_org_admin_for_vehicle" })
         }
       }
 
       // Org-binding checks
-      if (['organization_member', 'fleet_ownership', 'sacco_chair'].includes(bindingType ?? '')) {
-        const targetOrgId = bindingType === 'fleet_ownership' ? bindingTarget : bindingTarget
+      if (
+        ["organization_member", "fleet_ownership", "sacco_chair"].includes(
+          bindingType ?? "",
+        )
+      ) {
+        const targetOrgId =
+          bindingType === "fleet_ownership" ? bindingTarget : bindingTarget
         const { data: org, error: oErr } = await supabase
-          .from('organizations')
-          .select('id')
-          .eq('id', targetOrgId)
+          .from("organizations")
+          .select("id")
+          .eq("id", targetOrgId)
           .maybeSingle()
 
-        if (oErr || !org) return fail(400, { error: 'organization_not_found' })
+        if (oErr || !org) return fail(400, { error: "organization_not_found" })
 
-        const hasAccess = await _isOrgAdminOrPlatform(supabase, user.id, targetOrgId!)
-        if (!hasAccess) return fail(403, { error: 'not_org_admin_for_org' })
+        const hasAccess = await _isOrgAdminOrPlatform(
+          supabase,
+          user.id,
+          targetOrgId!,
+        )
+        if (!hasAccess) return fail(403, { error: "not_org_admin_for_org" })
       }
     } catch (e) {
-      console.error('[actor_requests] binding validation error:', e)
-      return fail(500, { error: 'binding_validation_failed' })
+      console.error("[actor_requests] binding validation error:", e)
+      return fail(500, { error: "binding_validation_failed" })
     }
 
     // ── Call RPC ───────────────────────────────────────────────
     // For SACCO chair activation: use admin_activate_org_member RPC
-    if (bindingType === 'sacco_chair') {
+    if (bindingType === "sacco_chair") {
       const { data: req } = await supabase
-        .from('actor_requests')
-        .select('profile_id')
-        .eq('id', id)
+        .from("actor_requests")
+        .select("profile_id")
+        .eq("id", id)
         .single()
 
-      const { error: rpcErr } = await supabase.rpc('admin_activate_org_member', {
-        p_org_id:    bindingTarget,
-        p_profile_id: req?.profile_id,
-      })
+      const { error: rpcErr } = await supabase.rpc(
+        "admin_activate_org_member",
+        {
+          p_org_id: bindingTarget,
+          p_profile_id: req?.profile_id,
+        },
+      )
 
       if (rpcErr) {
-        console.error('[actor_requests] admin_activate_org_member error:', rpcErr)
+        console.error(
+          "[actor_requests] admin_activate_org_member error:",
+          rpcErr,
+        )
         return fail(500, { error: rpcErr.message })
       }
 
-      throw redirect(303, '/admin/actor_requests')
+      throw redirect(303, "/admin/actor_requests")
     }
 
     // General approve RPC for all other binding types
-    const { error: rpcErr } = await supabase.rpc('approve_actor_request', {
-      request_id:     id,
-      binding_type:   bindingType   ?? null,
+    const { error: rpcErr } = await supabase.rpc("approve_actor_request", {
+      request_id: id,
+      binding_type: bindingType ?? null,
       binding_target: bindingTarget ?? null,
     })
 
     if (rpcErr) {
-      console.error('[actor_requests] approve_actor_request error:', rpcErr)
+      console.error("[actor_requests] approve_actor_request error:", rpcErr)
       return fail(500, { error: rpcErr.message })
     }
 
     // BUG FIX: was `return { status: 303, headers: {...} }` — ignored by SvelteKit
-    throw redirect(303, '/admin/actor_requests')
+    throw redirect(303, "/admin/actor_requests")
   },
 
   /* ── Reject ───────────────────────────────────────────────── */
@@ -206,31 +235,31 @@ export const actions: Actions = {
     const { supabase, user } = locals
     const form = await request.formData()
 
-    const id     = form.get('request_id') as string
-    const reason = (form.get('reject_reason') as string) || 'Rejected by admin'
+    const id = form.get("request_id") as string
+    const reason = (form.get("reject_reason") as string) || "Rejected by admin"
 
     if (!id || !UUID_RE.test(id)) {
-      return fail(400, { error: 'missing_or_invalid_request_id' })
+      return fail(400, { error: "missing_or_invalid_request_id" })
     }
-    if (!user) return fail(403, { error: 'not_authenticated' })
+    if (!user) return fail(403, { error: "not_authenticated" })
 
     const { error } = await supabase
-      .from('actor_requests')
+      .from("actor_requests")
       .update({
-        status:       'rejected',
+        status: "rejected",
         processed_at: new Date().toISOString(),
         processed_by: user.id,
-        metadata:     { reject_reason: reason },
+        metadata: { reject_reason: reason },
       })
-      .eq('id', id)
-      .eq('status', 'pending') // only reject if still pending
+      .eq("id", id)
+      .eq("status", "pending") // only reject if still pending
 
     if (error) {
-      console.error('[actor_requests] reject error:', error)
+      console.error("[actor_requests] reject error:", error)
       return fail(500, { error: error.message })
     }
 
-    throw redirect(303, '/admin/actor_requests')
+    throw redirect(303, "/admin/actor_requests")
   },
 }
 
@@ -252,9 +281,9 @@ async function _isOrgAdminOrPlatform(
 ): Promise<boolean> {
   // Get all actor IDs for this user
   const { data: actors } = await supabase
-    .from('actors')
-    .select('id, type')
-    .eq('profile_id', userId)
+    .from("actors")
+    .select("id, type")
+    .eq("profile_id", userId)
 
   if (!actors?.length) return false
 
@@ -262,18 +291,18 @@ async function _isOrgAdminOrPlatform(
 
   // Platform admin check (SUPER_ADMIN or ADMIN actor with federal jurisdiction)
   const isPlatformAdmin = actors.some(
-    (a: { type: string }) => a.type === 'SUPER_ADMIN' || a.type === 'ADMIN',
+    (a: { type: string }) => a.type === "SUPER_ADMIN" || a.type === "ADMIN",
   )
   if (isPlatformAdmin) return true
 
   // Org admin check
   const { data: membership } = await supabase
-    .from('organization_members')
-    .select('actor_id')
-    .in('actor_id', actorIds)
-    .eq('organization_id', orgId)
-    .eq('role', 'admin')
+    .from("organization_members")
+    .select("actor_id")
+    .in("actor_id", actorIds)
+    .eq("organization_id", orgId)
+    .eq("role", "admin")
     .limit(1)
 
-  return !!(membership?.length)
+  return !!membership?.length
 }

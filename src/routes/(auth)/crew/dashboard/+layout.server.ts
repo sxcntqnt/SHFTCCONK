@@ -1,4 +1,4 @@
-import type { LayoutServerLoad } from '$lib/$types'
+import type { LayoutServerLoad } from "$lib/$types"
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   // Ensure session is valid
@@ -8,9 +8,11 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   }
 
   // Call bootstrap_session RPC to get actor/context for this user
-  const { data, error } = await (locals.supabase as any).rpc('bootstrap_session')
+  const { data, error } = await (locals.supabase as any).rpc(
+    "bootstrap_session",
+  )
   if (error) {
-    console.error('bootstrap_session rpc error', error)
+    console.error("bootstrap_session rpc error", error)
     return { bootstrap: null, session }
   }
 

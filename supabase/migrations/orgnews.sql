@@ -920,3 +920,61 @@ WITH CHECK (
   kyc_intent IS NOT NULL AND
   onboarding_status IS NOT NULL
 );
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id)
+  values (new.id)
+  on conflict (id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+
+
+create or replace function public.get_my_permissions()
+returns table (
+  action text,
+  level text,
+  scope_id uuid,
+  effect text
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select action, level, scope_id, effect
+  from public.my_permissions
+$$;
+
+
+create or replace function public.get_cached_actor_ids()
+returns uuid[]
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(array_agg(id), '{}')
+  from actors
+  where profile_id = auth.uid()
+$$;
+
+
+
+revoke all on function public.get_my_permissions() from public;
+grant execute on function public.get_my_permissions() to authenticated;
+
+revoke all on function public.get_cached_actor_ids() from public;
+grant execute on function public.get_cached_actor_ids() to authenticated;

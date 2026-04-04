@@ -3,24 +3,24 @@
 // These are platform-wide actions only the admin identity can submit.
 // Org-level writes live in org/[orgId]/hyperledger/transactions.ts.
 
-import { adminSubmit } from './contractHelper';
+import { adminSubmit } from "./contractHelper"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OrgOnboardPayload {
-  orgId: string;
-  orgName: string;
-  adminUserId: string;
-  plan?: string; // e.g. 'basic' | 'enterprise'
+  orgId: string
+  orgName: string
+  adminUserId: string
+  plan?: string // e.g. 'basic' | 'enterprise'
 }
 
 export interface VehicleCreatePayload {
-  vehicleId: string;
-  orgId: string;
-  plate: string;
-  make: string;
-  model: string;
-  year: string;
+  vehicleId: string
+  orgId: string
+  plate: string
+  make: string
+  model: string
+  year: string
 }
 
 // ─── Platform-wide transactions ───────────────────────────────────────────────
@@ -30,14 +30,14 @@ export interface VehicleCreatePayload {
  * Call this after org is created in your DB.
  */
 export async function onboardOrgToLedger(payload: OrgOnboardPayload) {
-  const { orgId, orgName, adminUserId, plan = 'basic' } = payload;
-  return adminSubmit('platform-contract', 'RegisterOrg', [
+  const { orgId, orgName, adminUserId, plan = "basic" } = payload
+  return adminSubmit("platform-contract", "RegisterOrg", [
     orgId,
     orgName,
     adminUserId,
     plan,
     new Date().toISOString(),
-  ]);
+  ])
 }
 
 /**
@@ -45,11 +45,11 @@ export async function onboardOrgToLedger(payload: OrgOnboardPayload) {
  * Does not delete — ledger is immutable. Sets status to INACTIVE.
  */
 export async function deactivateOrgOnLedger(orgId: string, reason: string) {
-  return adminSubmit('platform-contract', 'DeactivateOrg', [
+  return adminSubmit("platform-contract", "DeactivateOrg", [
     orgId,
     reason,
     new Date().toISOString(),
-  ]);
+  ])
 }
 
 /**
@@ -57,8 +57,8 @@ export async function deactivateOrgOnLedger(orgId: string, reason: string) {
  * Called when fleet manager adds a vehicle — admin countersigns on-chain.
  */
 export async function createVehicleOnLedger(payload: VehicleCreatePayload) {
-  const { vehicleId, orgId, plate, make, model, year } = payload;
-  return adminSubmit('fleet-contract', 'CreateVehicle', [
+  const { vehicleId, orgId, plate, make, model, year } = payload
+  return adminSubmit("fleet-contract", "CreateVehicle", [
     vehicleId,
     orgId,
     plate,
@@ -66,7 +66,7 @@ export async function createVehicleOnLedger(payload: VehicleCreatePayload) {
     model,
     year,
     new Date().toISOString(),
-  ]);
+  ])
 }
 
 /**
@@ -74,11 +74,11 @@ export async function createVehicleOnLedger(payload: VehicleCreatePayload) {
  * Chaincode will reject any future txs from this deviceId.
  */
 export async function flagDeviceCompromised(deviceId: string, reason: string) {
-  return adminSubmit('fleet-contract', 'FlagDeviceCompromised', [
+  return adminSubmit("fleet-contract", "FlagDeviceCompromised", [
     deviceId,
     reason,
     new Date().toISOString(),
-  ]);
+  ])
 }
 
 /**
@@ -86,15 +86,15 @@ export async function flagDeviceCompromised(deviceId: string, reason: string) {
  */
 export async function recordPlatformComplianceEvent(
   entityId: string,
-  entityType: 'org' | 'vehicle' | 'driver' | 'device',
+  entityType: "org" | "vehicle" | "driver" | "device",
   eventType: string,
-  details: string
+  details: string,
 ) {
-  return adminSubmit('compliance-contract', 'RecordPlatformEvent', [
+  return adminSubmit("compliance-contract", "RecordPlatformEvent", [
     entityId,
     entityType,
     eventType,
     details,
     new Date().toISOString(),
-  ]);
+  ])
 }

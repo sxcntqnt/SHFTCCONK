@@ -33,8 +33,8 @@
  *     The UI still displays "Organization" as the human label.
  */
 
-import type { PageServerLoad, Actions } from './$types'
-import { fail, redirect }               from '@sveltejs/kit'
+import type { PageServerLoad, Actions } from "./$types"
+import { fail, redirect } from "@sveltejs/kit"
 
 /* ============================================================
    LOAD
@@ -43,13 +43,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const { supabase } = locals
 
   // Surface success feedback via URL params (set by redirect after action)
-  const justCreated = url.searchParams.get('created') === '1'
-  const justDeleted = url.searchParams.get('deleted') === '1'
+  const justCreated = url.searchParams.get("created") === "1"
+  const justDeleted = url.searchParams.get("deleted") === "1"
 
   // ── Jurisdictions with actor + profile join ──────────────────
   const { data: jurisdictions, error: jErr } = await supabase
-    .from('actor_jurisdictions')
-    .select(`
+    .from("actor_jurisdictions")
+    .select(
+      `
       id,
       actor_id,
       level,
@@ -61,53 +62,54 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         profile_id,
         profiles ( full_name, avatar_url )
       )
-    `)
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .order("created_at", { ascending: false })
     .limit(300)
 
-  if (jErr) console.error('[jurisdictions] list error:', jErr)
+  if (jErr) console.error("[jurisdictions] list error:", jErr)
 
   // ── Actors dropdown ──────────────────────────────────────────
   const { data: actors, error: aErr } = await supabase
-    .from('actors')
-    .select('id, type, profile_id, status, profiles ( full_name )')
-    .eq('status', 'active')  // only show active actors in dropdown
-    .order('type')
+    .from("actors")
+    .select("id, type, profile_id, status, profiles ( full_name )")
+    .eq("status", "active") // only show active actors in dropdown
+    .order("type")
     .limit(300)
 
-  if (aErr) console.error('[jurisdictions] actors load error:', aErr)
+  if (aErr) console.error("[jurisdictions] actors load error:", aErr)
 
   // ── Organizations dropdown ───────────────────────────────────
   const { data: organizations, error: oErr } = await supabase
-    .from('organizations')
-    .select('id, name, status')
-    .order('name')
+    .from("organizations")
+    .select("id, name, status")
+    .order("name")
     .limit(200)
 
-  if (oErr) console.error('[jurisdictions] organizations load error:', oErr)
+  if (oErr) console.error("[jurisdictions] organizations load error:", oErr)
 
   // ── Branches dropdown ────────────────────────────────────────
   const { data: branches, error: bErr } = await supabase
-    .from('branches')
-    .select('id, name, organization_id')
-    .order('name')
+    .from("branches")
+    .select("id, name, organization_id")
+    .order("name")
     .limit(200)
 
-  if (bErr) console.error('[jurisdictions] branches load error:', bErr)
+  if (bErr) console.error("[jurisdictions] branches load error:", bErr)
 
   return {
     jurisdictions: jurisdictions ?? [],
-    actors:        actors        ?? [],
+    actors: actors ?? [],
     organizations: organizations ?? [],
-    branches:      branches      ?? [],
+    branches: branches ?? [],
     justCreated,
     justDeleted,
     // Surface load errors to UI (non-fatal — page still renders)
     loadWarnings: [
-      jErr && 'Could not load jurisdictions',
-      aErr && 'Could not load actors dropdown',
-      oErr && 'Could not load organizations dropdown',
-      bErr && 'Could not load branches dropdown',
+      jErr && "Could not load jurisdictions",
+      aErr && "Could not load actors dropdown",
+      oErr && "Could not load organizations dropdown",
+      bErr && "Could not load branches dropdown",
     ].filter(Boolean) as string[],
   }
 }
@@ -125,18 +127,18 @@ async function _requireAdmin(locals: App.Locals): Promise<boolean> {
   if (!user) return false
 
   const { data } = await supabase
-    .from('actors')
-    .select('id')
-    .eq('profile_id', user.id)
-    .in('type', ['ADMIN', 'SUPER_ADMIN'])
-    .eq('status', 'active')
+    .from("actors")
+    .select("id")
+    .eq("profile_id", user.id)
+    .in("type", ["ADMIN", "SUPER_ADMIN"])
+    .eq("status", "active")
     .limit(1)
 
-  return !!(data?.length)
+  return !!data?.length
 }
 
 /** Valid level values — must match JURISDICTION_LEVELS in auth.ts */
-const VALID_LEVELS = ['federal', 'org', 'branch', 'department'] as const
+const VALID_LEVELS = ["federal", "org", "branch", "department"] as const
 type Level = (typeof VALID_LEVELS)[number]
 
 export const actions: Actions = {
@@ -145,43 +147,54 @@ export const actions: Actions = {
     const { supabase } = locals
 
     if (!(await _requireAdmin(locals))) {
-      return fail(403, { error: 'Admin access required' })
+      return fail(403, { error: "Admin access required" })
     }
 
-    const form     = await request.formData()
-    const actor_id = (form.get('actor_id') as string)?.trim()
-    const level    = (form.get('level')    as string)?.trim() as Level
-    const scope_id = (form.get('scope_id') as string)?.trim() || null
+    const form = await request.formData()
+    const actor_id = (form.get("actor_id") as string)?.trim()
+    const level = (form.get("level") as string)?.trim() as Level
+    const scope_id = (form.get("scope_id") as string)?.trim() || null
 
     // Validate
-    if (!actor_id)                       return fail(400, { error: 'Actor is required' })
-    if (!VALID_LEVELS.includes(level))   return fail(400, { error: `Invalid level. Must be one of: ${VALID_LEVELS.join(', ')}` })
-    if (level !== 'federal' && !scope_id) return fail(400, { error: 'Scope is required for non-federal jurisdictions' })
-    if (level === 'federal' && scope_id)  return fail(400, { error: 'Federal jurisdictions must not have a scope_id' })
+    if (!actor_id) return fail(400, { error: "Actor is required" })
+    if (!VALID_LEVELS.includes(level))
+      return fail(400, {
+        error: `Invalid level. Must be one of: ${VALID_LEVELS.join(", ")}`,
+      })
+    if (level !== "federal" && !scope_id)
+      return fail(400, {
+        error: "Scope is required for non-federal jurisdictions",
+      })
+    if (level === "federal" && scope_id)
+      return fail(400, {
+        error: "Federal jurisdictions must not have a scope_id",
+      })
 
     // Prevent duplicates — same actor + level + scope already exists
     const { data: existing } = await supabase
-      .from('actor_jurisdictions')
-      .select('id')
-      .eq('actor_id', actor_id)
-      .eq('level', level)
-      .eq('scope_id', scope_id ?? '')
+      .from("actor_jurisdictions")
+      .select("id")
+      .eq("actor_id", actor_id)
+      .eq("level", level)
+      .eq("scope_id", scope_id ?? "")
       .limit(1)
 
     if (existing?.length) {
-      return fail(409, { error: 'This actor already has this jurisdiction assigned' })
+      return fail(409, {
+        error: "This actor already has this jurisdiction assigned",
+      })
     }
 
     const { error } = await supabase
-      .from('actor_jurisdictions')
+      .from("actor_jurisdictions")
       .insert({ actor_id, level, scope_id })
 
     if (error) {
-      console.error('[jurisdictions] create error:', error)
+      console.error("[jurisdictions] create error:", error)
       return fail(500, { error: error.message })
     }
 
-    throw redirect(303, '/admin/jurisdictions?created=1')
+    throw redirect(303, "/admin/jurisdictions?created=1")
   },
 
   /* ── Delete ─────────────────────────────────────────────── */
@@ -189,24 +202,24 @@ export const actions: Actions = {
     const { supabase } = locals
 
     if (!(await _requireAdmin(locals))) {
-      return fail(403, { error: 'Admin access required' })
+      return fail(403, { error: "Admin access required" })
     }
 
     const form = await request.formData()
-    const id   = (form.get('id') as string)?.trim()
+    const id = (form.get("id") as string)?.trim()
 
-    if (!id) return fail(400, { error: 'Missing jurisdiction id' })
+    if (!id) return fail(400, { error: "Missing jurisdiction id" })
 
     const { error } = await supabase
-      .from('actor_jurisdictions')
+      .from("actor_jurisdictions")
       .delete()
-      .eq('id', id)
+      .eq("id", id)
 
     if (error) {
-      console.error('[jurisdictions] delete error:', error)
+      console.error("[jurisdictions] delete error:", error)
       return fail(500, { error: error.message })
     }
 
-    throw redirect(303, '/admin/jurisdictions?deleted=1')
+    throw redirect(303, "/admin/jurisdictions?deleted=1")
   },
 }

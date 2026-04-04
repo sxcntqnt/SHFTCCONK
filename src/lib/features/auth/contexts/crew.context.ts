@@ -34,9 +34,9 @@
 //     - Must belong to at least one org (verified)
 //     - Can report incidents, view live tracking
 
-import { derived, get } from 'svelte/store'
-import type { Tables } from '../../../DatabaseDefinitions'
-import type { UserState } from '$lib/features/auth/services/userState.server'
+import { derived, get } from "svelte/store"
+import type { Tables } from "../../../DatabaseDefinitions"
+import type { UserState } from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,
   extractPermissions,
@@ -44,19 +44,19 @@ import {
   extractOrgMemberships,
   isAllowed,
   ACTOR_TYPES,
-} from '$lib/features/auth/contexts/context.template'
+} from "$lib/features/auth/contexts/context.template"
 import type {
   EffectivePermission,
   Jurisdiction,
   OrgMembership,
-} from '$lib/features/auth/contexts/context.template'
-import { ACTIONS } from '$lib/features/auth/stores/permisions'
+} from "$lib/features/auth/contexts/context.template"
+import { ACTIONS } from "$lib/features/auth/stores/permisions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActorRow = Tables<'actors'>
+type ActorRow = Tables<"actors">
 
 // ── Context shape ─────────────────────────────────────────────────────────────
 
@@ -64,10 +64,10 @@ export interface CrewContext {
   actor: ActorRow
 
   /** DRIVER or CONDUCTOR */
-  crewType: 'DRIVER' | 'CONDUCTOR'
+  crewType: "DRIVER" | "CONDUCTOR"
 
   /** Org this crew member belongs to (primary — most crew are in one org) */
-  orgId:   string
+  orgId: string
   orgName: string
 
   /**
@@ -96,10 +96,10 @@ export interface CrewContext {
    * Sourced from driver_assignments.shift_state.
    * Conductors have no shift_state column — defaults to 'off_duty'.
    */
-  shiftState: 'on_duty' | 'off_duty' | 'on_break'
+  shiftState: "on_duty" | "off_duty" | "on_break"
 
   jurisdictions: Jurisdiction[]
-  permissions:   EffectivePermission[]
+  permissions: EffectivePermission[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,10 +131,10 @@ export function activateCrewContext(userState: UserState): boolean {
   // Find the best matching crew ActorContext — DRIVER preferred over CONDUCTOR
   const actorCtx =
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === "active",
     ) ??
     userState.activeContexts.find(
-      ctx => ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === 'active'
+      (ctx) => ctx.type === ACTOR_TYPES.CONDUCTOR && ctx.status === "active",
     ) ??
     null
 
@@ -144,45 +144,45 @@ export function activateCrewContext(userState: UserState): boolean {
   }
 
   // Find the raw actor row — needed for actor.metadata and actor.id
-  const actor = userState.actors.find(a => a.id === actorCtx.actorId)
+  const actor = userState.actors.find((a) => a.id === actorCtx.actorId)
   if (!actor) {
     clearContext()
     return false
   }
 
-  const crewType: CrewContext['crewType'] =
-    actor.type === ACTOR_TYPES.DRIVER ? 'DRIVER' : 'CONDUCTOR'
+  const crewType: CrewContext["crewType"] =
+    actor.type === ACTOR_TYPES.DRIVER ? "DRIVER" : "CONDUCTOR"
 
   // ── Org resolution ──────────────────────────────────────────────────────────
   // Find the org via jurisdictions — crew belong to exactly one org
   const jurisdictions = extractJurisdictions(userState, actorCtx.actorId)
   const orgJurisdiction = jurisdictions.find(
-    j => j.level === 'org' && j.scope_id != null
+    (j) => j.level === "org" && j.scope_id != null,
   )
-  const orgId = orgJurisdiction?.scope_id ?? ''
+  const orgId = orgJurisdiction?.scope_id ?? ""
 
   const orgMemberships = extractOrgMemberships(userState, actorCtx.actorId)
-  const orgMembership  = orgMemberships.find(m => m.organization_id === orgId)
-  const orgName        = orgMembership?.org_name ?? 'Unknown SACCO'
+  const orgMembership = orgMemberships.find((m) => m.organization_id === orgId)
+  const orgName = orgMembership?.org_name ?? "Unknown SACCO"
 
   // ── Assignment resolution ───────────────────────────────────────────────────
   // Vehicle and trip data from the resolved assignment rows.
   // driver_assignments has shift_state; conductor_assignments does not.
   let activeVehicleId: string | null = null
-  let activeTripId:    string | null = null
-  let shiftState:      CrewContext['shiftState'] = 'off_duty'
+  let activeTripId: string | null = null
+  let shiftState: CrewContext["shiftState"] = "off_duty"
 
-  if (crewType === 'DRIVER' && actorCtx.driverAssignment) {
-    const da      = actorCtx.driverAssignment
+  if (crewType === "DRIVER" && actorCtx.driverAssignment) {
+    const da = actorCtx.driverAssignment
     activeVehicleId = da.vehicle_id
-    activeTripId    = da.active_trip_id ?? null
-    shiftState      = (da.shift_state as CrewContext['shiftState']) ?? 'off_duty'
-  } else if (crewType === 'CONDUCTOR' && actorCtx.conductorAssignment) {
-    const ca      = actorCtx.conductorAssignment
+    activeTripId = da.active_trip_id ?? null
+    shiftState = (da.shift_state as CrewContext["shiftState"]) ?? "off_duty"
+  } else if (crewType === "CONDUCTOR" && actorCtx.conductorAssignment) {
+    const ca = actorCtx.conductorAssignment
     activeVehicleId = ca.vehicle_id
-    activeTripId    = ca.active_trip_id ?? null
+    activeTripId = ca.active_trip_id ?? null
     // Conductors have no shift_state — treated as on_duty when assigned
-    shiftState      = activeVehicleId ? 'on_duty' : 'off_duty'
+    shiftState = activeVehicleId ? "on_duty" : "off_duty"
   }
 
   // ── Permissions ─────────────────────────────────────────────────────────────
@@ -221,37 +221,56 @@ const _allows = (ctx: CrewContext | null, action: string): boolean =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** View the vehicle they're assigned to (vehicle.view) */
-export const canViewVehicle = derived(crewCtx, ($c) => _allows($c, ACTIONS.VEHICLE_VIEW))
+export const canViewVehicle = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_VIEW),
+)
 
 /** Live tracking — both crew types (tracking.live) */
-export const canTrackLive = derived(crewCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
+export const canTrackLive = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_LIVE),
+)
 
 /** Log fuel entries — DRIVER primary (fuel.add) */
-export const canLogFuel = derived(crewCtx, ($c) => _allows($c, ACTIONS.FUEL_ADD))
+export const canLogFuel = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_ADD),
+)
 
 /** View fuel history (fuel.list) */
-export const canViewFuel = derived(crewCtx, ($c) => _allows($c, ACTIONS.FUEL_LIST))
+export const canViewFuel = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_LIST),
+)
 
 /** Add a booking / accept a reservation — CONDUCTOR primary (booking.add) */
-export const canAddBooking = derived(crewCtx, ($c) => _allows($c, ACTIONS.BOOKING_ADD))
+export const canAddBooking = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_ADD),
+)
 
 /** View bookings / passenger manifest (booking.list) */
-export const canViewBookings = derived(crewCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
+export const canViewBookings = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_LIST),
+)
 
 /** Record a fare / cash collection (finance.add) — CONDUCTOR */
-export const canRecordFare = derived(crewCtx, ($c) => _allows($c, ACTIONS.FINANCE_ADD))
+export const canRecordFare = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.FINANCE_ADD),
+)
 
 /** View reminders — service due, licence expiry, etc. (reminder.list) */
-export const canViewReminders = derived(crewCtx, ($c) => _allows($c, ACTIONS.REMINDER_LIST))
+export const canViewReminders = derived(crewCtx, ($c) =>
+  _allows($c, ACTIONS.REMINDER_LIST),
+)
 
 /**
  * True if crew member is currently on an active shift.
  * Use to show/hide shift-sensitive actions (boarding, fare collection).
  */
-export const isOnDuty = derived(crewCtx, ($c) => $c?.shiftState === 'on_duty')
+export const isOnDuty = derived(crewCtx, ($c) => $c?.shiftState === "on_duty")
 
 /** True if a vehicle is assigned — false shows "waiting for assignment" UI */
-export const hasVehicleAssignment = derived(crewCtx, ($c) => $c?.activeVehicleId != null)
+export const hasVehicleAssignment = derived(
+  crewCtx,
+  ($c) => $c?.activeVehicleId != null,
+)
 
 /** True if currently on a trip — false hides trip-specific actions */
 export const hasActiveTrip = derived(crewCtx, ($c) => $c?.activeTripId != null)
@@ -263,19 +282,22 @@ export const crewType = derived(crewCtx, ($c) => $c?.crewType ?? null)
  * The assigned vehicle's plate — for topbar display.
  * Always null until resolveUserState joins vehicles on driver_assignments.
  */
-export const activePlate = derived(crewCtx, ($c) => $c?.activeVehiclePlate ?? null)
+export const activePlate = derived(
+  crewCtx,
+  ($c) => $c?.activeVehiclePlate ?? null,
+)
 
 /** Current shift state */
-export const shiftState = derived(crewCtx, ($c) => $c?.shiftState ?? 'off_duty')
+export const shiftState = derived(crewCtx, ($c) => $c?.shiftState ?? "off_duty")
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getCrewActorId      = () => get(crewCtx)?.actor.id         ?? null
-export const getCrewOrgId        = () => get(crewCtx)?.orgId             ?? null
-export const getActiveVehicleId  = () => get(crewCtx)?.activeVehicleId  ?? null
-export const getActiveTripId     = () => get(crewCtx)?.activeTripId     ?? null
+export const getCrewActorId = () => get(crewCtx)?.actor.id ?? null
+export const getCrewOrgId = () => get(crewCtx)?.orgId ?? null
+export const getActiveVehicleId = () => get(crewCtx)?.activeVehicleId ?? null
+export const getActiveTripId = () => get(crewCtx)?.activeTripId ?? null
 export const isCrewContextActive = () => get(crewCtx) !== null
 
 /**

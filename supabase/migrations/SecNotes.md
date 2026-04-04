@@ -9,7 +9,6 @@ create index on contact_requests (ip_address);
 create unique index contact_dedupe_idx
 on contact_requests (email, ip_address, date_trunc('minute', created_at));
 
-
 alter table contact_requests enable row level security;
 
 create policy "service_role_only"

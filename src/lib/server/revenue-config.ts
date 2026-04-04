@@ -43,72 +43,72 @@
 
 export interface DailyCollectionConfig {
   /** Fraction of base settlement owed to SACCO. Default: 4/19 ≈ 0.2105 */
-  saccoLevyRate:          number
+  saccoLevyRate: number
   /** Fraction of base going to owner. Default: 3/19 ≈ 0.1579 */
-  ownerRate:              number
+  ownerRate: number
   /** Fraction of base going to driver. Default: 2/19 ≈ 0.1053 */
-  driverBaseRate:         number
+  driverBaseRate: number
   /** Fraction of base going to conductor. Default: 2/19 ≈ 0.1053 */
-  conductorBaseRate:      number
+  conductorBaseRate: number
   /** Driver incentive on excess. Default: 0.10 */
-  driverIncentiveRate:    number
+  driverIncentiveRate: number
   /** Conductor incentive on excess. Default: 0.10 */
   conductorIncentiveRate: number
   /** Platform share of excess. Default: 0.80 */
-  platformExcessRate:     number
+  platformExcessRate: number
 }
 
 export interface ReservationFeeConfig {
   /** Total fee charged to passenger per seat in KES. Default: 19 */
-  totalFeeKes:   number
+  totalFeeKes: number
   /** Platform share. 15/19 ≈ 0.7895 → KES 15 */
-  platformRate:  number
+  platformRate: number
   /** Driver motivation share. 2/19 ≈ 0.1053 → KES 2 */
-  driverRate:    number
+  driverRate: number
   /** Conductor motivation share. 2/19 ≈ 0.1053 → KES 2 */
   conductorRate: number
 }
 
 export interface TipConfig {
   /** Driver's share of each tip. Default: 0.10 */
-  driverRate:    number
+  driverRate: number
   /** Conductor's share of each tip. Default: 0.10 */
   conductorRate: number
   /** Platform's share of each tip. Default: 0.80 */
-  platformRate:  number
+  platformRate: number
 }
 
 export interface RevenueConfig {
-  daily:       DailyCollectionConfig
+  daily: DailyCollectionConfig
   reservation: ReservationFeeConfig
-  tip:         TipConfig
+  tip: TipConfig
 }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 export const DEFAULT_REVENUE_CONFIG: RevenueConfig = {
   daily: {
-    saccoLevyRate:          4 / 19,  // ≈ 0.2105
-    ownerRate:              3 / 19,  // ≈ 0.1579
-    driverBaseRate:         2 / 19,  // ≈ 0.1053
-    conductorBaseRate:      2 / 19,  // ≈ 0.1053
+    saccoLevyRate: 4 / 19, // ≈ 0.2105
+    ownerRate: 3 / 19, // ≈ 0.1579
+    driverBaseRate: 2 / 19, // ≈ 0.1053
+    conductorBaseRate: 2 / 19, // ≈ 0.1053
     // Platform gets remainder of base (10/19 ≈ 42.11%)
-    driverIncentiveRate:    0.10,
-    conductorIncentiveRate: 0.10,
-    platformExcessRate:     0.80,
+    driverIncentiveRate: 0.1,
+    conductorIncentiveRate: 0.1,
+    platformExcessRate: 0.8,
   },
 
   reservation: {
-    totalFeeKes:  19,
-    platformRate: 15 / 19,  // ≈ 0.7895 → KES 15
-    driverRate:    2 / 19,  // ≈ 0.1053 → KES 2
-    conductorRate: 2 / 19,  // ≈ 0.1053 → KES 2
+    totalFeeKes: 19,
+    platformRate: 15 / 19, // ≈ 0.7895 → KES 15
+    driverRate: 2 / 19, // ≈ 0.1053 → KES 2
+    conductorRate: 2 / 19, // ≈ 0.1053 → KES 2
   },
 
   tip: {
-    driverRate:    0.10,
-    conductorRate: 0.10,
-    platformRate:  0.80,
+    driverRate: 0.1,
+    conductorRate: 0.1,
+    platformRate: 0.8,
   },
 }
 
@@ -116,7 +116,7 @@ export const DEFAULT_REVENUE_CONFIG: RevenueConfig = {
 
 export async function loadOrgRevenueConfig(
   supabase: import("@supabase/supabase-js").SupabaseClient,
-  orgId:    string,
+  orgId: string,
 ): Promise<RevenueConfig> {
   const { data: org } = await supabase
     .from("organizations")
@@ -124,9 +124,9 @@ export async function loadOrgRevenueConfig(
     .eq("id", orgId)
     .maybeSingle()
 
-  const overrides = (
-    org?.metadata as { revenue_config?: Partial<RevenueConfig> } | null
-  )?.revenue_config ?? {}
+  const overrides =
+    (org?.metadata as { revenue_config?: Partial<RevenueConfig> } | null)
+      ?.revenue_config ?? {}
 
   return deepMerge(DEFAULT_REVENUE_CONFIG, overrides)
 }
@@ -134,18 +134,18 @@ export async function loadOrgRevenueConfig(
 // ── Daily distribution ────────────────────────────────────────────────────────
 
 export interface DailyDistributionResult {
-  baseSettlement:      number   // KES — portion up to target
-  excess:              number   // KES — portion above target
-  saccoLevy:           number   // KES — SACCO cut of base
-  ownerAmount:         number   // KES — owner cut of base
-  driverBase:          number   // KES — driver cut of base
-  conductorBase:       number   // KES — conductor cut of base
-  platformBase:        number   // KES — platform remainder of base
-  driverIncentive:     number   // KES — 10% of excess
-  conductorIncentive:  number   // KES — 10% of excess
-  platformExcess:      number   // KES — 80% of excess
-  driverTotal:         number   // KES — base + incentive
-  conductorTotal:      number   // KES — base + incentive
+  baseSettlement: number // KES — portion up to target
+  excess: number // KES — portion above target
+  saccoLevy: number // KES — SACCO cut of base
+  ownerAmount: number // KES — owner cut of base
+  driverBase: number // KES — driver cut of base
+  conductorBase: number // KES — conductor cut of base
+  platformBase: number // KES — platform remainder of base
+  driverIncentive: number // KES — 10% of excess
+  conductorIncentive: number // KES — 10% of excess
+  platformExcess: number // KES — 80% of excess
+  driverTotal: number // KES — base + incentive
+  conductorTotal: number // KES — base + incentive
 }
 
 /**
@@ -155,25 +155,26 @@ export interface DailyDistributionResult {
  */
 export function calculateDailyDistribution(
   totalCollected: number,
-  target:         number,
-  config:         DailyCollectionConfig = DEFAULT_REVENUE_CONFIG.daily,
+  target: number,
+  config: DailyCollectionConfig = DEFAULT_REVENUE_CONFIG.daily,
 ): DailyDistributionResult {
   totalCollected = Math.max(0, totalCollected)
-  target         = Math.max(0, target)
+  target = Math.max(0, target)
 
-  const baseSettlement  = Math.min(totalCollected, target)
-  const excess          = Math.max(totalCollected - target, 0)
+  const baseSettlement = Math.min(totalCollected, target)
+  const excess = Math.max(totalCollected - target, 0)
 
-  const saccoLevy     = Math.floor(baseSettlement * config.saccoLevyRate)
-  const ownerAmount   = Math.floor(baseSettlement * config.ownerRate)
-  const driverBase    = Math.floor(baseSettlement * config.driverBaseRate)
+  const saccoLevy = Math.floor(baseSettlement * config.saccoLevyRate)
+  const ownerAmount = Math.floor(baseSettlement * config.ownerRate)
+  const driverBase = Math.floor(baseSettlement * config.driverBaseRate)
   const conductorBase = Math.floor(baseSettlement * config.conductorBaseRate)
   // Platform absorbs rounding remainder on base
-  const platformBase  = baseSettlement - saccoLevy - ownerAmount - driverBase - conductorBase
+  const platformBase =
+    baseSettlement - saccoLevy - ownerAmount - driverBase - conductorBase
 
-  const driverIncentive    = Math.floor(excess * config.driverIncentiveRate)
+  const driverIncentive = Math.floor(excess * config.driverIncentiveRate)
   const conductorIncentive = Math.floor(excess * config.conductorIncentiveRate)
-  const platformExcess     = excess - driverIncentive - conductorIncentive
+  const platformExcess = excess - driverIncentive - conductorIncentive
 
   return {
     baseSettlement,
@@ -186,7 +187,7 @@ export function calculateDailyDistribution(
     driverIncentive,
     conductorIncentive,
     platformExcess,
-    driverTotal:    driverBase    + driverIncentive,
+    driverTotal: driverBase + driverIncentive,
     conductorTotal: conductorBase + conductorIncentive,
   }
 }
@@ -194,13 +195,13 @@ export function calculateDailyDistribution(
 // ── Reservation fee split ─────────────────────────────────────────────────────
 
 export interface ReservationSplitResult {
-  totalKes:     number   // seats × KES 19
-  platformKes:  number   // platform share (remainder after driver + conductor)
-  driverKes:    number   // driver motivation share
-  conductorKes: number   // conductor motivation share
+  totalKes: number // seats × KES 19
+  platformKes: number // platform share (remainder after driver + conductor)
+  driverKes: number // driver motivation share
+  conductorKes: number // conductor motivation share
   perSeat: {
-    platformKes:  number
-    driverKes:    number
+    platformKes: number
+    driverKes: number
     conductorKes: number
   }
 }
@@ -222,19 +223,19 @@ export function calculateReservationSplit(
   seats = Math.max(1, Math.floor(seats))
   const totalKes = config.totalFeeKes * seats
 
-  const perDriver    = Math.floor(config.totalFeeKes * config.driverRate)
+  const perDriver = Math.floor(config.totalFeeKes * config.driverRate)
   const perConductor = Math.floor(config.totalFeeKes * config.conductorRate)
   // Platform gets everything else — absorbs rounding remainder
-  const perPlatform  = config.totalFeeKes - perDriver - perConductor
+  const perPlatform = config.totalFeeKes - perDriver - perConductor
 
   return {
     totalKes,
-    platformKes:  perPlatform  * seats,
-    driverKes:    perDriver    * seats,
+    platformKes: perPlatform * seats,
+    driverKes: perDriver * seats,
     conductorKes: perConductor * seats,
     perSeat: {
-      platformKes:  perPlatform,
-      driverKes:    perDriver,
+      platformKes: perPlatform,
+      driverKes: perDriver,
       conductorKes: perConductor,
     },
   }
@@ -243,10 +244,10 @@ export function calculateReservationSplit(
 // ── Tip split ─────────────────────────────────────────────────────────────────
 
 export interface TipSplitResult {
-  totalKes:     number
-  driverKes:    number   // 10%
-  conductorKes: number   // 10%
-  platformKes:  number   // 80%
+  totalKes: number
+  driverKes: number // 10%
+  conductorKes: number // 10%
+  platformKes: number // 80%
 }
 
 /**
@@ -258,10 +259,10 @@ export interface TipSplitResult {
  */
 export function calculateTipSplit(
   totalKes: number,
-  config:   TipConfig = DEFAULT_REVENUE_CONFIG.tip,
+  config: TipConfig = DEFAULT_REVENUE_CONFIG.tip,
 ): TipSplitResult {
   totalKes = Math.max(0, totalKes)
-  const driverKes    = Math.floor(totalKes * config.driverRate)
+  const driverKes = Math.floor(totalKes * config.driverRate)
   const conductorKes = Math.floor(totalKes * config.conductorRate)
   return {
     totalKes,
@@ -279,7 +280,8 @@ export function validateReservationConfig(c: ReservationFeeConfig): boolean {
 }
 
 export function validateDailyConfig(c: DailyCollectionConfig): boolean {
-  const excessSum = c.driverIncentiveRate + c.conductorIncentiveRate + c.platformExcessRate
+  const excessSum =
+    c.driverIncentiveRate + c.conductorIncentiveRate + c.platformExcessRate
   return Math.abs(excessSum - 1.0) < 0.001
 }
 
@@ -293,8 +295,16 @@ function deepMerge<T extends object>(base: T, overrides: Partial<T>): T {
   const result = { ...base }
   for (const key of Object.keys(overrides) as (keyof T)[]) {
     const val = overrides[key]
-    if (val !== undefined && val !== null && typeof val === "object" && !Array.isArray(val)) {
-      result[key] = deepMerge(result[key] as object, val as object) as T[typeof key]
+    if (
+      val !== undefined &&
+      val !== null &&
+      typeof val === "object" &&
+      !Array.isArray(val)
+    ) {
+      result[key] = deepMerge(
+        result[key] as object,
+        val as object,
+      ) as T[typeof key]
     } else if (val !== undefined) {
       result[key] = val as T[typeof key]
     }

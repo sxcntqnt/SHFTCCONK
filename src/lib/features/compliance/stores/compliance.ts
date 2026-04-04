@@ -1,13 +1,13 @@
 // lib/stores/compliance.store.ts
-import { writable, get } from 'svelte/store'
+import { writable, get } from "svelte/store"
 import { SupabaseClient } from "@supabase/supabase-js"
-import { requireOrgAccess } from '$lib/features/auth/stores/auth'
+import { requireOrgAccess } from "$lib/features/auth/stores/auth"
 import {
   getOrgContextOrgId,
   isOrgContextActive,
   getActiveOrgId,
   isOrgChairActive,
-} from '$lib/features/auth/contexts'
+} from "$lib/features/auth/contexts"
 
 /* ============================================================
    COMPLIANCE MODELS
@@ -19,7 +19,7 @@ export interface ComplianceEvent {
   vehicleId: string
   driverId?: string
   type: string
-  severity: 'LOW' | 'MEDIUM' | 'HIGH'
+  severity: "LOW" | "MEDIUM" | "HIGH"
   message: string
   metadata?: Record<string, any>
   timestamp: string
@@ -30,7 +30,7 @@ export interface ComplianceAlert {
   vehicleId: string
   type: string
   expiryDate: string
-  status: 'OK' | 'WARNING' | 'EXPIRED'
+  status: "OK" | "WARNING" | "EXPIRED"
 }
 
 /* ============================================================
@@ -64,7 +64,7 @@ function resolveOrgId(): string {
     const id = getOrgContextOrgId()
     if (id) return id
   }
-  throw new Error('No active org context — cannot initialise compliance store')
+  throw new Error("No active org context — cannot initialise compliance store")
 }
 
 /* ============================================================
@@ -78,23 +78,25 @@ export async function initCompliance(): Promise<void> {
      Fetch unresolved events
   ---------------------------- */
   const { data: events, error: eventsError } = await supabase
-    .from<ComplianceEvent>('compliance_events')
-    .select('*')
-    .eq('organizationId', orgId)
-    .eq('resolved', false)
+    .from<ComplianceEvent>("compliance_events")
+    .select("*")
+    .eq("organizationId", orgId)
+    .eq("resolved", false)
 
-  if (eventsError) throw new Error(`Failed to fetch compliance events: ${eventsError.message}`)
+  if (eventsError)
+    throw new Error(`Failed to fetch compliance events: ${eventsError.message}`)
   complianceEventStore.set(events ?? [])
 
   /* ----------------------------
      Fetch current alerts
   ---------------------------- */
   const { data: alerts, error: alertsError } = await supabase
-    .from<ComplianceAlert>('compliance_alerts')
-    .select('*')
-    .eq('organizationId', orgId)
+    .from<ComplianceAlert>("compliance_alerts")
+    .select("*")
+    .eq("organizationId", orgId)
 
-  if (alertsError) throw new Error(`Failed to fetch compliance alerts: ${alertsError.message}`)
+  if (alertsError)
+    throw new Error(`Failed to fetch compliance alerts: ${alertsError.message}`)
   complianceAlertStore.set(alerts ?? [])
 
   /* ----------------------------
@@ -107,25 +109,29 @@ export async function initCompliance(): Promise<void> {
 
   eventChannel = supabase
     .channel(`realtime-compliance-${orgId}`)
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'compliance_events',
-      filter: `organizationId=eq.${orgId}`
-    }, payload => {
-      const incoming = payload.new as ComplianceEvent
-      requireOrgAccess(incoming.organizationId)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "compliance_events",
+        filter: `organizationId=eq.${orgId}`,
+      },
+      (payload) => {
+        const incoming = payload.new as ComplianceEvent
+        requireOrgAccess(incoming.organizationId)
 
-      complianceEventStore.update(current => {
-        if (payload.eventType === 'DELETE') {
-          return current.filter(e => e.id !== payload.old.id)
-        }
-        const index = current.findIndex(e => e.id === incoming.id)
-        if (index >= 0) current[index] = incoming
-        else current.unshift(incoming)
-        return [...current]
-      })
-    })
+        complianceEventStore.update((current) => {
+          if (payload.eventType === "DELETE") {
+            return current.filter((e) => e.id !== payload.old.id)
+          }
+          const index = current.findIndex((e) => e.id === incoming.id)
+          if (index >= 0) current[index] = incoming
+          else current.unshift(incoming)
+          return [...current]
+        })
+      },
+    )
     .subscribe()
 }
 
@@ -147,10 +153,9 @@ export async function destroyCompliance(): Promise<void> {
 ============================================================ */
 
 export function getUnresolvedEvents(): ComplianceEvent[] {
-  return get(complianceEventStore).filter(e => !e.resolved)
+  return get(complianceEventStore).filter((e) => !e.resolved)
 }
 
 export function getVehicleAlerts(vehicleId: string): ComplianceAlert[] {
-  return get(complianceAlertStore).filter(a => a.vehicleId === vehicleId)
+  return get(complianceAlertStore).filter((a) => a.vehicleId === vehicleId)
 }
-

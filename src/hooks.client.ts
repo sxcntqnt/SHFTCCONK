@@ -16,7 +16,7 @@ export function init() {
     api_host: "/ingest",
     ui_host: "https://eu.posthog.com",
     defaults: "2026-01-30",
-    capture_exceptions: true
+    capture_exceptions: true,
   })
 }
 
@@ -34,30 +34,28 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 
   integrations: [replayIntegration()],
-  sendDefaultPii: true
+  sendDefaultPii: true,
 })
 
 /* ============================================================
    UNIFIED CLIENT ERROR HANDLER
 ============================================================ */
 
-export const handleError: HandleClientError =
-  Sentry.handleErrorWithSentry(
-    ({ error, status, message }) => {
-
-      /* ---------- PostHog ---------- */
-      try {
-        posthog.captureException(error)
-      } catch (e) {
-        console.error("PostHog capture failed:", e)
-      }
-
-      return {
-        message:
-          error instanceof Error
-            ? error.message
-            : message ?? "Unexpected client error",
-        status
-      }
+export const handleError: HandleClientError = Sentry.handleErrorWithSentry(
+  ({ error, status, message }) => {
+    /* ---------- PostHog ---------- */
+    try {
+      posthog.captureException(error)
+    } catch (e) {
+      console.error("PostHog capture failed:", e)
     }
-  )
+
+    return {
+      message:
+        error instanceof Error
+          ? error.message
+          : (message ?? "Unexpected client error"),
+      status,
+    }
+  },
+)

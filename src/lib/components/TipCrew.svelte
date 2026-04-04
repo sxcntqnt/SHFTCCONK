@@ -618,7 +618,9 @@
 
   .btn-icon {
     flex-shrink: 0;
-    color: oklch(30.226% 0.0099 164.444); /* green to signal positive/tip action */
+    color: oklch(
+      30.226% 0.0099 164.444
+    ); /* green to signal positive/tip action */
     background: oklch(62.575% 0.12701 150.501 / 0.6);
     padding: 0.75rem;
     border-radius: 12px;

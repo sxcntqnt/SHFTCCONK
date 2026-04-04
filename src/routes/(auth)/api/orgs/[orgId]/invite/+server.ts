@@ -103,7 +103,10 @@ export const POST: RequestHandler = async ({
 
   if (!hasPermission) {
     return json(
-      { error: "You do not have permission to send invites for this organization" },
+      {
+        error:
+          "You do not have permission to send invites for this organization",
+      },
       { status: 403 },
     )
   }
@@ -116,10 +119,7 @@ export const POST: RequestHandler = async ({
     .single()
 
   if (!roleRow) {
-    return json(
-      { error: `Invalid actor_type: ${actor_type}` },
-      { status: 400 },
-    )
+    return json({ error: `Invalid actor_type: ${actor_type}` }, { status: 400 })
   }
 
   // ─── Validate organization ────────────────────────────────
@@ -158,9 +158,7 @@ export const POST: RequestHandler = async ({
   // ─── Create invite token ──────────────────────────────────
   // Service role: invite_tokens has no INSERT policy by design
   // (contact_requests pattern — server-only writes).
-  const expiresAt = new Date(
-    Date.now() + 7 * 24 * 60 * 60 * 1000,
-  ).toISOString()
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
   const { data: invite, error: insertError } = await supabaseServiceRole
     .from("invite_tokens")

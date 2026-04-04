@@ -27,7 +27,7 @@
  *   Pump Attendant
  */
 
-import { ACTIONS, ALL_ACTIONS } from './permisions'
+import { ACTIONS, ALL_ACTIONS } from "./permisions"
 
 // src/lib/features/auth/stores/roles.ts
 
@@ -37,61 +37,61 @@ import { ACTIONS, ALL_ACTIONS } from './permisions'
 ============================================================ */
 export const ROLES = {
   // ── Public / Consumer ─────────────────────────────────────────
-  GUEST:               "GUEST",
-  PASSENGER:           "PASSENGER",
+  GUEST: "GUEST",
+  PASSENGER: "PASSENGER",
 
   // ── Vehicle Crew ──────────────────────────────────────────────
-  DRIVER:              "DRIVER",
-  CONDUCTOR:           "CONDUCTOR",
+  DRIVER: "DRIVER",
+  CONDUCTOR: "CONDUCTOR",
 
   // ── SACCO Leadership ──────────────────────────────────────────
-  ORG_CHAIR:           "ORG_CHAIR",           // Chairman / board seat
-  GENERAL_MANAGER:     "GENERAL_MANAGER",     // GM — above operations
+  ORG_CHAIR: "ORG_CHAIR", // Chairman / board seat
+  GENERAL_MANAGER: "GENERAL_MANAGER", // GM — above operations
 
   // ── SACCO Staff — Management ──────────────────────────────────
-  FLEET_MANAGER:       "FLEET_MANAGER",
-  OPERATIONS_MANAGER:  "OPERATIONS_MANAGER",  // Vice Chairman equivalent
-  BRANCH_MANAGER:      "BRANCH_MANAGER",      // Office Manager equivalent
+  FLEET_MANAGER: "FLEET_MANAGER",
+  OPERATIONS_MANAGER: "OPERATIONS_MANAGER", // Vice Chairman equivalent
+  BRANCH_MANAGER: "BRANCH_MANAGER", // Office Manager equivalent
 
   // ── SACCO Staff — Admin & Finance ─────────────────────────────
-  SECRETARY:           "SECRETARY",           // Approves members, org tasks
-  ACCOUNTANT:          "ACCOUNTANT",          // Treasurer — can edit finance
-  ACCOUNTS_CLERK:      "ACCOUNTS_CLERK",      // Read-only finance
-  AUDITOR:             "AUDITOR",
-  COMPLIANCE_OFFICER:  "COMPLIANCE_OFFICER",
+  SECRETARY: "SECRETARY", // Approves members, org tasks
+  ACCOUNTANT: "ACCOUNTANT", // Treasurer — can edit finance
+  ACCOUNTS_CLERK: "ACCOUNTS_CLERK", // Read-only finance
+  AUDITOR: "AUDITOR",
+  COMPLIANCE_OFFICER: "COMPLIANCE_OFFICER",
 
   // ── SACCO Staff — Field & Operations ──────────────────────────
-  ROUTE_SUPERVISOR:    "ROUTE_SUPERVISOR",    // Route Inspector
-  DISPATCHER:          "DISPATCHER",
-  MECHANIC:            "MECHANIC",            // Vehicle maintenance (field)
-  FIELD_ATTENDANT:     "FIELD_ATTENDANT",     // Service Bay / Pump Attendant
-  DATA_CLERK:          "DATA_CLERK",          // Data entry only
+  ROUTE_SUPERVISOR: "ROUTE_SUPERVISOR", // Route Inspector
+  DISPATCHER: "DISPATCHER",
+  MECHANIC: "MECHANIC", // Vehicle maintenance (field)
+  FIELD_ATTENDANT: "FIELD_ATTENDANT", // Service Bay / Pump Attendant
+  DATA_CLERK: "DATA_CLERK", // Data entry only
 
   // ── Customer-facing ───────────────────────────────────────────
-  CUSTOMER_SUPPORT:    "CUSTOMER_SUPPORT",
-  SALES_MANAGER:       "SALES_MANAGER",
+  CUSTOMER_SUPPORT: "CUSTOMER_SUPPORT",
+  SALES_MANAGER: "SALES_MANAGER",
 
   // ── Asset / Owners ────────────────────────────────────────────
-  OWNER:               "OWNER",
-  COMPANY_OWNER:       "COMPANY_OWNER",
-  VEHICLE_OWNER:       "VEHICLE_OWNER",
-  ORGANIZATION:        "ORGANIZATION",
+  OWNER: "OWNER",
+  COMPANY_OWNER: "COMPANY_OWNER",
+  VEHICLE_OWNER: "VEHICLE_OWNER",
+  ORGANIZATION: "ORGANIZATION",
 
   // ── Special / Premium ─────────────────────────────────────────
   /**
    * OPERATOR — Cross-SACCO trip/parcel coordinator.
    * Approved by ORG_CHAIR. Accesses /operator route.
    */
-  OPERATOR:            "OPERATOR",
+  OPERATOR: "OPERATOR",
 
   // ── Regulatory / Oversight ────────────────────────────────────
-  STAGE_OPERATOR:      "STAGE_OPERATOR",
-  REGULATOR:           "REGULATOR",
-  PLANNER:             "PLANNER",
+  STAGE_OPERATOR: "STAGE_OPERATOR",
+  REGULATOR: "REGULATOR",
+  PLANNER: "PLANNER",
 
   // ── Platform Admin (sxcntqnt internal only) ───────────────────
-  ADMIN:               "ADMIN",
-  SUPER_ADMIN:         "SUPER_ADMIN",
+  ADMIN: "ADMIN",
+  SUPER_ADMIN: "SUPER_ADMIN",
 } as const
 
 export type Role = (typeof ROLES)[keyof typeof ROLES]
@@ -109,13 +109,12 @@ export type Role = (typeof ROLES)[keyof typeof ROLES]
    added or revoked via actor_permissions table directly.
 ============================================================ */
 export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
-
   // ── God-mode (scoped by jurisdiction in DB) ───────────────────
-  [ROLES.ADMIN]:             ALL_ACTIONS,
-  [ROLES.SUPER_ADMIN]:       ALL_ACTIONS,
-  [ROLES.COMPANY_OWNER]:     ALL_ACTIONS,
-  [ROLES.ORG_CHAIR]:         ALL_ACTIONS,
-  [ROLES.OWNER]:             ALL_ACTIONS,
+  [ROLES.ADMIN]: ALL_ACTIONS,
+  [ROLES.SUPER_ADMIN]: ALL_ACTIONS,
+  [ROLES.COMPANY_OWNER]: ALL_ACTIONS,
+  [ROLES.ORG_CHAIR]: ALL_ACTIONS,
+  [ROLES.OWNER]: ALL_ACTIONS,
 
   // ── SACCO Leadership ──────────────────────────────────────────
 
@@ -124,12 +123,18 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
    * Cannot change platform settings. Has finance visibility.
    */
   [ROLES.GENERAL_MANAGER]: [
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW, ACTIONS.VEHICLE_EDIT,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
+    ACTIONS.VEHICLE_EDIT,
     ACTIONS.VEHICLE_GROUP_LIST,
-    ACTIONS.DRIVER_LIST, ACTIONS.DRIVER_EDIT,
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT,
-    ACTIONS.TRACKING_LIVE, ACTIONS.TRACKING_HISTORY,
-    ACTIONS.GEOFENCE_LIST, ACTIONS.GEOFENCE_EVENTS,
+    ACTIONS.DRIVER_LIST,
+    ACTIONS.DRIVER_EDIT,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.TRACKING_LIVE,
+    ACTIONS.TRACKING_HISTORY,
+    ACTIONS.GEOFENCE_LIST,
+    ACTIONS.GEOFENCE_EVENTS,
     ACTIONS.FUEL_LIST,
     ACTIONS.MAINTENANCE_VIEW,
     ACTIONS.FINANCE_LIST,
@@ -141,33 +146,54 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
   // ── SACCO Staff — Management ──────────────────────────────────
 
   [ROLES.FLEET_MANAGER]: [
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW, ACTIONS.VEHICLE_EDIT, ACTIONS.VEHICLE_ADD,
-    ACTIONS.VEHICLE_GROUP_LIST, ACTIONS.VEHICLE_GROUP_ADD, ACTIONS.VEHICLE_GROUP_DEL,
-    ACTIONS.DRIVER_LIST, ACTIONS.DRIVER_EDIT, ACTIONS.DRIVER_ADD,
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT,
-    ACTIONS.TRACKING_LIVE, ACTIONS.TRACKING_HISTORY,
-    ACTIONS.GEOFENCE_LIST, ACTIONS.GEOFENCE_ADD, ACTIONS.GEOFENCE_DEL, ACTIONS.GEOFENCE_EVENTS,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
+    ACTIONS.VEHICLE_EDIT,
+    ACTIONS.VEHICLE_ADD,
+    ACTIONS.VEHICLE_GROUP_LIST,
+    ACTIONS.VEHICLE_GROUP_ADD,
+    ACTIONS.VEHICLE_GROUP_DEL,
+    ACTIONS.DRIVER_LIST,
+    ACTIONS.DRIVER_EDIT,
+    ACTIONS.DRIVER_ADD,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.TRACKING_LIVE,
+    ACTIONS.TRACKING_HISTORY,
+    ACTIONS.GEOFENCE_LIST,
+    ACTIONS.GEOFENCE_ADD,
+    ACTIONS.GEOFENCE_DEL,
+    ACTIONS.GEOFENCE_EVENTS,
     ACTIONS.FUEL_LIST,
-    ACTIONS.MAINTENANCE_VIEW, ACTIONS.MAINTENANCE_EDIT,
+    ACTIONS.MAINTENANCE_VIEW,
+    ACTIONS.MAINTENANCE_EDIT,
     ACTIONS.REPORTS_VIEW,
     ACTIONS.SETTINGS_ALL,
   ],
 
   [ROLES.OPERATIONS_MANAGER]: [
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
     ACTIONS.VEHICLE_GROUP_LIST,
     ACTIONS.DRIVER_LIST,
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT, ACTIONS.BOOKING_ADD,
-    ACTIONS.TRACKING_LIVE, ACTIONS.TRACKING_HISTORY,
-    ACTIONS.GEOFENCE_LIST, ACTIONS.GEOFENCE_EVENTS,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.BOOKING_ADD,
+    ACTIONS.TRACKING_LIVE,
+    ACTIONS.TRACKING_HISTORY,
+    ACTIONS.GEOFENCE_LIST,
+    ACTIONS.GEOFENCE_EVENTS,
     ACTIONS.MAINTENANCE_VIEW,
     ACTIONS.REPORTS_VIEW,
   ],
 
   [ROLES.BRANCH_MANAGER]: [
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
     ACTIONS.DRIVER_LIST,
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT, ACTIONS.BOOKING_ADD,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.BOOKING_ADD,
     ACTIONS.TRACKING_LIVE,
     ACTIONS.REPORTS_VIEW,
   ],
@@ -186,7 +212,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     ACTIONS.BOOKING_LIST,
     ACTIONS.VEHICLE_LIST,
     ACTIONS.DRIVER_LIST,
-    ACTIONS.CUSTOMER_LIST, ACTIONS.CUSTOMER_VIEW,
+    ACTIONS.CUSTOMER_LIST,
+    ACTIONS.CUSTOMER_VIEW,
     ACTIONS.REMINDER_LIST,
     ACTIONS.REPORTS_VIEW,
   ],
@@ -196,8 +223,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
    * Can create and edit finance records.
    */
   [ROLES.ACCOUNTANT]: [
-    ACTIONS.FINANCE_LIST, ACTIONS.FINANCE_EDIT, ACTIONS.FINANCE_ADD,
-    ACTIONS.FUEL_LIST, ACTIONS.FUEL_EDIT,
+    ACTIONS.FINANCE_LIST,
+    ACTIONS.FINANCE_EDIT,
+    ACTIONS.FINANCE_ADD,
+    ACTIONS.FUEL_LIST,
+    ACTIONS.FUEL_EDIT,
     ACTIONS.BOOKING_LIST,
     ACTIONS.REPORTS_VIEW,
   ],
@@ -224,7 +254,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
   ],
 
   [ROLES.COMPLIANCE_OFFICER]: [
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
     ACTIONS.DRIVER_LIST,
     ACTIONS.REMINDER_LIST,
     ACTIONS.REPORTS_VIEW,
@@ -233,8 +264,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
   // ── SACCO Staff — Field & Operations ──────────────────────────
 
   [ROLES.DISPATCHER]: [
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT, ACTIONS.BOOKING_ADD,
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.BOOKING_ADD,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
     ACTIONS.DRIVER_LIST,
     ACTIONS.TRACKING_LIVE,
     ACTIONS.GEOFENCE_EVENTS,
@@ -309,14 +343,19 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
   ],
 
   [ROLES.CUSTOMER_SUPPORT]: [
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_EDIT,
-    ACTIONS.CUSTOMER_LIST, ACTIONS.CUSTOMER_VIEW, ACTIONS.CUSTOMER_EDIT,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.CUSTOMER_LIST,
+    ACTIONS.CUSTOMER_VIEW,
+    ACTIONS.CUSTOMER_EDIT,
     ACTIONS.TRACKING_LIVE,
     ACTIONS.REPORTS_VIEW,
   ],
 
   [ROLES.SALES_MANAGER]: [
-    ACTIONS.CUSTOMER_LIST, ACTIONS.CUSTOMER_ADD, ACTIONS.CUSTOMER_EDIT,
+    ACTIONS.CUSTOMER_LIST,
+    ACTIONS.CUSTOMER_ADD,
+    ACTIONS.CUSTOMER_EDIT,
     ACTIONS.BOOKING_LIST,
     ACTIONS.VEHICLE_LIST,
     ACTIONS.REPORTS_VIEW,
@@ -329,10 +368,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
    * Cross-SACCO coordination. No org-internal management access.
    */
   [ROLES.OPERATOR]: [
-    ACTIONS.BOOKING_LIST, ACTIONS.BOOKING_ADD, ACTIONS.BOOKING_EDIT,
-    ACTIONS.VEHICLE_LIST, ACTIONS.VEHICLE_VIEW,
-    ACTIONS.TRACKING_LIVE, ACTIONS.TRACKING_HISTORY,
-    ACTIONS.CUSTOMER_LIST, ACTIONS.CUSTOMER_ADD, ACTIONS.CUSTOMER_EDIT,
+    ACTIONS.BOOKING_LIST,
+    ACTIONS.BOOKING_ADD,
+    ACTIONS.BOOKING_EDIT,
+    ACTIONS.VEHICLE_LIST,
+    ACTIONS.VEHICLE_VIEW,
+    ACTIONS.TRACKING_LIVE,
+    ACTIONS.TRACKING_HISTORY,
+    ACTIONS.CUSTOMER_LIST,
+    ACTIONS.CUSTOMER_ADD,
+    ACTIONS.CUSTOMER_EDIT,
     ACTIONS.REPORTS_VIEW,
   ],
 
@@ -358,7 +403,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
 
   [ROLES.PLANNER]: [
     ACTIONS.VEHICLE_GROUP_LIST,
-    ACTIONS.GEOFENCE_LIST, ACTIONS.GEOFENCE_ADD, ACTIONS.GEOFENCE_EDIT,
+    ACTIONS.GEOFENCE_LIST,
+    ACTIONS.GEOFENCE_ADD,
+    ACTIONS.GEOFENCE_EDIT,
     ACTIONS.TRACKING_HISTORY,
     ACTIONS.REPORTS_VIEW,
   ],
@@ -380,9 +427,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
 
   // ── Public / Minimal ──────────────────────────────────────────
 
-  [ROLES.GUEST]: [
-    ACTIONS.TRACKING_LIVE,
-  ],
+  [ROLES.GUEST]: [ACTIONS.TRACKING_LIVE],
 }
 
 /* ============================================================
@@ -392,11 +437,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
 ============================================================ */
 export const ROLE_GROUPS = {
   /** Roles assigned by sxcntqnt at org activation */
-  PLATFORM_ASSIGNED: [
-    ROLES.SUPER_ADMIN,
-    ROLES.ADMIN,
-    ROLES.ORG_CHAIR,
-  ],
+  PLATFORM_ASSIGNED: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.ORG_CHAIR],
   /** SACCO leadership — full or near-full org access */
   SACCO_LEADERSHIP: [
     ROLES.ORG_CHAIR,
@@ -426,14 +467,7 @@ export const ROLE_GROUPS = {
     ROLES.DATA_CLERK,
   ],
   /** Vehicle crew */
-  CREW: [
-    ROLES.DRIVER,
-    ROLES.CONDUCTOR,
-  ],
+  CREW: [ROLES.DRIVER, ROLES.CONDUCTOR],
   /** External / consumer */
-  CONSUMER: [
-    ROLES.PASSENGER,
-    ROLES.GUEST,
-    ROLES.OPERATOR,
-  ],
+  CONSUMER: [ROLES.PASSENGER, ROLES.GUEST, ROLES.OPERATOR],
 } as const

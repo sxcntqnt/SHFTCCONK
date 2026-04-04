@@ -9,8 +9,8 @@
 // Access: SUPER_ADMIN or ADMIN only (requireAdminAccess)
 
 import type { RequestHandler } from "./$types"
-import { json }                from "@sveltejs/kit"
-import { requireAdminAccess }  from "$lib/security/authGuard"
+import { json } from "@sveltejs/kit"
+import { requireAdminAccess } from "$lib/security/authGuard"
 
 export const POST: RequestHandler = async (event) => {
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -22,8 +22,8 @@ export const POST: RequestHandler = async (event) => {
 
   const { params, request, locals } = event
   const { session } = await locals.safeGetSession()
-  const supabase    = locals.supabase
-  const { orgId }   = params
+  const supabase = locals.supabase
+  const { orgId } = params
 
   // ── Parse body ────────────────────────────────────────────────────────────
   let body: unknown
@@ -38,7 +38,10 @@ export const POST: RequestHandler = async (event) => {
     return json({ error: "ids must be a non-empty array" }, { status: 400 })
   }
   if (ids.length > 100) {
-    return json({ error: "Maximum 100 events per replay request" }, { status: 422 })
+    return json(
+      { error: "Maximum 100 events per replay request" },
+      { status: 422 },
+    )
   }
   if (!ids.every((id) => typeof id === "string")) {
     return json({ error: "All ids must be strings" }, { status: 400 })
@@ -55,7 +58,10 @@ export const POST: RequestHandler = async (event) => {
     return json({ error: `Fetch failed: ${fetchErr.message}` }, { status: 500 })
   }
   if (!events?.length) {
-    return json({ error: "No matching events found for this org" }, { status: 404 })
+    return json(
+      { error: "No matching events found for this org" },
+      { status: 404 },
+    )
   }
 
   // ── Mark as replaying ─────────────────────────────────────────────────────
@@ -65,27 +71,30 @@ export const POST: RequestHandler = async (event) => {
   const { error: updateErr } = await supabase
     .from("dlq_events")
     .update({
-      status:       "replaying",
-      replayed_at:  new Date().toISOString(),
-      replayed_by:  session!.user.id,
-      attempts:     0,   // reset so batch writer gets fresh attempts
+      status: "replaying",
+      replayed_at: new Date().toISOString(),
+      replayed_by: session!.user.id,
+      attempts: 0, // reset so batch writer gets fresh attempts
     })
     .eq("org_id", orgId)
     .in("stream_id", ids as string[])
 
   if (updateErr) {
-    return json({ error: `Replay failed: ${updateErr.message}` }, { status: 500 })
+    return json(
+      { error: `Replay failed: ${updateErr.message}` },
+      { status: 500 },
+    )
   }
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   "dlq_replay",
+    event_type: "dlq_replay",
     performed_by: session!.user.id,
     target_table: "dlq_events",
     details: {
-      org_id:       orgId,
-      event_count:  events.length,
-      stream_ids:   ids,
+      org_id: orgId,
+      event_count: events.length,
+      stream_ids: ids,
     },
   })
 

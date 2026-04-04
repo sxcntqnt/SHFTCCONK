@@ -36,17 +36,16 @@
 
 import { writable, derived, get } from "svelte/store"
 
-import  { ROLES }  from "$lib/features/auth/stores/roles"
-import type { Role } from '$lib/features/auth/stores/roles'
-
+import { ROLES } from "$lib/features/auth/stores/roles"
+import type { Role } from "$lib/features/auth/stores/roles"
 
 /* ============================================================
    JURISDICTION TYPES — matches `jurisdiction_level` domain in DB
 ============================================================ */
 export const JURISDICTION_LEVELS = {
-  FEDERAL:    "federal",
-  ORG:        "org",
-  BRANCH:     "branch",
+  FEDERAL: "federal",
+  ORG: "org",
+  BRANCH: "branch",
   DEPARTMENT: "department",
 } as const
 
@@ -194,17 +193,17 @@ export interface SessionState {
    DEFAULT STATE
 ============================================================ */
 const defaultSession: SessionState = {
-  initialized:        false,
-  loading:            false,
-  profile:            null,
-  actors:             [],
-  activeActorId:      null,
-  jurisdictions:      [],
-  orgMemberships:     [],
-  policyGroups:       [],
-  permissions:        [],
+  initialized: false,
+  loading: false,
+  profile: null,
+  actors: [],
+  activeActorId: null,
+  jurisdictions: [],
+  orgMemberships: [],
+  policyGroups: [],
+  permissions: [],
   permissionsVersion: 0,
-  inviteScoped:       false,
+  inviteScoped: false,
 }
 
 /* ============================================================
@@ -217,8 +216,9 @@ export const sessionStore = writable<SessionState>({ ...defaultSession })
 ============================================================ */
 
 /** The currently active actor object (or null) */
-export const activeActor = derived(sessionStore, ($s) =>
-  $s.actors.find((a) => a.id === $s.activeActorId) ?? null,
+export const activeActor = derived(
+  sessionStore,
+  ($s) => $s.actors.find((a) => a.id === $s.activeActorId) ?? null,
 )
 
 /** Role of the active actor */
@@ -253,9 +253,9 @@ export const profileComplete = derived(
 )
 
 /** All unique actor types the user holds */
-export const userRoles = derived(sessionStore, ($s) =>
-  [...new Set($s.actors.map((a) => a.type))],
-)
+export const userRoles = derived(sessionStore, ($s) => [
+  ...new Set($s.actors.map((a) => a.type)),
+])
 
 /** True if the session's permissions may be stale (version mismatch) */
 export const isVersionStale = derived(sessionStore, ($s) => {
@@ -277,17 +277,13 @@ export const hasFederalAccess = derived(sessionStore, ($s) =>
  * List of distinct allowed actions for the active actor.
  * Useful for feature-flag style UI gating.
  */
-export const allowedActions = derived(sessionStore, ($s) =>
-  [
-    ...new Set(
-      $s.permissions
-        .filter(
-          (p) => p.actor_id === $s.activeActorId && p.effect === "allow",
-        )
-        .map((p) => p.action),
-    ),
-  ],
-)
+export const allowedActions = derived(sessionStore, ($s) => [
+  ...new Set(
+    $s.permissions
+      .filter((p) => p.actor_id === $s.activeActorId && p.effect === "allow")
+      .map((p) => p.action),
+  ),
+])
 
 /* ============================================================
    BOOTSTRAP INITIALIZER
@@ -311,17 +307,17 @@ export function initSession(
   const version = payload.profile?.permissions_version ?? 1
 
   sessionStore.set({
-    initialized:        true,
-    loading:            false,
-    profile:            payload.profile,
+    initialized: true,
+    loading: false,
+    profile: payload.profile,
     actors,
-    activeActorId:      preferredActor?.id ?? null,
-    jurisdictions:      payload.jurisdictions ?? [],
-    orgMemberships:     payload.organization_memberships ?? [],
-    policyGroups:       payload.policy_groups ?? [],
-    permissions:        payload.permissions ?? [],
+    activeActorId: preferredActor?.id ?? null,
+    jurisdictions: payload.jurisdictions ?? [],
+    orgMemberships: payload.organization_memberships ?? [],
+    policyGroups: payload.policy_groups ?? [],
+    permissions: payload.permissions ?? [],
     permissionsVersion: version,
-    inviteScoped:       opts.inviteScoped ?? false,
+    inviteScoped: opts.inviteScoped ?? false,
   })
 }
 
@@ -731,9 +727,9 @@ export function getPermittedActions(actorId?: string): string[] {
 ============================================================ */
 
 const LEVEL_RANK: Record<JurisdictionLevel, number> = {
-  federal:    0,
-  org:        1,
-  branch:     2,
+  federal: 0,
+  org: 1,
+  branch: 2,
   department: 3,
 }
 
@@ -916,9 +912,7 @@ export function isAdmin(): boolean {
 export function requireOrgAccess(orgId: string): void {
   const orgIds = getJurisdictionOrgIds()
   if (!orgIds.includes(orgId)) {
-    throw new Error(
-      `Access denied: no jurisdiction over organization ${orgId}`,
-    )
+    throw new Error(`Access denied: no jurisdiction over organization ${orgId}`)
   }
 }
 
@@ -932,9 +926,8 @@ export function getHomeOrg(): OrgMembership | null {
 
   const s = get(sessionStore)
   return (
-    s.orgMemberships.find(
-      (m) => m.organization_id === jurisdictionOrgIds[0],
-    ) ?? null
+    s.orgMemberships.find((m) => m.organization_id === jurisdictionOrgIds[0]) ??
+    null
   )
 }
 
@@ -993,17 +986,19 @@ export function setUserFromBootstrap(
 
 /** @deprecated Use sessionStore directly */
 export const authStore = derived(sessionStore, ($s) => ({
-  profile_id:     $s.profile?.id ?? null,
-  actor_id:       $s.activeActorId,
-  actor_type:     $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
-  fullName:       $s.profile?.full_name ?? "Guest",
-  email:          null as string | null,
+  profile_id: $s.profile?.id ?? null,
+  actor_id: $s.activeActorId,
+  actor_type:
+    $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
+  fullName: $s.profile?.full_name ?? "Guest",
+  email: null as string | null,
   organizationId: getHomeOrg()?.organization_id ?? null,
-  sacco:          getHomeOrg()?.org_name ?? null,
-  role:           $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
-  permissions:    $s.permissions
+  sacco: getHomeOrg()?.org_name ?? null,
+  role:
+    $s.actors.find((a) => a.id === $s.activeActorId)?.type ?? ROLES.PASSENGER,
+  permissions: $s.permissions
     .filter((p) => p.actor_id === $s.activeActorId && p.effect === "allow")
     .map((p) => p.action),
-  token:          null,
-  inviteScoped:   $s.inviteScoped,
+  token: null,
+  inviteScoped: $s.inviteScoped,
 }))

@@ -7,9 +7,7 @@
       "feature_id": "onboarding_intent_routing_system",
       "file_path": "src/lib/features/onboarding/intents.ts",
       "detected_intent": "Facilitates user onboarding by routing new users to role-specific dashboards based on declared intent (passenger, crew, operator, owner, org). This branching point determines which growth loop a new user enters and is the foundation of all role-based activation flows.",
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": [],
       "confidence_score": 0.82,
       "entry_point": "intentToDashboard()",
@@ -30,13 +28,8 @@
       "feature_id": "m_pesa_payment_store_stk_push_flow",
       "file_path": "src/lib/features/finance/payments.store.ts",
       "detected_intent": "Supports monetization through a complete M-Pesa STK Push payment lifecycle with plan state management, expiry tracking, renewal reminders, and derived CTA copy. This is the core monetization engine for converting free operators to paid plans.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.91,
       "entry_point": "activatePaymentsStore() / setStkPushPending()",
       "growth_potential": [
@@ -56,9 +49,7 @@
       "feature_id": "profile_enrichment_actor_request_flow",
       "file_path": "src/lib/features/profile/profile.service.ts",
       "detected_intent": "Facilitates user onboarding by capturing rich profile data and creating pending actor requests linked to desired organizations. The saveProfile flow is the bridge between user registration and role activation — completion rate directly determines operator activation.",
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": [],
       "confidence_score": 0.84,
       "entry_point": "saveProfile()",
@@ -79,10 +70,7 @@
       "feature_id": "sacco_org_dashboard_kpi_engine",
       "file_path": "src/routes/(auth)/org/[orgId]/dashboard/+page.server.ts",
       "detected_intent": "Drives retention and data-driven decisions by surfacing real-time KPIs (active vehicles, revenue sparkline, compliance alerts, pending member requests, recent activity) for ORG_CHAIRs. The richness of this dashboard is the primary argument for maintaining a paid subscription.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.88,
       "entry_point": "/org/[orgId]/dashboard",
@@ -103,10 +91,7 @@
       "feature_id": "network_analytics_dashboard",
       "file_path": "src/routes/(auth)/org/[orgId]/dashboard/analytics.svelte",
       "detected_intent": "Enables data-driven decisions for ORG_CHAIRs and operations managers by surfacing route-level congestion scores, active vehicle counts, and average network speed. Congestion visualization creates daily engagement pull for operators monitoring route performance.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.79,
       "entry_point": "/org/[orgId]/dashboard (analytics tab)",
@@ -127,10 +112,7 @@
       "feature_id": "admin_user_management_verification_panel",
       "file_path": "src/routes/(auth)/admin/users/+page.svelte",
       "detected_intent": "Drives user activation by enabling admins to send SMS OTP or email magic link verification to unverified actors. Verification latency is a direct churn trigger — users who register and don't get verified within hours abandon the platform.",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": [],
       "confidence_score": 0.83,
       "entry_point": "/admin/users",
@@ -151,10 +133,7 @@
       "feature_id": "admin_organization_management_dashboard",
       "file_path": "src/routes/(auth)/admin/organizations/+page.svelte",
       "detected_intent": "Enables data-driven decisions and operator activation by providing admins with organization lifecycle management (create, activate, suspend). Organization activation is the gateway event that unlocks the entire operator growth loop — activation latency directly impacts operator retention.",
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.81,
       "entry_point": "/admin/organizations",
@@ -175,10 +154,7 @@
       "feature_id": "org_multi_tenant_picker_context_switcher",
       "file_path": "src/routes/(auth)/org/select/+page.ts",
       "detected_intent": "Drives retention for multi-org users by enabling seamless context switching between SACCO memberships. Users with access to multiple organizations are higher-value and more deeply embedded in the platform — this flow serves the most retained user segment.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.75,
       "entry_point": "/org/select",
@@ -199,9 +175,7 @@
       "feature_id": "actor_verification_token_system_sms_email",
       "file_path": "src/routes/verify/+page.server.ts",
       "detected_intent": "Facilitates user onboarding by handling both SMS OTP and email magic link verification paths. Actor verification is the gate between registration and role activation — the UX quality of this flow directly determines activation rate.",
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": [],
       "confidence_score": 0.86,
       "entry_point": "/verify",
@@ -222,10 +196,7 @@
       "feature_id": "sign_in_flow_with_posthog_identity",
       "file_path": "src/routes/(marketing)/login/sign_in/+page.svelte",
       "detected_intent": "Drives user onboarding and enables data-driven decisions by integrating PostHog identity on sign-in. The posthog.identify() call on SIGNED_IN links all subsequent events to the user profile, enabling cohort analysis and funnel tracking across sessions.",
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.87,
       "entry_point": "/login/sign_in",
@@ -246,14 +217,8 @@
       "feature_id": "transactional_email_system_with_unsubscribe_management",
       "file_path": "src/lib/mailer.ts",
       "detected_intent": "Supports user engagement and retention through templated transactional emails via Resend. Includes unsubscribe management and email verification checks to maintain deliverability. Foundation for all lifecycle email automation.",
-      "growth_pillars": [
-        "onboarding",
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["onboarding", "retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.85,
       "entry_point": "sendUserEmail() / sendTemplatedEmail()",
       "growth_potential": [
@@ -273,13 +238,8 @@
       "feature_id": "server_side_posthog_analytics_client",
       "file_path": "src/lib/server/posthog.ts",
       "detected_intent": "Enables data-driven decisions by providing a server-side analytics singleton for capturing events across SvelteKit server functions. Foundation for all product analytics, funnel tracking, and feature flag evaluation across the platform.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["engagement", "retention"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.91,
       "entry_point": "getPostHogClient()",
       "growth_potential": [
@@ -299,13 +259,8 @@
       "feature_id": "m_pesa_provider_stk_push_b2c_b2b",
       "file_path": "src/lib/server/mpesa-provider.ts",
       "detected_intent": "Enables monetization through native M-Pesa STK Push for subscription payments, B2C payouts for driver/conductor tips, and B2B settlements for SACCO revenue share. The primary payment infrastructure for the Kenyan market.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.93,
       "entry_point": "processMpesaPush() / sendB2CPayment() / sendB2BPayment()",
       "growth_potential": [
@@ -325,10 +280,7 @@
       "feature_id": "revenue_distribution_config_engine",
       "file_path": "src/lib/server/revenue-config.ts",
       "detected_intent": "Enables data-driven monetization decisions by centralizing fee splits across reservation fees, daily collections, and tips. The org-level override system allows custom revenue sharing agreements that can be used as a premium feature for larger SACCOs.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.77,
       "entry_point": "calculateDailyDistribution() / calculateReservationSplit() / loadOrgRevenueConfig()",
@@ -349,14 +301,8 @@
       "feature_id": "upstash_redis_rate_limiter",
       "file_path": "src/lib/security/ratelimit.ts",
       "detected_intent": "Provides infrastructure for rate limiting and delayed job scheduling via Upstash Redis. Beyond security, this is the foundation for SMS nudge sequences, dunning flows, and time-gated re-engagement campaigns that are central to the GPS flywheel and monetization loops.",
-      "growth_pillars": [
-        "onboarding",
-        "retention",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["onboarding", "retention", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.78,
       "entry_point": "rateLimit() / redis client",
       "growth_potential": [
@@ -376,10 +322,7 @@
       "feature_id": "trip_score_route_store_with_indexeddb_offline_queuing",
       "file_path": "src/lib/features/trips/userTripStore.ts",
       "detected_intent": "Drives passenger engagement through trip scoring (speed, reliability, cost efficiency, eco score) and offline-capable route saving via IndexedDB. The tripScore derived store creates a gamification hook that encourages repeat bookings on high-scoring routes.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.74,
       "entry_point": "tripScore / saveRoute() / planMockTrip()",
@@ -400,10 +343,7 @@
       "feature_id": "compliance_event_store_with_real_time_subscriptions",
       "file_path": "src/lib/features/compliance/stores/compliance.ts",
       "detected_intent": "Drives retention for compliance-sensitive operators by providing real-time compliance event monitoring and alert tracking. Compliance urgency (overdue reminders, HIGH severity events) creates daily return behavior and is the core narrative for the paid plan upgrade gate.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.8,
       "entry_point": "initCompliance() / complianceEventStore",
@@ -424,13 +364,8 @@
       "feature_id": "skene_growth_event_log_enrichment_pipeline",
       "file_path": "supabase/migrations/20260201000000_skene_growth_schema.sql",
       "detected_intent": "Enables data-driven decisions by providing a PostgreSQL-native growth event pipeline with automatic enrichment, failed event tracking, and webhook delivery to upstream analytics. Foundation for all server-side growth loop instrumentation.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["engagement", "retention"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.83,
       "entry_point": "skene_growth.event_log INSERT / notify_event_log()",
       "growth_potential": [
@@ -450,10 +385,7 @@
       "feature_id": "route_guard_context_activation_system",
       "file_path": "src/lib/security/authGuard.ts",
       "detected_intent": "Facilitates user onboarding by enforcing role-specific route access and activating the correct context store per user type. The guard system ensures users land on the right dashboard for their role, reducing disorientation that causes early churn.",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": [],
       "confidence_score": 0.76,
       "entry_point": "requirePassengerAccess() / requireOperatorAccess() / requireOrgMemberAccess()",
@@ -474,9 +406,7 @@
       "feature_id": "stripe_subscription_management_legacy",
       "file_path": "src/subscription_helpers.server.ts",
       "detected_intent": "Supports monetization by managing Stripe customer creation and subscription fetching. Currently a legacy integration alongside M-Pesa — the dual-payment-processor state creates risk of uncharged users and confused payment paths.",
-      "growth_pillars": [
-        "retention"
-      ],
+      "growth_pillars": ["retention"],
       "loop_ids": [],
       "confidence_score": 0.72,
       "entry_point": "getOrCreateCustomerId() / fetchSubscription()",
@@ -497,10 +427,7 @@
       "feature_id": "organization_invitation_token_system",
       "file_path": "src/routes/(marketing)/login/invite/[token]/+page.server.ts",
       "detected_intent": "Enables viral growth through secure role-based invitations. Operators and org chairs can invite members to join their SACCO organization with pre-assigned roles, driving network expansion through trusted referrals.",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": [],
       "confidence_score": 0.92,
       "entry_point": "/login/invite/[token]",
@@ -521,9 +448,7 @@
       "feature_id": "sacco_join_org_chair_claim_flow",
       "file_path": "src/routes/(auth)/org/join-sacco/+page.server.ts",
       "detected_intent": "Facilitates operator onboarding by allowing users to self-select and claim ownership of pre-seeded SACCO organizations. This is the primary top-of-funnel activation path for the ORG_CHAIR role, which anchors the entire organizational growth loop.",
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": [],
       "confidence_score": 0.88,
       "entry_point": "/org/join-sacco",
@@ -544,10 +469,7 @@
       "feature_id": "admin_actor_requests_review_approval",
       "file_path": "src/routes/(auth)/admin/actor_requests/+page.svelte",
       "detected_intent": "Drives user activation by enabling admins to approve pending role requests. Approval latency directly determines how quickly new operators, drivers, and conductors become active — making this a critical retention lever. Slow approval is a churn trigger.",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": [],
       "confidence_score": 0.85,
       "entry_point": "/admin/actor_requests",
@@ -568,10 +490,7 @@
       "feature_id": "org_finance_route_intelligence_dashboard",
       "file_path": "src/routes/(auth)/org/[orgId]/finance/+page.svelte",
       "detected_intent": "Drives retention and upgrade conversion by surfacing revenue variance, route performance, and reconciliation data. The more value operators see in this dashboard, the stronger the case for maintaining a paid subscription. Acts as the primary data-driven decision tool for ORG_CHAIRs.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.87,
       "entry_point": "/org/[orgId]/finance",
@@ -592,10 +511,7 @@
       "feature_id": "admin_platform_revenue_wallet_dashboard",
       "file_path": "src/routes/(auth)/admin/wallet/+page.server.ts",
       "detected_intent": "Enables data-driven monetization decisions by surfacing platform revenue, M-Pesa subscription counts, B2C payouts, and Hyperledger enrollment health in one view. Supports identifying revenue leakage and subscriber growth trends.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.82,
       "entry_point": "/admin/wallet",
@@ -616,10 +532,7 @@
       "feature_id": "real_time_operations_store_with_incident_tracking",
       "file_path": "src/lib/features/operations/operations.store.ts",
       "detected_intent": "Drives daily active engagement for OPERATIONS_MANAGER, DISPATCHER, and ROUTE_SUPERVISOR roles by providing real-time situational awareness. Urgent incidents and delayed trips create natural daily return behavior. The opsSummary KPI object is the core engagement hook.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.83,
       "entry_point": "initOperations() / opsSummary store",
@@ -640,13 +553,8 @@
       "feature_id": "gps_sse_stream_client",
       "file_path": "src/lib/features/fleet/services/gps/gps.client.ts",
       "detected_intent": "Drives engagement by delivering real-time GPS position updates to fleet dashboards via Server-Sent Events. Live tracking is the core 'magic moment' for operators — seeing their vehicles move on a map is the primary value demonstration that drives retention.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["engagement", "retention"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.86,
       "entry_point": "connectGpsStream() / initGpsClient()",
       "growth_potential": [
@@ -666,9 +574,7 @@
       "feature_id": "blog_content_seo_engine",
       "file_path": "src/routes/(marketing)/blog/posts.ts",
       "detected_intent": "Drives organic acquisition through SEO-optimized content targeting Nairobi matatu operators, SACCO managers, and transit researchers. The blog covers operational pain points (empty return trips, NTSA compliance, GPS tracking) that map directly to the platform's value proposition.",
-      "growth_pillars": [
-        "onboarding"
-      ],
+      "growth_pillars": ["onboarding"],
       "loop_ids": [],
       "confidence_score": 0.78,
       "entry_point": "/blog",
@@ -689,13 +595,8 @@
       "feature_id": "vehicle_device_pairing_flow",
       "file_path": "src/routes/(auth)/org/[orgId]/(devices)/pair/+page.svelte",
       "detected_intent": "Facilitates operator onboarding by guiding users through GPS tracker pairing via BLE or QR scan. This is the physical activation step that connects real-world vehicles to the platform — completing the hardware-to-ledger chain.",
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
-      "loop_ids": [
-        "gps_broadcast_ledger_depth_flywheel"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
+      "loop_ids": ["gps_broadcast_ledger_depth_flywheel"],
       "confidence_score": 0.81,
       "entry_point": "/org/[orgId]/pair",
       "growth_potential": [
@@ -715,10 +616,7 @@
       "feature_id": "organization_invitation_system",
       "file_path": "src/routes/(auth)/api/orgs/[orgId]/invite/+server.ts",
       "detected_intent": "Enables viral/referral growth by allowing org admins to invite new members via email with role pre-assignment. Each invite creates a new user account, expanding the platform's user base organically through existing organizations.",
-      "growth_pillars": [
-        "onboarding",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.95,
       "entry_point": "POST /api/orgs/[orgId]/invite",
@@ -740,10 +638,7 @@
       "feature_id": "invite_redemption_account_activation_flow",
       "file_path": "src/routes/(marketing)/login/invite/[token]/+page.svelte",
       "detected_intent": "Drives user onboarding conversion by guiding invited users through a multi-step account activation flow with role/org confirmation and password setup. PostHog tracking of invite_redeemed events enables funnel analysis.",
-      "growth_pillars": [
-        "onboarding",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "retention"],
       "loop_ids": [],
       "confidence_score": 0.95,
       "entry_point": "/login/invite/[token]",
@@ -765,10 +660,7 @@
       "feature_id": "tiered_pricing_subscription_system",
       "file_path": "src/routes/(marketing)/pricing/+page.svelte",
       "detected_intent": "Supports monetization through a 5-tier pricing model (Free → Enterprise) with M-Pesa STK push payments and Stripe integration. The free tier drives top-of-funnel acquisition while paid tiers generate revenue.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.92,
       "entry_point": "/pricing",
@@ -791,10 +683,7 @@
       "feature_id": "m_pesa_payment_integration",
       "file_path": "src/lib/server/mpesa-provider.ts",
       "detected_intent": "Enables monetization through native M-Pesa STK Push (customer payments), B2C payouts (driver/conductor tips), and B2B settlements (SACCO revenue share). Critical for the Kenyan market where M-Pesa is the dominant payment method.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.93,
       "entry_point": "processMpesaPush(), sendB2CPayment(), sendB2BPayment()",
@@ -816,11 +705,7 @@
       "feature_id": "posthog_analytics_error_tracking",
       "file_path": "src/hooks.client.ts",
       "detected_intent": "Enables data-driven decisions through PostHog event tracking (client + server-side) and Sentry error monitoring with session replay. Foundation for measuring growth funnels, feature adoption, and user behavior.",
-      "growth_pillars": [
-        "onboarding",
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["onboarding", "engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.9,
       "entry_point": "init() in hooks.client.ts, getPostHogClient() in src/lib/server/posthog.ts",
@@ -843,10 +728,7 @@
       "feature_id": "community_forum_social_hub",
       "file_path": "src/routes/(marketing)/community/+page.svelte",
       "detected_intent": "Drives viral growth and engagement through a community forum for Nairobi transit riders and operators. User-generated route tips and discussions create network effects and organic SEO content.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.82,
       "entry_point": "/community",
@@ -869,10 +751,7 @@
       "feature_id": "real_time_fleet_tracking_with_gps",
       "file_path": "src/routes/(auth)/org/[orgId]/track/+page.svelte",
       "detected_intent": "Drives engagement and retention for fleet operators by providing live vehicle tracking with GPS telemetry, 3D map visualization, and real-time position updates via SSE. Core value proposition for paid tier upgrades.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.88,
       "entry_point": "/org/[orgId]/track",
@@ -894,10 +773,7 @@
       "feature_id": "admin_dashboard_with_kpi_monitoring",
       "file_path": "src/routes/(auth)/admin/dashboard/+page.svelte",
       "detected_intent": "Enables data-driven decisions for platform admins by surfacing key metrics (pending requests, user count, org count, critical audit events) and providing quick-action workflows for actor request approval.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.85,
       "entry_point": "/admin/dashboard",
@@ -919,10 +795,7 @@
       "feature_id": "stripe_subscription_management",
       "file_path": "src/subscription_helpers.server.ts",
       "detected_intent": "Supports monetization by managing Stripe customer creation, subscription fetching, and plan matching. Enables the platform to offer recurring billing alongside M-Pesa for international or card-paying users.",
-      "growth_pillars": [
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.88,
       "entry_point": "getOrCreateCustomerId(), fetchSubscription()",
@@ -944,11 +817,7 @@
       "feature_id": "transactional_email_system",
       "file_path": "src/lib/mailer.ts",
       "detected_intent": "Supports user engagement and retention through templated transactional emails via Resend. Includes unsubscribe management and email verification checks to maintain deliverability.",
-      "growth_pillars": [
-        "onboarding",
-        "retention",
-        "engagement"
-      ],
+      "growth_pillars": ["onboarding", "retention", "engagement"],
       "loop_ids": [],
       "confidence_score": 0.83,
       "entry_point": "sendUserEmail(), sendTemplatedEmail(), sendAdminEmail()",
@@ -970,10 +839,7 @@
       "feature_id": "seat_reservation_system",
       "file_path": "src/routes/(auth)/app/reserve/[matatuId]/+page.server.ts",
       "detected_intent": "Drives engagement and monetization by enabling passengers to reserve seats on specific matatus. Creates a direct revenue stream (KES 19/seat reservation fee) and increases platform stickiness through utility.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.87,
       "entry_point": "/app/reserve/[matatuId]",
@@ -995,10 +861,7 @@
       "feature_id": "in_app_chat_system",
       "file_path": "src/lib/features/chat/components/ChatArea.svelte",
       "detected_intent": "Drives engagement and retention by enabling real-time communication between platform users (drivers, conductors, operators, passengers). Creates network effects and increases daily active usage.",
-      "growth_pillars": [
-        "engagement",
-        "retention"
-      ],
+      "growth_pillars": ["engagement", "retention"],
       "loop_ids": [],
       "confidence_score": 0.8,
       "entry_point": "/app/chat",

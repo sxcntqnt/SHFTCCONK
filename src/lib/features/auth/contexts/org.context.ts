@@ -27,9 +27,12 @@
 //   If a user holds multiple staff roles across the same org (rare but valid),
 //   STAFF_ROLE_PRIORITY picks the highest-authority actor.
 
-import { derived, get } from 'svelte/store'
-import type { Tables } from '../../../DatabaseDefinitions'
-import type { UserState, ActorContext } from '$lib/features/auth/services/userState.server'
+import { derived, get } from "svelte/store"
+import type { Tables } from "../../../DatabaseDefinitions"
+import type {
+  UserState,
+  ActorContext,
+} from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,
   extractPermissions,
@@ -38,18 +41,18 @@ import {
   isAllowed,
   ACTOR_TYPES,
   ORG_STAFF_TYPES,
-} from '$lib/features/auth/contexts/context.template'
+} from "$lib/features/auth/contexts/context.template"
 import type {
   EffectivePermission,
   Jurisdiction,
-} from '$lib/features/auth/contexts/context.template'
-import { ACTIONS } from '$lib/features/auth/stores/permisions'
+} from "$lib/features/auth/contexts/context.template"
+import { ACTIONS } from "$lib/features/auth/stores/permisions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActorRow = Tables<'actors'>
+type ActorRow = Tables<"actors">
 
 // ── Staff role priority ───────────────────────────────────────────────────────
 // Higher index = higher precedence.
@@ -83,7 +86,7 @@ export interface OrgContext {
   /** Actor type string — for UI labels ("Fleet Manager", nav conditionals) */
   roleType: string
 
-  orgId:   string
+  orgId: string
   orgName: string
 
   jurisdictions: Jurisdiction[]
@@ -137,17 +140,17 @@ export function activateOrgContext(
   userState: UserState,
   orgId: string,
 ): boolean {
-
   // ── Find all eligible staff ActorContexts for this org ─────────────────────
   // Eligible = active status, non-chair staff type, jurisdiction covers this org
-  const candidates: ActorContext[] = userState.activeContexts.filter(ctx => {
-    if (ctx.status !== 'active')               return false
-    if (!ORG_STAFF_TYPES.includes(ctx.type))   return false
+  const candidates: ActorContext[] = userState.activeContexts.filter((ctx) => {
+    if (ctx.status !== "active") return false
+    if (!ORG_STAFF_TYPES.includes(ctx.type)) return false
 
-    return ctx.jurisdictions.some(j =>
-      j.level === 'federal'
-      || (j.level === 'org'    && j.scope_id === orgId)
-      || (j.level === 'branch' && j.scope_id != null)
+    return ctx.jurisdictions.some(
+      (j) =>
+        j.level === "federal" ||
+        (j.level === "org" && j.scope_id === orgId) ||
+        (j.level === "branch" && j.scope_id != null),
     )
   })
 
@@ -165,22 +168,22 @@ export function activateOrgContext(
     return bi - ai
   })[0]
 
-  const actor = userState.actors.find(a => a.id === bestCtx.actorId)
+  const actor = userState.actors.find((a) => a.id === bestCtx.actorId)
   if (!actor) {
     clearContext()
     return false
   }
 
   // ── Jurisdiction + membership ───────────────────────────────────────────────
-  const jurisdictions  = extractJurisdictions(userState, bestCtx.actorId)
+  const jurisdictions = extractJurisdictions(userState, bestCtx.actorId)
   const orgMemberships = extractOrgMemberships(userState, bestCtx.actorId)
-  const orgMembership  = orgMemberships.find(m => m.organization_id === orgId)
+  const orgMembership = orgMemberships.find((m) => m.organization_id === orgId)
 
   // ── Branch scope ────────────────────────────────────────────────────────────
   // Branch-scoped actors (BRANCH_MANAGER, MECHANIC, etc.) have a branch-level
   // jurisdiction. Null for org-wide roles (GENERAL_MANAGER, FLEET_MANAGER etc.)
   const branchJurisdiction = jurisdictions.find(
-    j => j.level === 'branch' && j.scope_id != null
+    (j) => j.level === "branch" && j.scope_id != null,
   )
   const branchId = branchJurisdiction?.scope_id ?? null
 
@@ -191,9 +194,9 @@ export function activateOrgContext(
 
   setContext({
     actor,
-    roleType:      actor.type,
+    roleType: actor.type,
     orgId,
-    orgName:       orgMembership?.org_name ?? 'Unknown SACCO',
+    orgName: orgMembership?.org_name ?? "Unknown SACCO",
     jurisdictions,
     permissions,
     branchId,
@@ -222,64 +225,134 @@ const _allows = (ctx: OrgContext | null, action: string): boolean =>
 // The permission set was seeded from ROLE_PERMISSIONS on actor creation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const canListVehicles       = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_LIST))
-export const canViewVehicle        = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_VIEW))
-export const canEditVehicle        = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_EDIT))
-export const canAddVehicle         = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_ADD))
-export const canListVehicleGroups  = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_GROUP_LIST))
-export const canAddVehicleGroup    = derived(orgCtx, ($c) => _allows($c, ACTIONS.VEHICLE_GROUP_ADD))
-export const canListDrivers        = derived(orgCtx, ($c) => _allows($c, ACTIONS.DRIVER_LIST))
-export const canEditDriver         = derived(orgCtx, ($c) => _allows($c, ACTIONS.DRIVER_EDIT))
-export const canAddDriver          = derived(orgCtx, ($c) => _allows($c, ACTIONS.DRIVER_ADD))
-export const canListBookings       = derived(orgCtx, ($c) => _allows($c, ACTIONS.BOOKING_LIST))
-export const canEditBooking        = derived(orgCtx, ($c) => _allows($c, ACTIONS.BOOKING_EDIT))
-export const canAddBooking         = derived(orgCtx, ($c) => _allows($c, ACTIONS.BOOKING_ADD))
-export const canTrackLive          = derived(orgCtx, ($c) => _allows($c, ACTIONS.TRACKING_LIVE))
-export const canTrackHistory       = derived(orgCtx, ($c) => _allows($c, ACTIONS.TRACKING_HISTORY))
-export const canListGeofences      = derived(orgCtx, ($c) => _allows($c, ACTIONS.GEOFENCE_LIST))
-export const canViewGeofenceEvents = derived(orgCtx, ($c) => _allows($c, ACTIONS.GEOFENCE_EVENTS))
-export const canViewFinance        = derived(orgCtx, ($c) => _allows($c, ACTIONS.FINANCE_LIST))
-export const canEditFinance        = derived(orgCtx, ($c) => _allows($c, ACTIONS.FINANCE_EDIT))
-export const canAddFinance         = derived(orgCtx, ($c) => _allows($c, ACTIONS.FINANCE_ADD))
-export const canViewFuel           = derived(orgCtx, ($c) => _allows($c, ACTIONS.FUEL_LIST))
-export const canEditFuel           = derived(orgCtx, ($c) => _allows($c, ACTIONS.FUEL_EDIT))
-export const canViewMaintenance    = derived(orgCtx, ($c) => _allows($c, ACTIONS.MAINTENANCE_VIEW))
-export const canLogMaintenance     = derived(orgCtx, ($c) => _allows($c, ACTIONS.MAINTENANCE_LOG))
-export const canEditMaintenance    = derived(orgCtx, ($c) => _allows($c, ACTIONS.MAINTENANCE_EDIT))
-export const canViewReports        = derived(orgCtx, ($c) => _allows($c, ACTIONS.REPORTS_VIEW))
-export const canListCustomers      = derived(orgCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_LIST))
-export const canViewCustomer       = derived(orgCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_VIEW))
-export const canAddCustomer        = derived(orgCtx, ($c) => _allows($c, ACTIONS.CUSTOMER_ADD))
-export const canViewReminders      = derived(orgCtx, ($c) => _allows($c, ACTIONS.REMINDER_LIST))
+export const canListVehicles = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_LIST),
+)
+export const canViewVehicle = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_VIEW),
+)
+export const canEditVehicle = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_EDIT),
+)
+export const canAddVehicle = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_ADD),
+)
+export const canListVehicleGroups = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_GROUP_LIST),
+)
+export const canAddVehicleGroup = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.VEHICLE_GROUP_ADD),
+)
+export const canListDrivers = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.DRIVER_LIST),
+)
+export const canEditDriver = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.DRIVER_EDIT),
+)
+export const canAddDriver = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.DRIVER_ADD),
+)
+export const canListBookings = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_LIST),
+)
+export const canEditBooking = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_EDIT),
+)
+export const canAddBooking = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.BOOKING_ADD),
+)
+export const canTrackLive = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_LIVE),
+)
+export const canTrackHistory = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.TRACKING_HISTORY),
+)
+export const canListGeofences = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.GEOFENCE_LIST),
+)
+export const canViewGeofenceEvents = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.GEOFENCE_EVENTS),
+)
+export const canViewFinance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.FINANCE_LIST),
+)
+export const canEditFinance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.FINANCE_EDIT),
+)
+export const canAddFinance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.FINANCE_ADD),
+)
+export const canViewFuel = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_LIST),
+)
+export const canEditFuel = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.FUEL_EDIT),
+)
+export const canViewMaintenance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MAINTENANCE_VIEW),
+)
+export const canLogMaintenance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MAINTENANCE_LOG),
+)
+export const canEditMaintenance = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MAINTENANCE_EDIT),
+)
+export const canViewReports = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.REPORTS_VIEW),
+)
+export const canListCustomers = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_LIST),
+)
+export const canViewCustomer = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_VIEW),
+)
+export const canAddCustomer = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.CUSTOMER_ADD),
+)
+export const canViewReminders = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.REMINDER_LIST),
+)
 
 /**
  * SECRETARY gets this via delegated_authority from ORG_CHAIR.
  * The delegated permission flows through effective_permissions_raw view
  * and appears in their permissions array — no special handling needed.
  */
-export const canApproveMembers     = derived(orgCtx, ($c) => _allows($c, ACTIONS.MEMBER_APPROVE))
-export const canInviteMembers      = derived(orgCtx, ($c) => _allows($c, ACTIONS.MEMBER_INVITE))
-export const canViewMemberRequests = derived(orgCtx, ($c) => _allows($c, ACTIONS.MEMBER_REQUESTS))
-export const canManageOrg          = derived(orgCtx, ($c) => _allows($c, ACTIONS.ORG_MANAGE))
-export const canChangeSettings     = derived(orgCtx, ($c) => _allows($c, ACTIONS.SETTINGS_ALL))
+export const canApproveMembers = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_APPROVE),
+)
+export const canInviteMembers = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_INVITE),
+)
+export const canViewMemberRequests = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.MEMBER_REQUESTS),
+)
+export const canManageOrg = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.ORG_MANAGE),
+)
+export const canChangeSettings = derived(orgCtx, ($c) =>
+  _allows($c, ACTIONS.SETTINGS_ALL),
+)
 
-export const activeOrgId    = derived(orgCtx, ($c) => $c?.orgId      ?? null)
-export const activeOrgName  = derived(orgCtx, ($c) => $c?.orgName    ?? '')
-export const activeBranchId = derived(orgCtx, ($c) => $c?.branchId   ?? null)
-export const activeRoleType = derived(orgCtx, ($c) => $c?.roleType   ?? null)
+export const activeOrgId = derived(orgCtx, ($c) => $c?.orgId ?? null)
+export const activeOrgName = derived(orgCtx, ($c) => $c?.orgName ?? "")
+export const activeBranchId = derived(orgCtx, ($c) => $c?.branchId ?? null)
+export const activeRoleType = derived(orgCtx, ($c) => $c?.roleType ?? null)
 
 /** All allowed actions — for debug panel or dynamic nav generation */
 export const orgAllowedActions = derived(
   orgCtx,
-  ($c) => $c?.permissions.filter(p => p.effect === 'allow').map(p => p.action) ?? [],
+  ($c) =>
+    $c?.permissions.filter((p) => p.effect === "allow").map((p) => p.action) ??
+    [],
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getOrgActorId      = () => get(orgCtx)?.actor.id  ?? null
-export const getOrgContextOrgId = () => get(orgCtx)?.orgId      ?? null
+export const getOrgActorId = () => get(orgCtx)?.actor.id ?? null
+export const getOrgContextOrgId = () => get(orgCtx)?.orgId ?? null
 export const isOrgContextActive = () => get(orgCtx) !== null
 
 /**

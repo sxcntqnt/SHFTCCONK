@@ -4,11 +4,7 @@
   "description": "Drives operator activation and upgrade conversion through a zero-auth driver PWA that broadcasts GPS pings, anchors each ping to a Hyperledger Fabric ledger transaction, instruments V/T ratio coverage via PostHog, delivers time-gated SMS nudges via Upstash Redis for operators who have not yet received a first GPS ping, and surfaces a compliance-framed free-tier ledger gate at Day 28 to convert operators to paid plans. The flywheel completes when a first GPS ping unlocks full navigation, writes a ledger genesis event, and begins the countdown to the upgrade gate — creating a compounding retention and monetization loop.",
   "linked_feature": "GPS SSE Stream Client",
   "linked_feature_id": "gps_sse_stream_client",
-  "growth_pillars": [
-    "onboarding",
-    "engagement",
-    "retention"
-  ],
+  "growth_pillars": ["onboarding", "engagement", "retention"],
   "requirements": {
     "files": [
       {
@@ -427,9 +423,7 @@
     ]
   },
   "metrics": {
-    "data_actions": [
-      "gps_first_ping_received"
-    ],
+    "data_actions": ["gps_first_ping_received"],
     "success_criteria": [
       "Time to First GPS Ping < 48 hours for > 60% of new operator accounts measured from account creation timestamp to first trip_events INSERT",
       "Driver PWA load time < 4 seconds on Safaricom 3G (Chrome DevTools Slow 3G throttle profile)",

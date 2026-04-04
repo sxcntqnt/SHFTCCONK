@@ -25,21 +25,21 @@
 //   2. Fetch — stage assignments with org name join
 //   3. Return — operator summary + stages for layout shell
 
-import type { LayoutServerLoad } from './$types'
-import { redirect }              from '@sveltejs/kit'
-import { ACTOR_TYPES }           from '$lib/features/auth/contexts/context.template'
+import type { LayoutServerLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { ACTOR_TYPES } from "$lib/features/auth/contexts/context.template"
 
 type OrgJoin = {
-  id:   string
+  id: string
   name: string
 } | null
 
 type StageRow = {
-  id:              string
-  stage_name:      string
+  id: string
+  stage_name: string
   organization_id: string | null
-  route:           unknown      // Json in schema — pages narrow as needed
-  organizations:   OrgJoin
+  route: unknown // Json in schema — pages narrow as needed
+  organizations: OrgJoin
 }
 
 export const load: LayoutServerLoad = async ({ locals }) => {
@@ -47,15 +47,16 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
   // ── Gate ───────────────────────────────────────────────────────────────────
   if (!userState) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
-  const operatorActorCtx = userState.activeContexts.find(
-    ctx => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === 'active'
-  ) ?? null
+  const operatorActorCtx =
+    userState.activeContexts.find(
+      (ctx) => ctx.type === ACTOR_TYPES.OPERATOR && ctx.status === "active",
+    ) ?? null
 
   if (!operatorActorCtx) {
-    throw redirect(303, '/app/dashboard?denied=operator_not_active')
+    throw redirect(303, "/app/dashboard?denied=operator_not_active")
   }
 
   // ── Stage assignments fetch ─────────────────────────────────────────────────
@@ -63,8 +64,9 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   // Multi-org operators have stages across multiple orgs — return all,
   // operatorCtx.orgSlots in the client store groups them by active org.
   const { data: stages, error } = await supabase
-    .from('stage_assignments')
-    .select(`
+    .from("stage_assignments")
+    .select(
+      `
       id,
       stage_name,
       organization_id,
@@ -73,14 +75,15 @@ export const load: LayoutServerLoad = async ({ locals }) => {
         id,
         name
       )
-    `)
-    .eq('operator_id', operatorActorCtx.actorId)
-    .order('stage_name')
+    `,
+    )
+    .eq("operator_id", operatorActorCtx.actorId)
+    .order("stage_name")
 
   if (error) {
     // Non-fatal — operator can still access the dashboard without stages.
     // The "no stages assigned" UI handles this state.
-    console.error('[operator layout] stage assignments fetch failed:', error)
+    console.error("[operator layout] stage assignments fetch failed:", error)
   }
 
   const stageRows = (stages ?? []) as unknown as StageRow[]
@@ -92,28 +95,29 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   const orgIds = [
     ...new Set(
       stageRows
-        .map(s => s.organization_id)
-        .filter((id): id is string => id != null)
-    )
+        .map((s) => s.organization_id)
+        .filter((id): id is string => id != null),
+    ),
   ]
 
-  const primaryOrgId = operatorActorCtx.orgMemberships[0]?.organization_id ?? null
+  const primaryOrgId =
+    operatorActorCtx.orgMemberships[0]?.organization_id ?? null
 
   // ── Operator summary ────────────────────────────────────────────────────────
   // Plain serialisable object for the layout shell template.
   // Child pages use the reactive operatorCtx store for dynamic state.
   const operatorSummary = {
-    actorId:      operatorActorCtx.actorId,
+    actorId: operatorActorCtx.actorId,
     primaryOrgId,
     orgIds,
-    stageCount:   stageRows.length,
-    isMultiOrg:   orgIds.length > 1,
+    stageCount: stageRows.length,
+    isMultiOrg: orgIds.length > 1,
   } as const
 
   return {
     userState,
     activeContext,
-    stages:          stageRows,
+    stages: stageRows,
     operatorSummary,
   }
 }

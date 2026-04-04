@@ -1,10 +1,10 @@
 Create table in Supabase SQL editor:
 
 create table geofences (
-  id uuid primary key,
-  name text not null,
-  color text,
-  owner_id uuid not null references auth.users(id) on delete cascade,
+id uuid primary key,
+name text not null,
+color text,
+owner_id uuid not null references auth.users(id) on delete cascade,
 created_at timestamp with time zone default now()
 
 );

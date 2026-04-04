@@ -10,35 +10,35 @@
  *     (no `+` prefix — that's reserved for SvelteKit route files)
  */
 
-import { writable, get }       from 'svelte/store'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { writable, get } from "svelte/store"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 /* ============================================================
    TYPES
 ============================================================ */
 export interface RouteStop {
-  lat:    number
-  lng:    number
-  name?:  string
+  lat: number
+  lng: number
+  name?: string
 }
 
 export interface RouteDefinition {
-  id:        string
-  name:      string
+  id: string
+  name: string
   polyline?: string
-  stops:     RouteStop[]
+  stops: RouteStop[]
 }
 
 export interface Contract {
-  id:               string
-  name:             string
-  route:            RouteDefinition
-  maxVehicles:      number
-  subsidyAmount:    number
+  id: string
+  name: string
+  route: RouteDefinition
+  maxVehicles: number
+  subsidyAmount: number
   assignedVehicles: string[]
-  organizationId:   string
-  created_at?:      string
-  updated_at?:      string
+  organizationId: string
+  created_at?: string
+  updated_at?: string
 }
 
 /* ============================================================
@@ -49,7 +49,7 @@ export const contracts = writable<Contract[]>([])
 /* ============================================================
    INTERNAL STATE
 ============================================================ */
-let _contractsChannel: ReturnType<SupabaseClient['channel']> | null = null
+let _contractsChannel: ReturnType<SupabaseClient["channel"]> | null = null
 let _currentOrgId: string | null = null
 
 /* ============================================================
@@ -57,21 +57,23 @@ let _currentOrgId: string | null = null
 ============================================================ */
 function mapContract(row: Record<string, unknown>): Contract {
   return {
-    id:               row.id              as string,
-    name:             row.name            as string,
-    route:            (row.route ?? { id: '', name: '', stops: [] }) as RouteDefinition,
-    maxVehicles:      (row.max_vehicles   ?? row.maxVehicles   ?? 0) as number,
-    subsidyAmount:    (row.subsidy_amount ?? row.subsidyAmount ?? 0) as number,
-    assignedVehicles: (row.assigned_vehicles ?? row.assignedVehicles ?? []) as string[],
-    organizationId:   (row.organization_id  ?? row.organizationId) as string,
-    created_at:       row.created_at as string | undefined,
-    updated_at:       row.updated_at as string | undefined,
+    id: row.id as string,
+    name: row.name as string,
+    route: (row.route ?? { id: "", name: "", stops: [] }) as RouteDefinition,
+    maxVehicles: (row.max_vehicles ?? row.maxVehicles ?? 0) as number,
+    subsidyAmount: (row.subsidy_amount ?? row.subsidyAmount ?? 0) as number,
+    assignedVehicles: (row.assigned_vehicles ??
+      row.assignedVehicles ??
+      []) as string[],
+    organizationId: (row.organization_id ?? row.organizationId) as string,
+    created_at: row.created_at as string | undefined,
+    updated_at: row.updated_at as string | undefined,
   }
 }
 
 function assertTenant(contractOrgId: string): void {
   if (_currentOrgId && contractOrgId !== _currentOrgId) {
-    throw new Error('Cross-tenant contract data rejected')
+    throw new Error("Cross-tenant contract data rejected")
   }
 }
 
@@ -85,9 +87,9 @@ export async function initContracts(
   _currentOrgId = orgId
 
   const { data, error } = await supabase
-    .from('contracts')
-    .select('*')
-    .eq('organization_id', orgId)
+    .from("contracts")
+    .select("*")
+    .eq("organization_id", orgId)
 
   if (error) throw new Error(`Contracts fetch failed: ${error.message}`)
 
@@ -101,18 +103,28 @@ export async function initContracts(
   _contractsChannel = supabase
     .channel(`contracts-${orgId}`)
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'contracts', filter: `organization_id=eq.${orgId}` },
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "contracts",
+        filter: `organization_id=eq.${orgId}`,
+      },
       (payload) => {
-        if (payload.eventType === 'DELETE') {
-          contracts.update((c) => c.filter((x) => x.id !== (payload.old as any).id))
+        if (payload.eventType === "DELETE") {
+          contracts.update((c) =>
+            c.filter((x) => x.id !== (payload.old as any).id),
+          )
           return
         }
         const incoming = mapContract(payload.new as Record<string, unknown>)
         assertTenant(incoming.organizationId)
         contracts.update((current) => {
           const idx = current.findIndex((c) => c.id === incoming.id)
-          if (idx >= 0) { current[idx] = incoming; return [...current] }
+          if (idx >= 0) {
+            current[idx] = incoming
+            return [...current]
+          }
           return [...current, incoming]
         })
       },
@@ -123,7 +135,9 @@ export async function initContracts(
 /* ============================================================
    TEARDOWN
 ============================================================ */
-export async function destroyContracts(supabase: SupabaseClient): Promise<void> {
+export async function destroyContracts(
+  supabase: SupabaseClient,
+): Promise<void> {
   if (_contractsChannel) {
     await supabase.removeChannel(_contractsChannel)
     _contractsChannel = null
@@ -147,23 +161,31 @@ export async function assignVehicleToContract(
 
   // Optimistic update
   contracts.update((cs) =>
-    cs.map((c) => c.id === contract.id ? { ...c, assignedVehicles: updated } : c),
+    cs.map((c) =>
+      c.id === contract.id ? { ...c, assignedVehicles: updated } : c,
+    ),
   )
 
   const { error } = await supabase
-    .from('contracts')
+    .from("contracts")
     .update({ assigned_vehicles: updated })
-    .eq('id', contract.id)
+    .eq("id", contract.id)
 
   if (error) {
     // Rollback
     contracts.update((cs) =>
-      cs.map((c) => c.id === contract.id
-        ? { ...c, assignedVehicles: c.assignedVehicles.filter((id) => id !== vehicleId) }
-        : c,
+      cs.map((c) =>
+        c.id === contract.id
+          ? {
+              ...c,
+              assignedVehicles: c.assignedVehicles.filter(
+                (id) => id !== vehicleId,
+              ),
+            }
+          : c,
       ),
     )
-    console.error('[contracts] assignVehicle error:', error)
+    console.error("[contracts] assignVehicle error:", error)
   }
 }
 
@@ -180,6 +202,6 @@ export function getContractsByVehicle(vehicleId: string): Contract[] {
 
 export function requireContractAccess(contract: Contract): void {
   if (!_currentOrgId || contract.organizationId !== _currentOrgId) {
-    throw new Error('Unauthorized contract access');
+    throw new Error("Unauthorized contract access")
   }
 }

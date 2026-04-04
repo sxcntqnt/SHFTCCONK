@@ -15,17 +15,17 @@
 // DO NOT redirect GUEST users here — isVerified handles that in UI.
 // The guest trap in hooks.server.ts already handled the "no actors at all" case.
 
-import type { LayoutLoad }              from './$types'
-import { redirect }                     from '@sveltejs/kit'
-import { activatePassengerContext }     from '$lib/features/auth/contexts/passenger.context'
+import type { LayoutLoad } from "./$types"
+import { redirect } from "@sveltejs/kit"
+import { activatePassengerContext } from "$lib/features/auth/contexts/passenger.context"
 
 export const load: LayoutLoad = async ({ data }) => {
-  if (!data.userState) throw redirect(303, '/login')
+  if (!data.userState) throw redirect(303, "/login")
 
   // activatePassengerContext returns false only if user has NO profile
   // at all — not if they are a guest. Guests get a context too.
   if (!activatePassengerContext(data.userState)) {
-    throw redirect(303, '/login')
+    throw redirect(303, "/login")
   }
 
   return {

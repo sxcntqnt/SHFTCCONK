@@ -32,7 +32,7 @@
  *     Added ?from and ?to URL params (ISO date strings).
  */
 
-import type { PageServerLoad } from './$types'
+import type { PageServerLoad } from "./$types"
 
 const PAGE_SIZE = 50
 
@@ -40,17 +40,18 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const { supabase } = locals
 
   // ── Filters from URL params ──────────────────────────────────
-  const eventType   = url.searchParams.get('event_type')   || null
-  const performedBy = url.searchParams.get('performed_by') || null
-  const from        = url.searchParams.get('from')         || null
-  const to          = url.searchParams.get('to')           || null
-  const page        = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10))
-  const offset      = (page - 1) * PAGE_SIZE
+  const eventType = url.searchParams.get("event_type") || null
+  const performedBy = url.searchParams.get("performed_by") || null
+  const from = url.searchParams.get("from") || null
+  const to = url.searchParams.get("to") || null
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10))
+  const offset = (page - 1) * PAGE_SIZE
 
   // ── Main logs query with pagination ─────────────────────────
   let query = supabase
-    .from('audit_logs')
-    .select(`
+    .from("audit_logs")
+    .select(
+      `
       id,
       event_type,
       actor_id,
@@ -62,27 +63,29 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         full_name,
         avatar_url
       )
-    `, { count: 'exact' })
-    .order('created_at', { ascending: false })
+    `,
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
     .range(offset, offset + PAGE_SIZE - 1)
 
-  if (eventType)   query = query.eq('event_type', eventType)
-  if (performedBy) query = query.eq('performed_by', performedBy)
-  if (from)        query = query.gte('created_at', from)
-  if (to)          query = query.lte('created_at', to)
+  if (eventType) query = query.eq("event_type", eventType)
+  if (performedBy) query = query.eq("performed_by", performedBy)
+  if (from) query = query.gte("created_at", from)
+  if (to) query = query.lte("created_at", to)
 
   const { data: logs, error: logsErr, count } = await query
 
   if (logsErr) {
-    console.error('[audit_logs] load error:', logsErr)
+    console.error("[audit_logs] load error:", logsErr)
   }
 
   // ── Distinct event types for filter dropdown ─────────────────
   // Pull all distinct event_type values — cheap query, no joins
   const { data: eventTypeRows } = await supabase
-    .from('audit_logs')
-    .select('event_type')
-    .order('event_type')
+    .from("audit_logs")
+    .select("event_type")
+    .order("event_type")
     .limit(100)
 
   const eventTypes = [
@@ -102,22 +105,22 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   let profileMap: Record<string, string> = {}
   if (performerIds.length > 0) {
     const { data: profiles } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', performerIds)
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", performerIds)
 
     profileMap = Object.fromEntries(
-      (profiles ?? []).map((p) => [p.id, p.full_name ?? 'Unknown']),
+      (profiles ?? []).map((p) => [p.id, p.full_name ?? "Unknown"]),
     )
   }
 
   const totalPages = Math.ceil((count ?? 0) / PAGE_SIZE)
 
   return {
-    logs:        logs        ?? [],
+    logs: logs ?? [],
     profileMap,
     eventTypes,
-    totalCount:  count       ?? 0,
+    totalCount: count ?? 0,
     page,
     totalPages,
     // Echo filters back so the form stays populated

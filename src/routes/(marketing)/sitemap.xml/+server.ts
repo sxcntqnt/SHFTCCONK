@@ -8,10 +8,10 @@ export const GET: RequestHandler = async () => {
   return sitemap.response({
     origin: WebsiteBaseUrl,
     excludeRoutePatterns: [
-      ".*\\(auth\\).*",            // exclude standalone (auth)
-      ".*\\(marketing\\)/auth.*",  // exclude (marketing)/auth
-      "^/verify(/.*)?$",           // standalone /verify
-      "^/login(/.*)?$"             // login from (marketing)
-    ]
-  });
-};
+      ".*\\(auth\\).*", // exclude standalone (auth)
+      ".*\\(marketing\\)/auth.*", // exclude (marketing)/auth
+      "^/verify(/.*)?$", // standalone /verify
+      "^/login(/.*)?$", // login from (marketing)
+    ],
+  })
+}

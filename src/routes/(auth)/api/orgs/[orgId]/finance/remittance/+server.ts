@@ -18,30 +18,28 @@
 //   - createLedgerEntry now takes a params object, not positional args
 //   - conductorId added — distribution now includes conductor share
 
-import { json }              from "@sveltejs/kit"
+import { json } from "@sveltejs/kit"
 import type { RequestHandler } from "$lib/types"
 import {
   calculateDistribution,
   createLedgerEntry,
   type LedgerEntry,
 } from "$lib/features/finance/ledger.store"
-import {
-  loadOrgRevenueConfig,
-} from "$lib/server/revenue-config"
+import { loadOrgRevenueConfig } from "$lib/server/revenue-config"
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
 interface RemittancePayload {
-  vehicleId:    string
-  driverId:     string
-  conductorId?: string     // optional — some routes have no conductor
-  orgId:        string
-  collected:    number     // KES total collected (cash + M-Pesa)
-  target:       number     // KES daily target set by SACCO
+  vehicleId: string
+  driverId: string
+  conductorId?: string // optional — some routes have no conductor
+  orgId: string
+  collected: number // KES total collected (cash + M-Pesa)
+  target: number // KES daily target set by SACCO
   collectionType?: "MPESA_COLLECTION" | "CASH_COLLECTION"
-  mpesaRef?:    string     // M-Pesa transaction code if applicable
-  mpesaPhone?:  string     // +254 phone if M-Pesa
-  reference?:   string     // internal reference / shift ID
+  mpesaRef?: string // M-Pesa transaction code if applicable
+  mpesaPhone?: string // +254 phone if M-Pesa
+  reference?: string // internal reference / shift ID
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -103,151 +101,153 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // ── Load org revenue config ───────────────────────────────────────────────
   // Reads org.metadata.revenue_config overrides on top of platform defaults.
   // This is how per-org SACCO levy rates are customised centrally.
-  const config     = await loadOrgRevenueConfig(supabase, body.orgId)
+  const config = await loadOrgRevenueConfig(supabase, body.orgId)
   const distribution = calculateDistribution(body.collected, body.target)
 
   // ── Build ledger entries ──────────────────────────────────────────────────
   const collectionType = body.collectionType ?? "CASH_COLLECTION"
   const base = {
-    vehicleId:      body.vehicleId,
-    driverId:       body.driverId,
+    vehicleId: body.vehicleId,
+    driverId: body.driverId,
     organizationId: body.orgId,
-    reference:      body.reference ?? undefined,
+    reference: body.reference ?? undefined,
   }
 
   const entries: LedgerEntry[] = [
     // Total collection (raw cash or M-Pesa)
     createLedgerEntry({
       ...base,
-      type:       collectionType,
-      amount:     body.collected,
+      type: collectionType,
+      amount: body.collected,
       mpesaPhone: body.mpesaPhone,
-      reference:  body.mpesaRef ?? body.reference,
+      reference: body.mpesaRef ?? body.reference,
     }),
 
     // SACCO levy (from base settlement)
     createLedgerEntry({
       ...base,
-      type:   "SACCO_LEVY",
+      type: "SACCO_LEVY",
       amount: distribution.saccoLevy,
     }),
 
     // Vehicle owner share (from base settlement)
     createLedgerEntry({
       ...base,
-      type:   "OWNER_SHARE",
+      type: "OWNER_SHARE",
       amount: distribution.ownerAmount,
     }),
 
     // Platform share (from base settlement)
     createLedgerEntry({
       ...base,
-      type:   "PLATFORM_SHARE",
+      type: "PLATFORM_SHARE",
       amount: distribution.platformBase,
     }),
 
     // Driver base share (from base settlement)
     createLedgerEntry({
       ...base,
-      type:   "DRIVER_SHARE",
+      type: "DRIVER_SHARE",
       amount: distribution.driverBase,
     }),
 
     // Driver incentive (from excess above target)
     ...(distribution.driverIncentive > 0
-      ? [createLedgerEntry({
-          ...base,
-          type:   "DRIVER_INCENTIVE",
-          amount: distribution.driverIncentive,
-          notes:  `Excess: KES ${distribution.excess}`,
-        })]
-      : []
-    ),
+      ? [
+          createLedgerEntry({
+            ...base,
+            type: "DRIVER_INCENTIVE",
+            amount: distribution.driverIncentive,
+            notes: `Excess: KES ${distribution.excess}`,
+          }),
+        ]
+      : []),
 
     // Conductor shares (only if conductor is assigned)
     ...(body.conductorId
       ? [
           createLedgerEntry({
             ...base,
-            driverId: body.conductorId,   // conductor is the recipient
-            type:     "CONDUCTOR_SHARE",
-            amount:   distribution.conductorBase,
+            driverId: body.conductorId, // conductor is the recipient
+            type: "CONDUCTOR_SHARE",
+            amount: distribution.conductorBase,
           }),
           ...(distribution.conductorIncentive > 0
-            ? [createLedgerEntry({
-                ...base,
-                driverId: body.conductorId,
-                type:     "CONDUCTOR_INCENTIVE",
-                amount:   distribution.conductorIncentive,
-                notes:    `Excess: KES ${distribution.excess}`,
-              })]
-            : []
-          ),
+            ? [
+                createLedgerEntry({
+                  ...base,
+                  driverId: body.conductorId,
+                  type: "CONDUCTOR_INCENTIVE",
+                  amount: distribution.conductorIncentive,
+                  notes: `Excess: KES ${distribution.excess}`,
+                }),
+              ]
+            : []),
         ]
-      : []
-    ),
+      : []),
   ]
 
   // ── Persist to Supabase ───────────────────────────────────────────────────
-  const { error: insertError } = await supabase
-    .from("ledger_entries")
-    .insert(
-      entries.map((e) => ({
-        id:              e.id,
-        vehicle_id:      e.vehicleId,
-        driver_id:       e.driverId,
-        organization_id: e.organizationId,
-        type:            e.type,
-        amount:          e.amount,
-        reference:       e.reference ?? null,
-        mpesa_phone:     e.mpesaPhone ?? null,
-        notes:           e.notes ?? null,
-        date:            e.date,
-      })),
-    )
+  const { error: insertError } = await supabase.from("ledger_entries").insert(
+    entries.map((e) => ({
+      id: e.id,
+      vehicle_id: e.vehicleId,
+      driver_id: e.driverId,
+      organization_id: e.organizationId,
+      type: e.type,
+      amount: e.amount,
+      reference: e.reference ?? null,
+      mpesa_phone: e.mpesaPhone ?? null,
+      notes: e.notes ?? null,
+      date: e.date,
+    })),
+  )
 
   if (insertError) {
     console.error("[remittance] ledger insert failed:", insertError)
     return json(
-      { error: "Distribution computed but ledger write failed", detail: insertError.message },
+      {
+        error: "Distribution computed but ledger write failed",
+        detail: insertError.message,
+      },
       { status: 500 },
     )
   }
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   await supabase.from("audit_logs").insert({
-    event_type:   "remittance_cleared",
+    event_type: "remittance_cleared",
     performed_by: session.user.id,
     target_table: "ledger_entries",
     details: {
-      vehicle_id:   body.vehicleId,
-      driver_id:    body.driverId,
-      org_id:       body.orgId,
+      vehicle_id: body.vehicleId,
+      driver_id: body.driverId,
+      org_id: body.orgId,
       collected_kes: body.collected,
-      target_kes:   body.target,
-      excess_kes:   distribution.excess,
-      entry_count:  entries.length,
+      target_kes: body.target,
+      excess_kes: distribution.excess,
+      entry_count: entries.length,
     },
   })
 
   // ── Respond ───────────────────────────────────────────────────────────────
   return json({
-    status:       "CLEARED",
-    vehicleId:    body.vehicleId,
+    status: "CLEARED",
+    vehicleId: body.vehicleId,
     distribution: {
-      collected:          body.collected,
-      target:             body.target,
-      baseSettlement:     distribution.baseSettlement,
-      excess:             distribution.excess,
-      saccoLevy:          distribution.saccoLevy,
-      ownerAmount:        distribution.ownerAmount,
-      platformBase:       distribution.platformBase,
-      driverTotal:        distribution.driverTotal,
-      conductorTotal:     body.conductorId ? distribution.conductorTotal : null,
+      collected: body.collected,
+      target: body.target,
+      baseSettlement: distribution.baseSettlement,
+      excess: distribution.excess,
+      saccoLevy: distribution.saccoLevy,
+      ownerAmount: distribution.ownerAmount,
+      platformBase: distribution.platformBase,
+      driverTotal: distribution.driverTotal,
+      conductorTotal: body.conductorId ? distribution.conductorTotal : null,
     },
     entries: entries.map((e) => ({
-      id:     e.id,
-      type:   e.type,
+      id: e.id,
+      type: e.type,
       amount: e.amount,
     })),
   })

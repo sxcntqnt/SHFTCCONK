@@ -11,8 +11,8 @@ export const load: PageServerLoad = async (event) => {
   await requireOrgMemberAccess(event, event.params.orgId)
 
   const { params, locals } = event
-  const { orgId }          = params
-  const supabase           = locals.supabase
+  const { orgId } = params
+  const supabase = locals.supabase
 
   const [orgRes, vehicleRes, nonCompliantRes] = await Promise.allSettled([
     supabase
@@ -34,18 +34,25 @@ export const load: PageServerLoad = async (event) => {
       .eq("status", "NON_COMPLIANT"),
   ])
 
-  const org              = orgRes.status             === "fulfilled" ? orgRes.value.data             : null
-  const vehicleCount     = vehicleRes.status         === "fulfilled" ? (vehicleRes.value.count ?? 0) : 0
-  const nonCompliantRows = nonCompliantRes.status     === "fulfilled" ? (nonCompliantRes.value.data ?? []) : []
+  const org = orgRes.status === "fulfilled" ? orgRes.value.data : null
+  const vehicleCount =
+    vehicleRes.status === "fulfilled" ? (vehicleRes.value.count ?? 0) : 0
+  const nonCompliantRows =
+    nonCompliantRes.status === "fulfilled"
+      ? (nonCompliantRes.value.data ?? [])
+      : []
 
   // parquetUrl is optional — stored in org metadata when a DuckDB export is available
-  const parquetUrl   = (org?.metadata as Record<string, unknown> | null)?.parquet_url as string | null ?? null
+  const parquetUrl =
+    ((org?.metadata as Record<string, unknown> | null)?.parquet_url as
+      | string
+      | null) ?? null
   const protomapsKey = process.env.PROTOMAPS_API_KEY ?? ""
 
   return {
-    supabase,          // passed to page for realtime channel setup
+    supabase, // passed to page for realtime channel setup
     orgId,
-    orgName:         org?.name ?? orgId,
+    orgName: org?.name ?? orgId,
     vehicleCount,
     nonCompliantIds: nonCompliantRows.map((r: { id: string }) => r.id),
     parquetUrl,

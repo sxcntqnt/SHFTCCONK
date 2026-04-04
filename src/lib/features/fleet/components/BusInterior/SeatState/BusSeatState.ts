@@ -1,11 +1,11 @@
-import * as THREE from 'three'
-import { COLORS } from '../BusConstants'
+import * as THREE from "three"
+import { COLORS } from "../BusConstants"
 
 export class BusSeatState {
   seatInstance: THREE.InstancedMesh | null
   seatIndexMap: Map<number, number> | null
-  hoveredSeat:  number | null
-  _toggleSeat:  ((n: number) => void) | null
+  hoveredSeat: number | null
+  _toggleSeat: ((n: number) => void) | null
 
   constructor(
     seatInstance: THREE.InstancedMesh | null,
@@ -13,8 +13,8 @@ export class BusSeatState {
   ) {
     this.seatInstance = seatInstance
     this.seatIndexMap = seatIndexMap
-    this.hoveredSeat  = null
-    this._toggleSeat  = null
+    this.hoveredSeat = null
+    this._toggleSeat = null
   }
 
   updateSeatColors(reservedSeats: number[] = [], selectedSeats: number[] = []) {
@@ -27,8 +27,7 @@ export class BusSeatState {
         this.seatInstance!.setColorAt(instanceIndex, COLORS.reserved)
       else if (selectedSeats.includes(seatNumber))
         this.seatInstance!.setColorAt(instanceIndex, COLORS.selected)
-      else
-        this.seatInstance!.setColorAt(instanceIndex, COLORS.normal)
+      else this.seatInstance!.setColorAt(instanceIndex, COLORS.normal)
     })
 
     if (this.seatInstance.instanceColor) {

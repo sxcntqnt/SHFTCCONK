@@ -61,20 +61,20 @@ your-repo/
 
 ## What the workflow tests
 
-| Group | Tests | Security property |
-|---|---|---|
-| JWT Kill-Switch | 1-2 | Version mismatch = instant deny |
-| Deny Precedence | 3-4 | Explicit deny overrides allow; doesn't bleed |
-| Jurisdiction Boundary | 5-8 | Org isolation; federal covers all |
-| INSERT Paradox | 9-10 | Scope-based check without resource lookup |
-| Resource Lookup | 11-13 | FOUND check; no ID enumeration; no schema leak |
-| Expired Delegation | 14 | Past expires_at = denied |
-| Default Deny | 15-16 | No grant = denied; wrong actor in JWT = denied |
-| Federal-Only | 17-18 | Can't grant admin.full at org scope |
-| RLS Under Role | 19-20 | Driver blocked from audit_logs; admin allowed |
-| Cross-Table Join | 21-22 | Correct scope filtering across tables |
-| Failed Access Log | 23-24 | Denials recorded with reason |
-| Cascade Revocation | (within 24) | Source deletion revokes downstream |
+| Group                 | Tests       | Security property                              |
+| --------------------- | ----------- | ---------------------------------------------- |
+| JWT Kill-Switch       | 1-2         | Version mismatch = instant deny                |
+| Deny Precedence       | 3-4         | Explicit deny overrides allow; doesn't bleed   |
+| Jurisdiction Boundary | 5-8         | Org isolation; federal covers all              |
+| INSERT Paradox        | 9-10        | Scope-based check without resource lookup      |
+| Resource Lookup       | 11-13       | FOUND check; no ID enumeration; no schema leak |
+| Expired Delegation    | 14          | Past expires_at = denied                       |
+| Default Deny          | 15-16       | No grant = denied; wrong actor in JWT = denied |
+| Federal-Only          | 17-18       | Can't grant admin.full at org scope            |
+| RLS Under Role        | 19-20       | Driver blocked from audit_logs; admin allowed  |
+| Cross-Table Join      | 21-22       | Correct scope filtering across tables          |
+| Failed Access Log     | 23-24       | Denials recorded with reason                   |
+| Cascade Revocation    | (within 24) | Source deletion revokes downstream             |
 
 ## Why the original test file was broken
 

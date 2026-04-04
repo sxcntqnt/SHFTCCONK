@@ -37,7 +37,7 @@
   }
 
   let jsonldScript = $derived(
-    `<script type="application/ld+json">${JSON.stringify(buildLdJson(currentPost)) + "<"}/script>`
+    `<script type="application/ld+json">${JSON.stringify(buildLdJson(currentPost)) + "<"}/script>`,
   )
   let pageUrl = $derived(page.url.origin + page.url.pathname)
 
@@ -71,6 +71,152 @@
   {@html jsonldScript}
 </svelte:head>
 
+<div class="post-root">
+  <!-- ═══ HERO ═══ -->
+  <header class="post-hero">
+    <div class="post-hero-inner">
+      <!-- Breadcrumb -->
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span class="breadcrumb-sep">›</span>
+        <a href="/blog">Blog</a>
+        <span class="breadcrumb-sep">›</span>
+        <span>{currentPost.category ?? "Article"}</span>
+      </nav>
+
+      <!-- Category -->
+      {#if currentPost.category}
+        <div class="post-category">{currentPost.category}</div>
+      {/if}
+
+      <!-- Title -->
+      <h1 class="post-title">{currentPost.title}</h1>
+
+      <!-- Standfirst -->
+      <p class="post-standfirst">{currentPost.description}</p>
+
+      <!-- Meta -->
+      <div class="post-meta">
+        <div class="meta-author">
+          <div class="meta-avatar">
+            {(currentPost.author ?? WebsiteName).charAt(0)}
+          </div>
+          <div class="meta-name">{currentPost.author ?? WebsiteName}</div>
+        </div>
+        <div class="meta-divider"></div>
+        <span class="meta-detail">
+          {currentPost.parsedDate?.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+        <div class="meta-divider"></div>
+        <span class="meta-detail">{readingTime(currentPost.description)}</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ CONTENT + SIDEBAR ═══ -->
+  <div class="post-layout">
+    <!-- Prose -->
+    <div class="post-prose">
+      {@render children?.()}
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="post-sidebar">
+      <!-- Back -->
+      <a href="/blog" class="back-link">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <path d="M19 12H5M12 5l-7 7 7 7" />
+        </svg>
+        All Posts
+      </a>
+
+      <!-- Share -->
+      <div class="sidebar-card">
+        <p class="sidebar-label">Share</p>
+        <div class="share-btns">
+          <a
+            href={twitterShare(currentPost.title, pageUrl)}
+            target="_blank"
+            rel="noreferrer"
+            class="share-btn"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+              />
+            </svg>
+            Share on X
+          </a>
+          <a
+            href={linkedinShare(pageUrl)}
+            target="_blank"
+            rel="noreferrer"
+            class="share-btn"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z"
+              />
+              <circle cx="4" cy="4" r="2" />
+            </svg>
+            Share on LinkedIn
+          </a>
+          <button
+            class="share-btn"
+            onclick={() => navigator.clipboard.writeText(pageUrl)}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" /><path
+                d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+              />
+            </svg>
+            Copy Link
+          </button>
+        </div>
+      </div>
+
+      <!-- Related posts — same category -->
+      {#if sortedBlogPosts.filter((p) => p.category === currentPost.category && p.link !== currentPost.link).length > 0}
+        <div class="sidebar-card">
+          <p class="sidebar-label">More in {currentPost.category}</p>
+          {#each sortedBlogPosts
+            .filter((p) => p.category === currentPost.category && p.link !== currentPost.link)
+            .slice(0, 4) as related}
+            <a href={related.link} class="related-post">
+              <div class="related-post-title">{related.title}</div>
+              <div class="related-post-date">
+                {related.parsedDate?.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </div>
+            </a>
+          {/each}
+        </div>
+      {/if}
+    </aside>
+  </div>
+</div>
+
 <style>
   /* ── inherits CSS vars from layout ── */
 
@@ -83,89 +229,127 @@
   .post-hero {
     padding: 80px 2rem 72px;
     border-bottom: 1px solid var(--rim);
-    position: relative; overflow: hidden;
+    position: relative;
+    overflow: hidden;
   }
   .post-hero::before {
-    content: '';
-    position: absolute; inset: 0;
-    background:
-      radial-gradient(ellipse 55% 80% at 50% -5%, rgba(242,101,34,0.11), transparent 60%);
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 55% 80% at 50% -5%,
+      rgba(242, 101, 34, 0.11),
+      transparent 60%
+    );
     pointer-events: none;
   }
   .post-hero-inner {
     position: relative;
-    max-width: 760px; margin: 0 auto;
+    max-width: 760px;
+    margin: 0 auto;
   }
 
   /* Breadcrumb */
   .breadcrumb {
-    display: flex; align-items: center; gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 28px;
-    font-size: 0.78rem; color: var(--text-3);
+    font-size: 0.78rem;
+    color: var(--text-3);
   }
   .breadcrumb a {
-    color: var(--text-3); text-decoration: none;
+    color: var(--text-3);
+    text-decoration: none;
     transition: color 0.2s;
   }
-  .breadcrumb a:hover { color: var(--orange); }
+  .breadcrumb a:hover {
+    color: var(--orange);
+  }
   .breadcrumb-sep {
     opacity: 0.4;
   }
 
   /* Category pill */
   .post-category {
-    display: inline-block; margin-bottom: 20px;
-    padding: 4px 14px; border-radius: 100px;
-    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
-    text-transform: uppercase; color: var(--orange);
-    background: rgba(242,101,34,0.1); border: 1px solid rgba(242,101,34,0.22);
+    display: inline-block;
+    margin-bottom: 20px;
+    padding: 4px 14px;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--orange);
+    background: rgba(242, 101, 34, 0.1);
+    border: 1px solid rgba(242, 101, 34, 0.22);
   }
 
   /* Title */
   .post-title {
     font-family: var(--font-display);
     font-size: clamp(1.8rem, 4.5vw, 3rem);
-    font-weight: 800; letter-spacing: -0.04em;
-    color: var(--text-1); line-height: 1.12;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--text-1);
+    line-height: 1.12;
     margin-bottom: 20px;
   }
 
   /* Description / standfirst */
   .post-standfirst {
-    font-size: 1.1rem; line-height: 1.7;
-    color: var(--text-2); margin-bottom: 32px;
+    font-size: 1.1rem;
+    line-height: 1.7;
+    color: var(--text-2);
+    margin-bottom: 32px;
     max-width: 640px;
   }
 
   /* Meta row */
   .post-meta {
-    display: flex; align-items: center; gap: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
     flex-wrap: wrap;
   }
   .meta-author {
-    display: flex; align-items: center; gap: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .meta-avatar {
-    width: 34px; height: 34px; border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
     background: linear-gradient(135deg, var(--orange), #d95618);
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-family: var(--font-display);
-    font-size: 0.78rem; font-weight: 700; color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
     flex-shrink: 0;
   }
   .meta-name {
-    font-size: 0.875rem; font-weight: 600; color: var(--text-1);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-1);
   }
   .meta-divider {
-    width: 1px; height: 16px; background: var(--rim-2);
+    width: 1px;
+    height: 16px;
+    background: var(--rim-2);
   }
   .meta-detail {
-    font-size: 0.8rem; color: var(--text-3);
+    font-size: 0.8rem;
+    color: var(--text-3);
   }
 
   /* ── CONTENT AREA ── */
   .post-layout {
-    max-width: 1100px; margin: 0 auto;
+    max-width: 1100px;
+    margin: 0 auto;
     padding: 72px 2rem 100px;
     display: grid;
     grid-template-columns: 1fr 220px;
@@ -194,8 +378,12 @@
     margin-top: 2.2em;
     margin-bottom: 0.7em;
   }
-  .post-prose :global(h2) { font-size: 1.5rem; }
-  .post-prose :global(h3) { font-size: 1.2rem; }
+  .post-prose :global(h2) {
+    font-size: 1.5rem;
+  }
+  .post-prose :global(h3) {
+    font-size: 1.2rem;
+  }
 
   .post-prose :global(p) {
     margin-bottom: 1.5em;
@@ -206,7 +394,7 @@
     color: var(--orange);
     text-decoration: underline;
     text-underline-offset: 3px;
-    text-decoration-color: rgba(242,101,34,0.35);
+    text-decoration-color: rgba(242, 101, 34, 0.35);
     transition: text-decoration-color 0.2s;
   }
   .post-prose :global(a:hover) {
@@ -240,8 +428,11 @@
     margin: 2em 0;
   }
   .post-prose :global(pre code) {
-    background: none; border: none; padding: 0;
-    color: var(--text-1); font-size: 0.9rem;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-1);
+    font-size: 0.9rem;
   }
 
   .post-prose :global(ul),
@@ -268,26 +459,36 @@
   }
 
   .post-prose :global(table) {
-    width: 100%; border-collapse: collapse;
-    margin: 2em 0; font-size: 0.9rem;
+    width: 100%;
+    border-collapse: collapse;
+    margin: 2em 0;
+    font-size: 0.9rem;
   }
   .post-prose :global(th) {
     background: var(--surface);
-    color: var(--text-1); font-weight: 700;
-    padding: 12px 16px; text-align: left;
+    color: var(--text-1);
+    font-weight: 700;
+    padding: 12px 16px;
+    text-align: left;
     border-bottom: 1px solid var(--rim-2);
     font-family: var(--font-display);
-    font-size: 0.78rem; letter-spacing: 0.05em; text-transform: uppercase;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
   .post-prose :global(td) {
-    padding: 12px 16px; color: var(--text-2);
+    padding: 12px 16px;
+    color: var(--text-2);
     border-bottom: 1px solid var(--rim);
   }
 
   /* ── SIDEBAR ── */
   .post-sidebar {
-    position: sticky; top: 88px;
-    display: flex; flex-direction: column; gap: 24px;
+    position: sticky;
+    top: 88px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
   }
 
   .sidebar-card {
@@ -298,49 +499,95 @@
   }
   .sidebar-label {
     font-family: var(--font-display);
-    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--text-3);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-3);
     margin-bottom: 16px;
   }
 
   /* Share buttons */
-  .share-btns { display: flex; flex-direction: column; gap: 8px; }
-  .share-btn {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-radius: 10px;
-    font-size: 0.82rem; font-weight: 600;
-    text-decoration: none; color: var(--text-2);
-    background: var(--ink-2); border: 1px solid var(--rim);
-    transition: color 0.2s, border-color 0.2s, background 0.2s;
+  .share-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
-  .share-btn:hover { color: var(--text-1); border-color: var(--rim-2); background: var(--rim); }
-  .share-btn svg { flex-shrink: 0; }
+  .share-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--text-2);
+    background: var(--ink-2);
+    border: 1px solid var(--rim);
+    transition:
+      color 0.2s,
+      border-color 0.2s,
+      background 0.2s;
+  }
+  .share-btn:hover {
+    color: var(--text-1);
+    border-color: var(--rim-2);
+    background: var(--rim);
+  }
+  .share-btn svg {
+    flex-shrink: 0;
+  }
 
   /* Back link */
   .back-link {
-    display: flex; align-items: center; gap: 8px;
-    padding: 11px 14px; border-radius: 10px;
-    font-size: 0.82rem; font-weight: 600;
-    text-decoration: none; color: var(--text-2);
-    background: var(--ink-2); border: 1px solid var(--rim);
-    transition: color 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--text-2);
+    background: var(--ink-2);
+    border: 1px solid var(--rim);
+    transition:
+      color 0.2s,
+      border-color 0.2s;
   }
-  .back-link:hover { color: var(--orange); border-color: rgba(242,101,34,0.3); }
+  .back-link:hover {
+    color: var(--orange);
+    border-color: rgba(242, 101, 34, 0.3);
+  }
 
   /* Related posts */
   .related-post {
-    display: block; padding: 12px 0; text-decoration: none;
+    display: block;
+    padding: 12px 0;
+    text-decoration: none;
     border-bottom: 1px solid var(--rim);
     transition: color 0.2s;
   }
-  .related-post:last-child { border-bottom: none; padding-bottom: 0; }
+  .related-post:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
   .related-post-title {
-    font-size: 0.82rem; font-weight: 600; color: var(--text-2);
-    line-height: 1.4; margin-bottom: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-2);
+    line-height: 1.4;
+    margin-bottom: 4px;
     transition: color 0.2s;
   }
-  .related-post:hover .related-post-title { color: var(--orange); }
-  .related-post-date { font-size: 0.72rem; color: var(--text-3); }
+  .related-post:hover .related-post-title {
+    color: var(--orange);
+  }
+  .related-post-date {
+    font-size: 0.72rem;
+    color: var(--text-3);
+  }
 
   /* ── RESPONSIVE ── */
   @media (max-width: 900px) {
@@ -350,137 +597,25 @@
     }
     .post-sidebar {
       position: static;
-      flex-direction: row; flex-wrap: wrap;
+      flex-direction: row;
+      flex-wrap: wrap;
     }
-    .sidebar-card { flex: 1 1 240px; }
+    .sidebar-card {
+      flex: 1 1 240px;
+    }
   }
   @media (max-width: 600px) {
-    .post-hero { padding: 56px 1.25rem 52px; }
-    .post-layout { padding: 48px 1.25rem 80px; }
-    .post-title { font-size: 1.8rem; }
-    .post-sidebar { flex-direction: column; }
+    .post-hero {
+      padding: 56px 1.25rem 52px;
+    }
+    .post-layout {
+      padding: 48px 1.25rem 80px;
+    }
+    .post-title {
+      font-size: 1.8rem;
+    }
+    .post-sidebar {
+      flex-direction: column;
+    }
   }
 </style>
-
-<div class="post-root">
-
-  <!-- ═══ HERO ═══ -->
-  <header class="post-hero">
-    <div class="post-hero-inner">
-
-      <!-- Breadcrumb -->
-      <nav class="breadcrumb" aria-label="Breadcrumb">
-        <a href="/">Home</a>
-        <span class="breadcrumb-sep">›</span>
-        <a href="/blog">Blog</a>
-        <span class="breadcrumb-sep">›</span>
-        <span>{currentPost.category ?? "Article"}</span>
-      </nav>
-
-      <!-- Category -->
-      {#if currentPost.category}
-        <div class="post-category">{currentPost.category}</div>
-      {/if}
-
-      <!-- Title -->
-      <h1 class="post-title">{currentPost.title}</h1>
-
-      <!-- Standfirst -->
-      <p class="post-standfirst">{currentPost.description}</p>
-
-      <!-- Meta -->
-      <div class="post-meta">
-        <div class="meta-author">
-          <div class="meta-avatar">
-            {(currentPost.author ?? WebsiteName).charAt(0)}
-          </div>
-          <div class="meta-name">{currentPost.author ?? WebsiteName}</div>
-        </div>
-        <div class="meta-divider"></div>
-        <span class="meta-detail">
-          {currentPost.parsedDate?.toLocaleDateString("en-US", {
-            month: "long", day: "numeric", year: "numeric",
-          })}
-        </span>
-        <div class="meta-divider"></div>
-        <span class="meta-detail">{readingTime(currentPost.description)}</span>
-      </div>
-
-    </div>
-  </header>
-
-  <!-- ═══ CONTENT + SIDEBAR ═══ -->
-  <div class="post-layout">
-
-    <!-- Prose -->
-    <div class="post-prose">
-      {@render children?.()}
-    </div>
-
-    <!-- Sidebar -->
-    <aside class="post-sidebar">
-
-      <!-- Back -->
-      <a href="/blog" class="back-link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M19 12H5M12 5l-7 7 7 7"/>
-        </svg>
-        All Posts
-      </a>
-
-      <!-- Share -->
-      <div class="sidebar-card">
-        <p class="sidebar-label">Share</p>
-        <div class="share-btns">
-          <a
-            href={twitterShare(currentPost.title, pageUrl)}
-            target="_blank" rel="noreferrer"
-            class="share-btn"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-            Share on X
-          </a>
-          <a
-            href={linkedinShare(pageUrl)}
-            target="_blank" rel="noreferrer"
-            class="share-btn"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z"/>
-              <circle cx="4" cy="4" r="2"/>
-            </svg>
-            Share on LinkedIn
-          </a>
-          <button
-            class="share-btn"
-            onclick={() => navigator.clipboard.writeText(pageUrl)}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-            </svg>
-            Copy Link
-          </button>
-        </div>
-      </div>
-
-      <!-- Related posts — same category -->
-      {#if sortedBlogPosts.filter(p => p.category === currentPost.category && p.link !== currentPost.link).length > 0}
-        <div class="sidebar-card">
-          <p class="sidebar-label">More in {currentPost.category}</p>
-          {#each sortedBlogPosts.filter(p => p.category === currentPost.category && p.link !== currentPost.link).slice(0, 4) as related}
-            <a href={related.link} class="related-post">
-              <div class="related-post-title">{related.title}</div>
-              <div class="related-post-date">
-                {related.parsedDate?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-              </div>
-            </a>
-          {/each}
-        </div>
-      {/if}
-
-    </aside>
-  </div>
-
-</div>

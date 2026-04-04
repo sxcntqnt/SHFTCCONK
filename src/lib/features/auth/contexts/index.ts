@@ -90,9 +90,9 @@ export {
   adminAllowedActions,
   getSuperAdminActorId,
   isSuperAdminActive,
-} from './super-admin.context'
+} from "./super-admin.context"
 
-export type { SuperAdminContext } from './super-admin.context'
+export type { SuperAdminContext } from "./super-admin.context"
 
 // ── Org Chair ─────────────────────────────────────────────────────────────────
 export {
@@ -104,30 +104,30 @@ export {
   canViewMemberRequests,
   canManageOrgSettings,
   canManageVehicles,
-  canViewFinance       as canOrgChairViewFinance,
-  canTrackLive         as canOrgChairTrackLive,
+  canViewFinance as canOrgChairViewFinance,
+  canTrackLive as canOrgChairTrackLive,
   canManageDrivers,
-  canViewMaintenance   as canOrgChairViewMaintenance,
+  canViewMaintenance as canOrgChairViewMaintenance,
   canViewOrgReports,
   canChangeSettings,
-  activeOrgId          as orgChairActiveOrgId,
-  activeOrgName        as orgChairActiveOrgName,
+  activeOrgId as orgChairActiveOrgId,
+  activeOrgName as orgChairActiveOrgName,
   chairAllowedActions,
   getOrgChairActorId,
   getActiveOrgId,
   isOrgChairActive,
   orgChairCan,
-} from './org-chair.context'
+} from "./org-chair.context"
 
-export type { OrgChairContext } from './org-chair.context'
+export type { OrgChairContext } from "./org-chair.context"
 
 // ── Org Staff (all non-chair roles) ───────────────────────────────────────────
 export {
   orgCtx,
   activateOrgContext,
   deactivateOrgContext,
-  canListVehicles      as orgCanListVehicles,
-  canViewVehicle       as orgCanViewVehicle,
+  canListVehicles as orgCanListVehicles,
+  canViewVehicle as orgCanViewVehicle,
   canEditVehicle,
   canAddVehicle,
   canListVehicleGroups,
@@ -136,32 +136,32 @@ export {
   canEditDriver,
   canAddDriver,
   canListBookings,
-  canEditBooking       as orgCanEditBooking,
-  canAddBooking        as orgCanAddBooking,
-  canTrackLive         as orgCanTrackLive,
-  canTrackHistory      as orgCanTrackHistory,
+  canEditBooking as orgCanEditBooking,
+  canAddBooking as orgCanAddBooking,
+  canTrackLive as orgCanTrackLive,
+  canTrackHistory as orgCanTrackHistory,
   canListGeofences,
   canViewGeofenceEvents,
-  canViewFinance       as orgCanViewFinance,
+  canViewFinance as orgCanViewFinance,
   canEditFinance,
   canAddFinance,
-  canViewFuel          as orgCanViewFuel,
+  canViewFuel as orgCanViewFuel,
   canEditFuel,
-  canViewMaintenance   as orgCanViewMaintenance,
+  canViewMaintenance as orgCanViewMaintenance,
   canLogMaintenance,
   canEditMaintenance,
-  canViewReports       as orgCanViewReports,
-  canListCustomers     as orgCanListCustomers,
+  canViewReports as orgCanViewReports,
+  canListCustomers as orgCanListCustomers,
   canViewCustomer,
-  canAddCustomer       as orgCanAddCustomer,
-  canViewReminders     as orgCanViewReminders,
-  canApproveMembers    as orgCanApproveMembers,
-  canInviteMembers     as orgCanInviteMembers,
+  canAddCustomer as orgCanAddCustomer,
+  canViewReminders as orgCanViewReminders,
+  canApproveMembers as orgCanApproveMembers,
+  canInviteMembers as orgCanInviteMembers,
   canViewMemberRequests as orgCanViewMemberRequests,
   canManageOrg,
-  canChangeSettings    as orgCanChangeSettings,
-  activeOrgId          as orgActiveOrgId,
-  activeOrgName        as orgActiveOrgName,
+  canChangeSettings as orgCanChangeSettings,
+  activeOrgId as orgActiveOrgId,
+  activeOrgName as orgActiveOrgName,
   activeBranchId,
   activeRoleType,
   orgAllowedActions,
@@ -169,23 +169,23 @@ export {
   getOrgContextOrgId,
   isOrgContextActive,
   orgCan,
-} from './org.context'
+} from "./org.context"
 
-export type { OrgContext } from './org.context'
+export type { OrgContext } from "./org.context"
 
 // ── Crew (DRIVER + CONDUCTOR) ─────────────────────────────────────────────────
 export {
   crewCtx,
   activateCrewContext,
   deactivateCrewContext,
-  canViewVehicle       as crewCanViewVehicle,
-  canTrackLive         as crewCanTrackLive,
-  canLogFuel           as crewCanLogFuel,
-  canViewFuel          as crewCanViewFuel,
-  canAddBooking        as crewCanAddBooking,
-  canViewBookings      as crewCanViewBookings,
+  canViewVehicle as crewCanViewVehicle,
+  canTrackLive as crewCanTrackLive,
+  canLogFuel as crewCanLogFuel,
+  canViewFuel as crewCanViewFuel,
+  canAddBooking as crewCanAddBooking,
+  canViewBookings as crewCanViewBookings,
   canRecordFare,
-  canViewReminders     as crewCanViewReminders,
+  canViewReminders as crewCanViewReminders,
   isOnDuty,
   hasVehicleAssignment,
   hasActiveTrip,
@@ -198,9 +198,9 @@ export {
   getActiveTripId,
   isCrewContextActive,
   crewCan,
-} from './crew.context'
+} from "./crew.context"
 
-export type { CrewContext } from './crew.context'
+export type { CrewContext } from "./crew.context"
 
 // ── Operator (cross-org fleet coordinator) ────────────────────────────────────
 export {
@@ -210,22 +210,22 @@ export {
   setActiveOperatorOrg,
   canOrganiseTrips,
   canOrganiseTripsGlobally,
-  canViewBookings      as operatorCanViewBookings,
-  canEditBooking       as operatorCanEditBooking,
+  canViewBookings as operatorCanViewBookings,
+  canEditBooking as operatorCanEditBooking,
   canViewVehicles,
-  canListVehicles      as operatorCanListVehicles,
-  canLogFuel           as operatorCanLogFuel,
-  canViewFuel          as operatorCanViewFuel,
-  canTrackLive         as operatorCanTrackLive,
-  canTrackHistory      as operatorCanTrackHistory,
-  canListCustomers     as operatorCanListCustomers,
-  canAddCustomer       as operatorCanAddCustomer,
+  canListVehicles as operatorCanListVehicles,
+  canLogFuel as operatorCanLogFuel,
+  canViewFuel as operatorCanViewFuel,
+  canTrackLive as operatorCanTrackLive,
+  canTrackHistory as operatorCanTrackHistory,
+  canListCustomers as operatorCanListCustomers,
+  canAddCustomer as operatorCanAddCustomer,
   canEditCustomer,
-  canViewReports       as operatorCanViewReports,
+  canViewReports as operatorCanViewReports,
   operatorOrgSlots,
   operatorOrgCount,
-  activeOrgId          as operatorActiveOrgId,
-  activeOrgName        as operatorActiveOrgName,
+  activeOrgId as operatorActiveOrgId,
+  activeOrgName as operatorActiveOrgName,
   activeAssignedVehicleIds,
   activeMaxVehicles,
   activeRouteIds,
@@ -240,9 +240,9 @@ export {
   operatorOwnsRoute,
   operatorCan,
   operatorCanGlobally,
-} from './operator.context'
+} from "./operator.context"
 
-export type { OperatorContext, OperatorOrgSlot } from './operator.context'
+export type { OperatorContext, OperatorOrgSlot } from "./operator.context"
 
 // ── Passenger / Guest ─────────────────────────────────────────────────────────
 export {
@@ -251,8 +251,8 @@ export {
   deactivatePassengerContext,
   isVerified,
   canBookSeats,
-  canViewBookings      as passengerCanViewBookings,
-  canTrackLive         as passengerCanTrackLive,
+  canViewBookings as passengerCanViewBookings,
+  canTrackLive as passengerCanTrackLive,
   canEditProfile,
   canApplyToSacco,
   verifiedOrgs,
@@ -263,24 +263,21 @@ export {
   getPrimaryOrgId,
   isPassengerVerified,
   passengerCan,
-} from './passenger.context'
+} from "./passenger.context"
 
-export type { PassengerContext } from './passenger.context'
-
-
+export type { PassengerContext } from "./passenger.context"
 
 // Add to userState.server.ts types:
 
 export type MpesaGoProfile = {
-  isMinorAccount:        boolean
-  guardianPhone:         string | null
-  dailyLimit:            number | null
-  perTransactionLimit:   number | null
-  sendMoneyEnabled:      boolean
-  lipaNaMpesaEnabled:    boolean
-  documentsSubmitted:    boolean
-  documentsDueBy:        string | null  // ISO timestamp
+  isMinorAccount: boolean
+  guardianPhone: string | null
+  dailyLimit: number | null
+  perTransactionLimit: number | null
+  sendMoneyEnabled: boolean
+  lipaNaMpesaEnabled: boolean
+  documentsSubmitted: boolean
+  documentsDueBy: string | null // ISO timestamp
   /** True if 30-day document window has expired without submission */
-  documentsOverdue:      boolean
+  documentsOverdue: boolean
 }
-

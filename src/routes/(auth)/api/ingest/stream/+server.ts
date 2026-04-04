@@ -11,9 +11,9 @@
 // REDIS STREAM KEY: gps:realtime:{orgId}
 // Fields per entry: vid, la (lat), lo (lng), sp (speed), hd (heading), ts (timestamp)
 
-import { error } from '@sveltejs/kit'
-import type { RequestHandler } from './$types'
-import { getStreamClient } from '$lib/server/redis'
+import { error } from "@sveltejs/kit"
+import type { RequestHandler } from "./$types"
+import { getStreamClient } from "$lib/server/redis"
 
 // How long to hold each SSE connection open (ms).
 // Clients reconnect automatically after this.
@@ -27,19 +27,19 @@ const READ_COUNT = 100
 
 export const GET: RequestHandler = async ({ url, locals }) => {
   const { session } = await locals.safeGetSession()
-  if (!session) error(401, 'Unauthorised')
+  if (!session) error(401, "Unauthorised")
 
-  const orgId = url.searchParams.get('orgId')
-  if (!orgId) error(400, 'orgId is required')
+  const orgId = url.searchParams.get("orgId")
+  if (!orgId) error(400, "orgId is required")
 
   const streamKey = `gps:realtime:${orgId}`
 
   // Start reading from the latest entry only ($ = now)
-  let lastId = '$'
+  let lastId = "$"
 
   const stream = new ReadableStream({
     async start(controller) {
-      const encoder  = new TextEncoder()
+      const encoder = new TextEncoder()
       const deadline = Date.now() + MAX_CONNECTION_MS
 
       const send = (data: unknown) => {
@@ -50,7 +50,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       // Send a comment as keepalive so proxies don't close the connection
       const keepalive = setInterval(() => {
         try {
-          controller.enqueue(encoder.encode(': keepalive\n\n'))
+          controller.enqueue(encoder.encode(": keepalive\n\n"))
         } catch {
           clearInterval(keepalive)
         }
@@ -61,12 +61,15 @@ export const GET: RequestHandler = async ({ url, locals }) => {
           const redis = getStreamClient()
 
           // XREAD blocks for POLL_INTERVAL_MS waiting for new entries
-          const results = await redis.xread(
-            'COUNT', READ_COUNT,
-            'BLOCK', POLL_INTERVAL_MS,
-            'STREAMS', streamKey,
+          const results = (await redis.xread(
+            "COUNT",
+            READ_COUNT,
+            "BLOCK",
+            POLL_INTERVAL_MS,
+            "STREAMS",
+            streamKey,
             lastId,
-          ) as [string, [string, string[]][]][] | null
+          )) as [string, [string, string[]][]][] | null
 
           if (!results) continue // timeout, no new data
 
@@ -81,13 +84,27 @@ export const GET: RequestHandler = async ({ url, locals }) => {
                 const key = fields[i]
                 const val = fields[i + 1]
                 switch (key) {
-                  case 'vid': update.vehicleId = val;           break
-                  case 'la':  update.lat       = parseFloat(val); break
-                  case 'lo':  update.lng       = parseFloat(val); break
-                  case 'sp':  update.speed     = parseFloat(val); break
-                  case 'hd':  update.heading   = parseFloat(val); break
-                  case 'ac':  update.accuracy  = parseFloat(val); break
-                  case 'ts':  update.timestamp = val;           break
+                  case "vid":
+                    update.vehicleId = val
+                    break
+                  case "la":
+                    update.lat = parseFloat(val)
+                    break
+                  case "lo":
+                    update.lng = parseFloat(val)
+                    break
+                  case "sp":
+                    update.speed = parseFloat(val)
+                    break
+                  case "hd":
+                    update.heading = parseFloat(val)
+                    break
+                  case "ac":
+                    update.accuracy = parseFloat(val)
+                    break
+                  case "ts":
+                    update.timestamp = val
+                    break
                 }
               }
 
@@ -96,7 +113,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
           }
         }
       } catch (err) {
-        console.error('[gps/stream] Error reading Redis stream:', err)
+        console.error("[gps/stream] Error reading Redis stream:", err)
       } finally {
         clearInterval(keepalive)
         controller.close()
@@ -111,11 +128,11 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
   return new Response(stream, {
     headers: {
-      'Content-Type':  'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
       // Allow EventSource through SvelteKit's CSRF protection
-      'X-Accel-Buffering': 'no',
+      "X-Accel-Buffering": "no",
     },
   })
 }

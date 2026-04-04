@@ -4,11 +4,7 @@
   "description": "Drives operator activation and retention by establishing the GPS broadcast path as the core value delivery mechanism. Zero-auth driver PWA enables immediate GPS ping emission on account creation, triggering ledger genesis events on Hyperledger Fabric. V/T ratio instrumentation surfaces fleet coverage health in PostHog, while Hour-4 and Hour-24 SMS nudges (Upstash Redis delayed jobs) recover accounts that have not yet emitted a first ping. As ledger history accumulates, the compliance-framed free-tier gate (30-day cap with loss-aversion prompt) converts operators to paid plans via M-Pesa STK push. The flywheel compounds: more GPS pings → deeper ledger history → stronger compliance narrative → higher upgrade conversion → more vehicles onboarded → more GPS pings.",
   "linked_feature": "Real-Time Fleet Tracking with GPS",
   "linked_feature_id": "real_time_fleet_tracking_with_gps",
-  "growth_pillars": [
-    "onboarding",
-    "engagement",
-    "retention"
-  ],
+  "growth_pillars": ["onboarding", "engagement", "retention"],
   "requirements": {
     "files": [
       {
@@ -412,9 +408,7 @@
     ]
   },
   "metrics": {
-    "data_actions": [
-      "gps_ping_ingested"
-    ],
+    "data_actions": ["gps_ping_ingested"],
     "success_criteria": [
       "Time to First GPS Ping < 48 hours for > 60% of new operator accounts, measured as time between org creation and first trip_events INSERT per org_id",
       "V/T ratio > 0.75 across active fleet portfolio at Month 2, measured via vehicle_vt_ratio_updated PostHog events aggregated per org",

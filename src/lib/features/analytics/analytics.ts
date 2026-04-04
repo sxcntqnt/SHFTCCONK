@@ -12,19 +12,19 @@
  *   - Dashboard import path updated accordingly
  */
 
-import { writable, get }       from 'svelte/store'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { writable, get } from "svelte/store"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 /* ============================================================
    TYPES
 ============================================================ */
 export interface RouteStats {
-  routeName:       string
-  avgSpeed:        number   // km/h
-  activeVehicles:  number
-  congestionScore: number   // 0–100
-  organizationId:  string
-  updated_at?:     string
+  routeName: string
+  avgSpeed: number // km/h
+  activeVehicles: number
+  congestionScore: number // 0–100
+  organizationId: string
+  updated_at?: string
 }
 
 /* ============================================================
@@ -37,7 +37,7 @@ export const analytics = analyticsStore
 /* ============================================================
    INTERNAL STATE
 ============================================================ */
-let _analyticsChannel: ReturnType<SupabaseClient['channel']> | null = null
+let _analyticsChannel: ReturnType<SupabaseClient["channel"]> | null = null
 let _currentOrgId: string | null = null
 
 /* ============================================================
@@ -45,18 +45,20 @@ let _currentOrgId: string | null = null
 ============================================================ */
 function mapStats(row: Record<string, unknown>): RouteStats {
   return {
-    routeName:       (row.route_name      ?? row.routeName)      as string,
-    avgSpeed:        (row.avg_speed       ?? row.avgSpeed       ?? 0) as number,
-    activeVehicles:  (row.active_vehicles ?? row.activeVehicles ?? 0) as number,
-    congestionScore: (row.congestion_score?? row.congestionScore?? 0) as number,
-    organizationId:  (row.organization_id ?? row.organizationId) as string,
-    updated_at:       row.updated_at as string | undefined,
+    routeName: (row.route_name ?? row.routeName) as string,
+    avgSpeed: (row.avg_speed ?? row.avgSpeed ?? 0) as number,
+    activeVehicles: (row.active_vehicles ?? row.activeVehicles ?? 0) as number,
+    congestionScore: (row.congestion_score ??
+      row.congestionScore ??
+      0) as number,
+    organizationId: (row.organization_id ?? row.organizationId) as string,
+    updated_at: row.updated_at as string | undefined,
   }
 }
 
 function assertTenant(orgId: string): void {
   if (_currentOrgId && orgId !== _currentOrgId) {
-    throw new Error('Cross-tenant analytics data rejected')
+    throw new Error("Cross-tenant analytics data rejected")
   }
 }
 
@@ -70,9 +72,9 @@ export async function initAnalytics(
   _currentOrgId = orgId
 
   const { data, error } = await supabase
-    .from('route_analytics')
-    .select('*')
-    .eq('organization_id', orgId)
+    .from("route_analytics")
+    .select("*")
+    .eq("organization_id", orgId)
 
   if (error) throw new Error(`Analytics fetch failed: ${error.message}`)
 
@@ -86,10 +88,15 @@ export async function initAnalytics(
   _analyticsChannel = supabase
     .channel(`analytics-${orgId}`)
     .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'route_analytics', filter: `organization_id=eq.${orgId}` },
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "route_analytics",
+        filter: `organization_id=eq.${orgId}`,
+      },
       (payload) => {
-        if (payload.eventType === 'DELETE') {
+        if (payload.eventType === "DELETE") {
           const name = (payload.old as any).route_name as string
           analyticsStore.update((r) => r.filter((x) => x.routeName !== name))
           return
@@ -97,8 +104,13 @@ export async function initAnalytics(
         const incoming = mapStats(payload.new as Record<string, unknown>)
         assertTenant(incoming.organizationId)
         analyticsStore.update((current) => {
-          const idx = current.findIndex((r) => r.routeName === incoming.routeName)
-          if (idx >= 0) { current[idx] = incoming; return [...current] }
+          const idx = current.findIndex(
+            (r) => r.routeName === incoming.routeName,
+          )
+          if (idx >= 0) {
+            current[idx] = incoming
+            return [...current]
+          }
           return [...current, incoming]
         })
       },
@@ -109,7 +121,9 @@ export async function initAnalytics(
 /* ============================================================
    TEARDOWN
 ============================================================ */
-export async function destroyAnalytics(supabase: SupabaseClient): Promise<void> {
+export async function destroyAnalytics(
+  supabase: SupabaseClient,
+): Promise<void> {
   if (_analyticsChannel) {
     await supabase.removeChannel(_analyticsChannel)
     _analyticsChannel = null
