@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite dev",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=6092 vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -17,7 +17,10 @@
     "prod-dev": "svelte-kit dev",
     "prod-build": "svelte-kit build",
     "prod-preview": "svelte-kit preview",
-    "prod-start": "PORT=4173 node build"
+    "prod-start": "PORT=4173 node build",
+    "wasm": "wasm-pack build --dev --target web ../backend",
+    "wasm-release": "wasm-pack build --release --target web ../backend",
+    "wasm-node": "wasm-pack build --dev --target nodejs ../backend"
   },
   "type": "module",
   "devDependencies": {
@@ -80,6 +83,7 @@
     "handlebars": "^4.7.8",
     "idb": "^8.0.3",
     "ioredis": "^5.10.1",
+    "jose": "^6.2.2",
     "layerchart": "1.0.13",
     "maplibre-gl": "^5.19.0",
     "maplibre-gl-draw": "^1.6.9",

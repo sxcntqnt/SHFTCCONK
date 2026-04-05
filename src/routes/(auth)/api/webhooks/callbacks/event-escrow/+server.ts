@@ -2,7 +2,7 @@ import type { RequestHandler } from "./$types"
 import { json } from "@sveltejs/kit"
 import { redis } from "$lib/server/redis"
 import { db } from "$lib/server/db"
-import { anchorBusinessReservation } from "$lib/server/fabric/businessReservation"
+import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation"
 import { posthog } from "$lib/server/posthog"
 
 export const POST: RequestHandler = async ({ request }) => {

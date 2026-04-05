@@ -1,7 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { z } from 'zod'
 import { getPostHogClient } from '$lib/server/posthog'
-import { cancelNudgeJobs } from '$lib/server/jobs/gpsActivationNudge'
+import { cancelNudgeJobs } from '$lib/features/jobs/gpsActivationNudge'
 
 /*
   POST /api/gps/ping
