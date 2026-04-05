@@ -1,6 +1,6 @@
 import type { RequestHandler } from "./$types"
 import { json, error } from "@sveltejs/kit"
-import { verifyPairingToken } from "$lib/server/auth/pairingToken"
+import { verifyPairingToken } from "$lib/features/auth/services/pairingToken"
 import { db } from "$lib/server/db"
 import { generateDriverSessionToken } from "$lib/server/auth/driverSession"
 import { redis } from "$lib/server/redis"

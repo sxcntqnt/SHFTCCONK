@@ -1,10 +1,9 @@
-import { db } from "$lib/server/db"
+import { supabaseAdmin } from '$lib/server/db'
 import { redis } from "$lib/server/redis"
-import { posthog } from "$lib/server/posthog"
-import { createClient } from '@supabase/supabase-js'
+import { posthog, getPostHogClient } from "$lib/server/posthog"
+
 import { PUBLIC_SUPABASE_URL } from '$env/static/public'
 import { PRIVATE_SUPABASE_SERVICE_ROLE } from '$env/static/private'
-import { getPostHogClient } from '$lib/server/posthog'
 
 
 
@@ -56,28 +55,32 @@ export async function computeFleetVTSnapshot(
   shiftEnd.setHours(windowDef.end_hour, 0, 0, 0)
   const totalShiftMinutes = (shiftEnd.getTime() - shiftStart.getTime()) / 60000
 
-  const enrolledVehicles = await db.driver_enrollments.findMany({
-    where: { org_id: orgId },
-    include: { vehicle: { select: { plate_number: true, operator_id: true } } },
-  })
+  const { data: enrolledVehicles, error: enrollErr } = await supabaseAdmin
+  .from('driver_enrollments')
+  .select(`
+    vehicle_id,
+    vehicle:vehicles (
+      plate_number,
+      operator_id
+    )
+  `)
+  .eq('org_id', orgId)
 
-  const pingDensity = await db.$queryRaw`
-    SELECT
-      vehicle_id,
-      COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) AS broadcasting_minutes,
-      MAX(recorded_at) AS last_ping_at,
-      COUNT(*) FILTER (
-        WHERE recorded_at - LAG(recorded_at) OVER (PARTITION BY vehicle_id ORDER BY recorded_at) > INTERVAL '8 minutes'
-      ) + 1 AS trip_count_estimated
-    FROM trip_events
-    WHERE
-      org_id = ${orgId}
-      AND recorded_at BETWEEN ${shiftStart.toISOString()} AND ${now.toISOString()}
-      AND event_type IN ('GPS_PING', 'GENESIS_PING')
-    GROUP BY vehicle_id
-  `
+if (enrollErr) throw enrollErr
 
-  const pingMap = new Map(pingDensity.map((r: any) => [r.vehicle_id, r]))
+  const { data: pingDensity, error: pingErr } = await supabaseAdmin.rpc(
+  'get_ping_density',
+  {
+    org_id: orgId,
+    start_ts: shiftStart.toISOString(),
+    end_ts: now.toISOString()
+  }
+)
+
+if (pingErr) throw pingErr
+
+
+const pingMap = new Map((pingDensity ?? []).map((r: any) => [r.vehicle_id, r]))
 
   const vehicles: ShiftCoverageRecord[] = enrolledVehicles.map((enrollment: any) => {
     const pings = pingMap.get(enrollment.vehicle_id)
@@ -91,8 +94,8 @@ export async function computeFleetVTSnapshot(
 
     return {
       vehicle_id: enrollment.vehicle_id,
-      plate_number: enrollment.vehicle.plate_number,
-      operator_id: enrollment.vehicle.operator_id,
+      plate_number: enrollment.vehicle?.plate_number,
+operator_id: enrollment.vehicle?.operator_id,
       shift_window_start: shiftStart.toISOString(),
       shift_window_end: shiftEnd.toISOString(),
       total_shift_minutes: totalShiftMinutes,
@@ -165,7 +168,6 @@ export function classifyShiftHonesty(coverageRatio: number) {
 export async function computeVTRatio(vehicle_id: string, date: string, org_id: string) {
   if (!vehicle_id || !date) throw new Error('vehicle_id and date required')
 
-  const supabase = createClient(PUBLIC_SUPABASE_URL, PRIVATE_SUPABASE_SERVICE_ROLE)
 
   // 1) Fetch trip_events.created_at for the vehicle on the date
   const { data: events, error: evErr } = await supabase

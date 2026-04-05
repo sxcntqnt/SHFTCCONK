@@ -33,3 +33,35 @@ BEGIN
   END IF;
 
 END $$;
+
+
+
+create or replace function get_ping_density(
+  org_id text,
+  start_ts timestamptz,
+  end_ts timestamptz
+)
+returns table (
+  vehicle_id text,
+  broadcasting_minutes bigint,
+  last_ping_at timestamptz,
+  trip_count_estimated bigint
+)
+language sql
+as $$
+  SELECT
+    vehicle_id,
+    COUNT(DISTINCT DATE_TRUNC('minute', recorded_at)) AS broadcasting_minutes,
+    MAX(recorded_at) AS last_ping_at,
+    COUNT(*) FILTER (
+      WHERE recorded_at - LAG(recorded_at) OVER (
+        PARTITION BY vehicle_id ORDER BY recorded_at
+      ) > INTERVAL '8 minutes'
+    ) + 1 AS trip_count_estimated
+  FROM trip_events
+  WHERE
+    org_id = get_ping_density.org_id
+    AND recorded_at BETWEEN start_ts AND end_ts
+    AND event_type IN ('GPS_PING', 'GENESIS_PING')
+  GROUP BY vehicle_id;
+$$;
