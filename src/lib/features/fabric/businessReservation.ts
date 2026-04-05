@@ -1,10 +1,9 @@
-import { db } from "$lib/server/db"
+import { supabaseAdmin } from "$lib/server/db"
 import { redis } from "$lib/server/redis"
 
 // Minimal Fabric gateway stub — in production this should call the Fabric SDK
 export const fabricGateway = {
   async submitTransaction(contract: string, fn: string, payload: string) {
-    // Simulate a fabric response with a generated transaction id
     const txId = `FABRIC-TX-${Date.now().toString(36)}`
     return { transactionId: txId }
   },
@@ -14,11 +13,23 @@ export async function anchorBusinessReservation(
   bookingId: string,
   operatorId: string,
 ) {
-  // Server-side conflict guard — ensure no overlapping anchored bookings exist
-  const booking = await db.fleet_bookings.findUnique({ where: { id: bookingId } })
-  if (!booking) throw new Error("Booking not found")
+  // ✅ Fetch booking
+  const { data: booking, error: fetchError } = await supabaseAdmin
+    .from("fleet_bookings")
+    .select("*")
+    .eq("id", bookingId)
+    .single()
 
-  // Construct payload
+  if (fetchError || !booking) {
+    throw new Error("Booking not found")
+  }
+
+  // (Optional but recommended) validate operator ownership
+  if (booking.operator_id !== operatorId) {
+    throw new Error("Operator mismatch")
+  }
+
+  // ✅ Construct ledger payload
   const ledgerPayload = {
     event_type: "BUSINESS_RESERVATION",
     booking_id: booking.id,
@@ -34,6 +45,7 @@ export async function anchorBusinessReservation(
     anchored_at: new Date().toISOString(),
   }
 
+  // ✅ Send to Fabric
   const fabricResult = await fabricGateway.submitTransaction(
     "FleetBookingContract",
     "CreateBusinessReservation",
@@ -42,17 +54,22 @@ export async function anchorBusinessReservation(
 
   const txId = fabricResult.transactionId
 
-  await db.fleet_bookings.update({
-    where: { id: bookingId },
-    data: {
+  // ✅ Update booking (ADMIN)
+  const { error: updateError } = await supabaseAdmin
+    .from("fleet_bookings")
+    .update({
       ledger_tx_id: txId,
       status: "LEDGER_ANCHORED",
       route_deviation_authorised: true,
       updated_at: new Date().toISOString(),
-    },
-  })
+    })
+    .eq("id", bookingId)
 
-  // Invalidate gate cache for the org
+  if (updateError) {
+    throw new Error(`Failed to update booking: ${updateError.message}`)
+  }
+
+  // ✅ Invalidate gate cache
   await redis.del(`ledger_gate:${booking.org_id}`)
 
   return { txId, status: "LEDGER_ANCHORED" }

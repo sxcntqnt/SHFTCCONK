@@ -1,5 +1,8 @@
-import { db } from "$lib/server/db"
+import { createSupabaseServerClient } from "$lib/server/db"
 import { redis } from "$lib/server/redis"
+
+import type { Database } from "$lib/types/supabase"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export interface LedgerGateStatus {
   org_id: string
@@ -20,7 +23,9 @@ const TIER_CAPS: Record<string, number> = {
   BUSINESS: Number.POSITIVE_INFINITY,
 }
 
+// ✅ Pass supabase client in (BEST PRACTICE)
 export async function getLedgerGateStatus(
+  supabase: SupabaseClient<Database>,
   orgId: string,
 ): Promise<LedgerGateStatus> {
   const cached = await redis.get(`ledger_gate:${orgId}`)
@@ -30,22 +35,25 @@ export async function getLedgerGateStatus(
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
 
-  const [org, anchorCount] = await Promise.all([
-    db.organisations.findUnique({
-      where: { id: orgId },
-      select: { subscription_tier: true, mpesa_account_linked: true },
-    }),
-    db.fleet_bookings.count({
-      where: {
-        org_id: orgId,
-        status: "LEDGER_ANCHORED",
-        created_at: {
-          gte: monthStart.toISOString(),
-          lt: monthEnd.toISOString(),
-        },
-      },
-    }),
+  // ✅ Supabase queries
+  const [orgRes, anchorRes] = await Promise.all([
+    supabase
+      .from("organisations")
+      .select("subscription_tier, mpesa_account_linked")
+      .eq("id", orgId)
+      .single(),
+
+    supabase
+      .from("fleet_bookings")
+      .select("*", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("status", "LEDGER_ANCHORED")
+      .gte("created_at", monthStart.toISOString())
+      .lt("created_at", monthEnd.toISOString()),
   ])
+
+  const org = orgRes.data
+  const anchorCount = anchorRes.count ?? 0
 
   const tier = (org?.subscription_tier ?? "FREE") as keyof typeof TIER_CAPS
   const cap = TIER_CAPS[tier] ?? FREE_TIER_CAP
@@ -58,7 +66,7 @@ export async function getLedgerGateStatus(
     is_gated: isGated,
     anchors_remaining: Math.max(0, cap - anchorCount),
     reset_date: monthEnd.toISOString(),
-    subscription_tier: tier as LedgerGateStatus["subscription_tier"],
+    subscription_tier: tier,
     per_event_eligible: !!org?.mpesa_account_linked,
   }
 
@@ -67,13 +75,14 @@ export async function getLedgerGateStatus(
 }
 
 export async function assertLedgerNotGated(
+  supabase: SupabaseClient<Database>,
   orgId: string,
   bookingFareKes: number | null,
 ): Promise<{
   permitted: boolean
   route: "SUBSCRIPTION" | "PER_EVENT" | "BLOCKED"
 }> {
-  const gate = await getLedgerGateStatus(orgId)
+  const gate = await getLedgerGateStatus(supabase, orgId)
 
   if (!gate.is_gated) return { permitted: true, route: "SUBSCRIPTION" }
 

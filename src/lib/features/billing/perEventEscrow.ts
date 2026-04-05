@@ -1,4 +1,4 @@
-import { db } from "$lib/server/db"
+import { supabaseAdmin } from "$lib/server/db"
 import { redis } from "$lib/server/redis"
 import { mpesa } from "$lib/server/mpesa"
 
@@ -24,6 +24,7 @@ export async function initiatePerEventEscrow(params: {
     MINIMUM_FEE_KES,
     Math.round(params.agreedFareKes * PLATFORM_FEE_RATE),
   )
+
   const operatorNetKes = params.agreedFareKes - platformFeeKes
 
   const callbackUrl = `${process.env.PUBLIC_BASE_URL}/api/mpesa/callbacks/per-event-escrow`
@@ -45,6 +46,7 @@ export async function initiatePerEventEscrow(params: {
     }
   }
 
+  // ✅ Cache escrow intent
   await redis.set(
     `escrow_intent:${stkResult.checkout_request_id}`,
     JSON.stringify({
@@ -59,8 +61,10 @@ export async function initiatePerEventEscrow(params: {
     { ex: 600 },
   )
 
-  await db.per_event_escrow_records.create({
-    data: {
+  // ✅ Supabase insert (ADMIN)
+  const { error } = await supabaseAdmin
+    .from("per_event_escrow_records")
+    .insert({
       booking_id: params.bookingId,
       org_id: params.orgId,
       operator_id: params.operatorId,
@@ -69,8 +73,11 @@ export async function initiatePerEventEscrow(params: {
       operator_net_kes: operatorNetKes,
       mpesa_checkout_request_id: stkResult.checkout_request_id,
       status: "PENDING",
-    },
-  })
+    })
+
+  if (error) {
+    throw new Error(`Escrow record insert failed: ${error.message}`)
+  }
 
   return {
     collection_initiated: true,

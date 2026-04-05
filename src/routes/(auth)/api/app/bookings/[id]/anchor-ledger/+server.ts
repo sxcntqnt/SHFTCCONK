@@ -1,13 +1,17 @@
 import type { RequestHandler } from "./$types"
 import { json, error } from "@sveltejs/kit"
-import { db } from "$lib/server/db"
+import { createSupabaseServerClient } from "$lib/server/db"
+
 import { assertLedgerNotGated } from "$lib/features/billing/ledgerGate"
 import { initiatePerEventEscrow } from "$lib/features/billing/perEventEscrow"
 import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation"
+
 import { redis } from "$lib/server/redis"
 import { posthog } from "$lib/server/posthog"
 
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async ({ params, request, locals, cookies }) => {
+  const supabase = createSupabaseServerClient(cookies)
+
   const { id: bookingId } = params
   const { route } = (await request.json()) as {
     route: "SUBSCRIPTION" | "PER_EVENT"
@@ -18,14 +22,26 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
   if (!operatorId || !orgId) throw error(401, "Unauthenticated")
 
-  const booking = await db.fleet_bookings.findUnique({
-    where: { id: bookingId, org_id: orgId, operator_id: operatorId },
-  })
+  // ✅ Supabase query (RLS enforced)
+  const { data: booking, error: bookingError } = await supabase
+    .from("fleet_bookings")
+    .select("*")
+    .eq("id", bookingId)
+    .eq("org_id", orgId)
+    .eq("operator_id", operatorId)
+    .single()
 
-  if (!booking) throw error(404, "Booking not found or not accessible.")
-  if (booking.status === "LEDGER_ANCHORED") throw error(409, "Booking already anchored.")
+  if (bookingError || !booking) {
+    throw error(404, "Booking not found or not accessible.")
+  }
 
+  if (booking.status === "LEDGER_ANCHORED") {
+    throw error(409, "Booking already anchored.")
+  }
+
+  // ✅ Pass supabase client into gating logic
   const { permitted, route: resolvedRoute } = await assertLedgerNotGated(
+    supabase,
     orgId,
     booking.agreed_fare,
   )
@@ -41,6 +57,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
   const effectiveRoute = resolvedRoute
 
+  // ─────────────────────────────────────────────
+  // PER-EVENT FLOW (M-Pesa escrow)
+  // ─────────────────────────────────────────────
   if (effectiveRoute === "PER_EVENT") {
     if (!booking.agreed_fare || !booking.client_contact) {
       throw error(400, "Per-event anchoring requires an agreed fare and client contact.")
@@ -56,7 +75,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     })
 
     if (!escrowResult.collection_initiated) {
-      throw error(502, "M-Pesa STK push to client failed. Verify the client phone number and retry.")
+      throw error(
+        502,
+        "M-Pesa STK push to client failed. Verify the client phone number and retry.",
+      )
     }
 
     return json({
@@ -68,7 +90,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     })
   }
 
-  // Subscription route — anchor immediately
+  // ─────────────────────────────────────────────
+  // SUBSCRIPTION FLOW (direct anchor)
+  // ─────────────────────────────────────────────
   const result = await anchorBusinessReservation(bookingId, operatorId)
 
   await redis.del(`ledger_gate:${orgId}`)
@@ -76,8 +100,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
   await posthog.capture({
     distinctId: operatorId,
     event: "business_reservation_ledger_anchored_api",
-    properties: { booking_id: bookingId, ledger_tx_id: result?.txId ?? null },
+    properties: {
+      booking_id: bookingId,
+      ledger_tx_id: result?.txId ?? null,
+    },
   })
 
-  return json({ status: "LEDGER_ANCHORED", ledger_tx_id: result.txId })
+  return json({
+    status: "LEDGER_ANCHORED",
+    ledger_tx_id: result.txId,
+  })
 }
