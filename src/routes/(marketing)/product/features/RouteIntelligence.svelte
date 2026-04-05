@@ -2,7 +2,11 @@
   interface RouteItem {
     route_number: string | number
   }
-  export let routes: RouteItem[] = []
+
+  // Props (Svelte 5 runes syntax)
+  let { routes = $bindable([]) } = $props<{
+    routes?: RouteItem[]
+  }>()
 
   // Deterministic score from route number — no random()
   function routeScore(num: string | number): number {
@@ -33,28 +37,35 @@
     "Express",
     "Busy",
   ]
+
   function condTag(n: string | number): string {
     const i = parseInt(String(n).replace(/\D/g, "") || "0", 10)
     return conditions[i % conditions.length]
   }
 
-  $: scored = routes.slice(0, 7).map((r) => {
-    const s = routeScore(r.route_number)
-    return {
-      ...r,
-      score: s,
-      cls: scoreClass(s),
-      label: scoreLabel(s),
-      cond: condTag(r.route_number),
-    }
-  })
+  // Reactive scored routes (using $derived)
+  let scored = $derived(
+    routes.slice(0, 7).map((r) => {
+      const s = routeScore(r.route_number)
+      return {
+        ...r,
+        score: s,
+        cls: scoreClass(s),
+        label: scoreLabel(s),
+        cond: condTag(r.route_number),
+      }
+    }),
+  )
 
-  // Overall IQ — average
-  $: avgIQ = scored.length
-    ? ((scored.reduce((a, r) => a + r.score, 0) / scored.length) * 100).toFixed(
-        1,
-      )
-    : "—"
+  // Overall Network IQ — average
+  let avgIQ = $derived(
+    scored.length
+      ? (
+          (scored.reduce((a, r) => a + r.score, 0) / scored.length) *
+          100
+        ).toFixed(1)
+      : "—",
+  )
 </script>
 
 <div class="intel">
@@ -109,7 +120,7 @@
             <div class="score-bar-track">
               <div
                 class="score-bar-fill fill-{r.cls}"
-                style="width:{r.score * 100}%"
+                style="width: {r.score * 100}%"
               ></div>
             </div>
           </div>
@@ -151,6 +162,7 @@
     justify-content: space-between;
     margin-bottom: 12px;
   }
+
   .intel-title {
     display: flex;
     align-items: center;
@@ -161,9 +173,11 @@
     letter-spacing: 0.1em;
     color: var(--text-2, #999);
   }
+
   .intel-title svg {
     color: #f26522;
   }
+
   .iq-badge {
     display: flex;
     align-items: baseline;
@@ -173,6 +187,7 @@
     border-radius: 10px;
     padding: 4px 10px;
   }
+
   .iq-val {
     font-size: 0.9rem;
     font-weight: 900;
@@ -180,6 +195,7 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
   }
+
   .iq-lbl {
     font-size: 0.58rem;
     font-weight: 700;
@@ -194,6 +210,7 @@
     gap: 6px;
     margin-bottom: 12px;
   }
+
   .legend-item {
     font-size: 0.56rem;
     font-weight: 700;
@@ -201,21 +218,25 @@
     border-radius: 100px;
     letter-spacing: 0.04em;
   }
+
   .legend-item.great {
     background: rgba(0, 176, 155, 0.12);
     color: #00b09b;
     border: 1px solid rgba(0, 176, 155, 0.2);
   }
+
   .legend-item.good {
     background: rgba(100, 200, 150, 0.1);
     color: #5ec99a;
     border: 1px solid rgba(100, 200, 150, 0.2);
   }
+
   .legend-item.warn {
     background: rgba(232, 172, 26, 0.1);
     color: #e8ac1a;
     border: 1px solid rgba(232, 172, 26, 0.2);
   }
+
   .legend-item.low {
     background: rgba(242, 101, 34, 0.1);
     color: #f26522;
@@ -232,6 +253,7 @@
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
   }
+
   .empty-state {
     display: flex;
     align-items: center;
@@ -247,6 +269,7 @@
     align-items: center;
     gap: 8px;
   }
+
   .route-pill {
     display: flex;
     align-items: center;
@@ -262,6 +285,7 @@
     min-width: 52px;
     justify-content: center;
   }
+
   .hex-g {
     color: rgba(242, 101, 34, 0.55);
     font-size: 0.7rem;
@@ -276,18 +300,22 @@
     min-width: 44px;
     text-align: center;
   }
+
   .cond-great {
     background: rgba(0, 176, 155, 0.1);
     color: #00b09b;
   }
+
   .cond-good {
     background: rgba(100, 200, 150, 0.1);
     color: #5ec99a;
   }
+
   .cond-warn {
     background: rgba(232, 172, 26, 0.1);
     color: #e8ac1a;
   }
+
   .cond-low {
     background: rgba(242, 101, 34, 0.1);
     color: #f26522;
@@ -297,26 +325,32 @@
   .score-bar-wrap {
     flex: 1;
   }
+
   .score-bar-track {
     height: 5px;
     background: rgba(255, 255, 255, 0.07);
     border-radius: 100px;
     overflow: hidden;
   }
+
   .score-bar-fill {
     height: 100%;
     border-radius: 100px;
     transition: width 0.5s ease;
   }
+
   .fill-great {
     background: linear-gradient(90deg, #00b09b, #00d4b4);
   }
+
   .fill-good {
     background: linear-gradient(90deg, #00b09b80, #5ec99a);
   }
+
   .fill-warn {
     background: linear-gradient(90deg, #e8ac1a80, #e8ac1a);
   }
+
   .fill-low {
     background: linear-gradient(90deg, #f2652280, #f26522);
   }
@@ -326,6 +360,7 @@
     text-align: right;
     min-width: 52px;
   }
+
   .score-num {
     font-size: 0.8rem;
     font-weight: 800;
@@ -333,18 +368,23 @@
     letter-spacing: -0.02em;
     line-height: 1;
   }
+
   .score-great {
     color: #00b09b;
   }
+
   .score-good {
     color: #5ec99a;
   }
+
   .score-warn {
     color: #e8ac1a;
   }
+
   .score-low {
     color: #f26522;
   }
+
   .score-lbl {
     font-size: 0.56rem;
     color: var(--text-3, #555);
@@ -359,6 +399,7 @@
     padding-top: 10px;
     border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
+
   .footer-note {
     font-size: 0.56rem;
     color: var(--text-3, #555);

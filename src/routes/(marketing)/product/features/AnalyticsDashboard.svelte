@@ -1,24 +1,46 @@
 <script lang="ts">
-  export let totalRoutes   = 42;
-  export let activeVehicles = 28;
-  export let avgCongestion  = 63;
-  export let onTimeRate     = 94;
-  export let timeStr        = "9:30 AM";
-  export let peakLabel      = "Peak Hour";
-  export let peakColor      = "#f26522";
+  // Props with defaults
+  let {
+    totalRoutes = 42,
+    activeVehicles = 28,
+    avgCongestion = 63,
+    onTimeRate = 94,
+    timeStr = "9:30 AM",
+    peakLabel = "Peak Hour",
+    peakColor = "#f26522",
+  }: {
+    totalRoutes?: number
+    activeVehicles?: number
+    avgCongestion?: number
+    onTimeRate?: number
+    timeStr?: string
+    peakLabel?: string
+    peakColor?: string
+  } = $props()
 
-  // Derived
-  $: congestionClass = avgCongestion > 75 ? "bad" : avgCongestion > 45 ? "warn" : "good";
-  $: onTimeClass     = onTimeRate   > 90 ? "good" : onTimeRate > 75 ? "warn" : "bad";
+  // Derived values (reactive in Svelte 5)
+  let congestionClass = $derived(
+    avgCongestion > 75 ? "bad" : avgCongestion > 45 ? "warn" : "good",
+  )
+
+  let onTimeClass = $derived(
+    onTimeRate > 90 ? "good" : onTimeRate > 75 ? "warn" : "bad",
+  )
 
   // Sparkline data (fixed — deterministic visual only)
-  const spark = [38, 51, 44, 63, 72, 68, 81, 74, 59, 55, 63];
-  const sparkMax = Math.max(...spark);
-  const sparkMin = Math.min(...spark);
+  const spark = [38, 51, 44, 63, 72, 68, 81, 74, 59, 55, 63]
+  const sparkMax = Math.max(...spark)
+  const sparkMin = Math.min(...spark)
+
   function sparkY(v: number, h = 32): number {
-    return h - ((v - sparkMin) / (sparkMax - sparkMin)) * h;
+    return h - ((v - sparkMin) / (sparkMax - sparkMin)) * h
   }
-  const pts = spark.map((v, i) => `${(i / (spark.length - 1)) * 100},${sparkY(v)}`).join(" ");
+
+  const pts = $derived(
+    spark
+      .map((v, i) => `${(i / (spark.length - 1)) * 100},${sparkY(v)}`)
+      .join(" "),
+  )
 
   // Mini route bars
   const bars = [
@@ -26,7 +48,7 @@
     { label: "11b", score: 0.76, label2: "Parklands" },
     { label: "107", score: 0.83, label2: "Ruaka" },
     { label: "100", score: 0.68, label2: "Kiambu Rd" },
-  ];
+  ]
 </script>
 
 <div class="dash">
@@ -41,12 +63,23 @@
     </div>
     <div class="dash-meta">
       <div class="time-badge">
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
         </svg>
         {timeStr}
       </div>
-      <div class="peak-chip" style="color:{peakColor};border-color:{peakColor}33;background:{peakColor}12">
+      <div
+        class="peak-chip"
+        style="color:{peakColor}; border-color:{peakColor}33; background:{peakColor}12"
+      >
         {peakLabel}
       </div>
     </div>
@@ -85,12 +118,19 @@
     <svg viewBox="0 0 100 34" preserveAspectRatio="none" class="spark-svg">
       <defs>
         <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stop-color="#f26522" stop-opacity="0.22"/>
-          <stop offset="100%" stop-color="#f26522" stop-opacity="0"/>
+          <stop offset="0%" stop-color="#f26522" stop-opacity="0.22" />
+          <stop offset="100%" stop-color="#f26522" stop-opacity="0" />
         </linearGradient>
       </defs>
-      <polyline points={pts + ` 100,34 0,34`} fill="url(#sg)" stroke="none"/>
-      <polyline points={pts} fill="none" stroke="#f26522" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <polyline points={pts + ` 100,34 0,34`} fill="url(#sg)" stroke="none" />
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="#f26522"
+        stroke-width="1.5"
+        stroke-linejoin="round"
+        stroke-linecap="round"
+      />
     </svg>
   </div>
 
@@ -120,8 +160,10 @@
 </div>
 
 <style>
+  /* All your original styles remain exactly the same */
   .dash {
-    width: 100%; height: 100%;
+    width: 100%;
+    height: 100%;
     background: var(--ink, #0d0d0d);
     border-radius: 0;
     display: flex;
@@ -140,16 +182,19 @@
     justify-content: space-between;
     margin-bottom: 18px;
   }
+
   .dash-brand {
     display: flex;
     align-items: center;
     gap: 9px;
   }
+
   .brand-hex {
     font-size: 1.3rem;
     color: #f26522;
     line-height: 1;
   }
+
   .brand-name {
     font-size: 0.82rem;
     font-weight: 800;
@@ -157,17 +202,20 @@
     letter-spacing: -0.01em;
     line-height: 1.2;
   }
+
   .brand-sub {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     color: var(--text-3, #555);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
+
   .dash-meta {
     display: flex;
     align-items: center;
     gap: 7px;
   }
+
   .time-badge {
     display: flex;
     align-items: center;
@@ -175,14 +223,15 @@
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--text-2, #999);
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
     padding: 3px 9px;
     font-variant-numeric: tabular-nums;
   }
+
   .peak-chip {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
@@ -195,31 +244,35 @@
   .kpi-row {
     display: flex;
     align-items: center;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 14px;
     padding: 14px 8px;
     margin-bottom: 14px;
     gap: 0;
   }
+
   .kpi {
     flex: 1;
     text-align: center;
     position: relative;
     padding: 0 6px;
   }
+
   .kpi-iq {
     position: relative;
   }
+
   .kpi-iq::before {
-    content: '';
+    content: "";
     position: absolute;
     inset: -14px -1px;
     border-radius: 10px;
-    border: 1px solid rgba(242,101,34,0.3);
-    background: rgba(242,101,34,0.04);
+    border: 1px solid rgba(242, 101, 34, 0.3);
+    background: rgba(242, 101, 34, 0.04);
     pointer-events: none;
   }
+
   .kpi-val {
     font-size: 1.4rem;
     font-weight: 900;
@@ -229,32 +282,69 @@
     margin-bottom: 4px;
     font-variant-numeric: tabular-nums;
   }
-  .kpi-iq-val { color: #f26522; }
-  .kpi-good { color: #00b09b; }
-  .kpi-warn { color: #e8ac1a; }
-  .kpi-bad  { color: #f26522; }
+
+  .kpi-iq-val {
+    color: #f26522;
+  }
+  .kpi-good {
+    color: #00b09b;
+  }
+  .kpi-warn {
+    color: #e8ac1a;
+  }
+  .kpi-bad {
+    color: #f26522;
+  }
+
   .kpi-label {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-3, #555);
     font-weight: 600;
     margin-bottom: 6px;
   }
+
   .kpi-dot {
-    width: 5px; height: 5px;
+    width: 5px;
+    height: 5px;
     border-radius: 50%;
     margin: 0 auto;
   }
-  .dot-live { background: #00b09b; box-shadow: 0 0 4px #00b09b; animation: blink 1.6s ease infinite; }
-  .dot-good { background: #00b09b; }
-  .dot-warn { background: #e8ac1a; }
-  .dot-bad  { background: #f26522; }
-  .dot-iq   { background: #f26522; box-shadow: 0 0 4px rgba(242,101,34,.5); }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  .dot-live {
+    background: #00b09b;
+    box-shadow: 0 0 4px #00b09b;
+    animation: blink 1.6s ease infinite;
+  }
+  .dot-good {
+    background: #00b09b;
+  }
+  .dot-warn {
+    background: #e8ac1a;
+  }
+  .dot-bad {
+    background: #f26522;
+  }
+  .dot-iq {
+    background: #f26522;
+    box-shadow: 0 0 4px rgba(242, 101, 34, 0.5);
+  }
+
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
   .kpi-sep {
-    width: 1px; height: 36px;
-    background: rgba(255,255,255,0.08);
+    width: 1px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
   }
 
@@ -262,14 +352,16 @@
   .spark-block {
     margin-bottom: 14px;
   }
+
   .spark-label {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-3, #555);
     font-weight: 600;
     margin-bottom: 5px;
   }
+
   .spark-svg {
     width: 100%;
     height: 34px;
@@ -281,50 +373,57 @@
   .route-bars {
     flex: 1;
   }
+
   .bars-title {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-3, #555);
     font-weight: 600;
     margin-bottom: 8px;
   }
+
   .bar-row {
     display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 7px;
   }
+
   .bar-pill {
     font-size: 0.62rem;
     font-weight: 700;
     color: #f26522;
-    background: rgba(242,101,34,0.1);
-    border: 1px solid rgba(242,101,34,0.2);
+    background: rgba(242, 101, 34, 0.1);
+    border: 1px solid rgba(242, 101, 34, 0.2);
     border-radius: 100px;
     padding: 2px 7px;
     white-space: nowrap;
     letter-spacing: 0.02em;
   }
+
   .bar-name {
     font-size: 0.68rem;
     color: var(--text-2, #888);
     width: 60px;
     flex-shrink: 0;
   }
+
   .bar-track {
     flex: 1;
     height: 5px;
-    background: rgba(255,255,255,0.07);
+    background: rgba(255, 255, 255, 0.07);
     border-radius: 100px;
     overflow: hidden;
   }
+
   .bar-fill {
     height: 100%;
     background: linear-gradient(90deg, #00b09b, #f26522);
     border-radius: 100px;
     transition: width 0.6s ease;
   }
+
   .bar-score {
     font-size: 0.68rem;
     font-weight: 800;
@@ -341,13 +440,20 @@
     gap: 8px;
     margin-top: 12px;
     padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.07);
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
+
   .footer-stat {
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     color: var(--text-3, #555);
     font-weight: 600;
   }
-  .footer-dot { color: var(--text-3, #444); font-size: 0.55rem; }
-  .live-text  { color: #00b09b; }
+
+  .footer-dot {
+    color: var(--text-3, #444);
+    font-size: 0.55rem;
+  }
+  .live-text {
+    color: #00b09b;
+  }
 </style>
