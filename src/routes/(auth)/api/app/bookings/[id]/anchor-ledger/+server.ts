@@ -1,50 +1,51 @@
-import type { RequestHandler } from "./$types"
-import { json, error } from "@sveltejs/kit"
-import { createSupabaseServerClient } from "$lib/server/db"
-
-import { assertLedgerNotGated } from "$lib/features/billing/ledgerGate"
-import { initiatePerEventEscrow } from "$lib/features/billing/perEventEscrow"
-import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation"
-
-import { redis } from "$lib/server/redis"
-import { posthog } from "$lib/server/posthog"
+// src/routes/api/bookings/[id]/anchor/+server.ts
+import type { RequestHandler } from "./$types";
+import { json, error } from "@sveltejs/kit";
+import { createSupabaseServerClient } from "$lib/server/db";
+import { assertLedgerNotGated } from "$lib/features/billing/ledgerGate";
+import { initiatePerEventEscrow } from "$lib/features/billing/perEventEscrow";
+import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation";
+import { streamClient } from "$lib/server/redis";
+import { getPostHogClient } from "$lib/server/posthog";
 
 export const POST: RequestHandler = async ({ params, request, locals, cookies }) => {
-  const supabase = createSupabaseServerClient(cookies)
+  const supabase = createSupabaseServerClient(cookies);
 
-  const { id: bookingId } = params
+  const { id: bookingId } = params;
   const { route } = (await request.json()) as {
-    route: "SUBSCRIPTION" | "PER_EVENT"
+    route: "SUBSCRIPTION" | "PER_EVENT";
+  };
+
+  const operatorId = locals?.session?.user?.id;
+  const orgId = locals?.session?.org_id;
+
+  if (!operatorId || !orgId) {
+    throw error(401, "Unauthenticated");
   }
 
-  const operatorId = locals?.session?.user?.id
-  const orgId = locals?.session?.org_id
-
-  if (!operatorId || !orgId) throw error(401, "Unauthenticated")
-
-  // ✅ Supabase query (RLS enforced)
+  // Fetch booking with RLS enforcement
   const { data: booking, error: bookingError } = await supabase
     .from("fleet_bookings")
     .select("*")
     .eq("id", bookingId)
     .eq("org_id", orgId)
     .eq("operator_id", operatorId)
-    .single()
+    .single();
 
   if (bookingError || !booking) {
-    throw error(404, "Booking not found or not accessible.")
+    throw error(404, "Booking not found or not accessible.");
   }
 
   if (booking.status === "LEDGER_ANCHORED") {
-    throw error(409, "Booking already anchored.")
+    throw error(409, "Booking already anchored.");
   }
 
-  // ✅ Pass supabase client into gating logic
+  // Check ledger gating status
   const { permitted, route: resolvedRoute } = await assertLedgerNotGated(
     supabase,
     orgId,
-    booking.agreed_fare,
-  )
+    booking.agreed_fare
+  );
 
   if (!permitted) {
     throw error(402, {
@@ -52,17 +53,15 @@ export const POST: RequestHandler = async ({ params, request, locals, cookies })
       reason: "FREE_TIER_EXHAUSTED",
       message:
         "Monthly anchor limit reached. Upgrade or add a booking fare to unlock per-event anchoring.",
-    })
+    });
   }
 
-  const effectiveRoute = resolvedRoute
-
   // ─────────────────────────────────────────────
-  // PER-EVENT FLOW (M-Pesa escrow)
+  // PER-EVENT FLOW (M-Pesa Escrow)
   // ─────────────────────────────────────────────
-  if (effectiveRoute === "PER_EVENT") {
+  if (resolvedRoute === "PER_EVENT") {
     if (!booking.agreed_fare || !booking.client_contact) {
-      throw error(400, "Per-event anchoring requires an agreed fare and client contact.")
+      throw error(400, "Per-event anchoring requires an agreed fare and client contact.");
     }
 
     const escrowResult = await initiatePerEventEscrow({
@@ -72,13 +71,13 @@ export const POST: RequestHandler = async ({ params, request, locals, cookies })
       agreedFareKes: booking.agreed_fare,
       clientPhone: booking.client_contact,
       vehicleId: booking.vehicle_id,
-    })
+    });
 
     if (!escrowResult.collection_initiated) {
       throw error(
         502,
-        "M-Pesa STK push to client failed. Verify the client phone number and retry.",
-      )
+        "M-Pesa STK push to client failed. Verify the client phone number and retry."
+      );
     }
 
     return json({
@@ -87,27 +86,32 @@ export const POST: RequestHandler = async ({ params, request, locals, cookies })
       per_event_fee_kes: escrowResult.platform_fee_kes,
       message:
         "M-Pesa payment request sent to client. Ledger anchor will fire automatically on payment confirmation.",
-    })
+    });
   }
 
   // ─────────────────────────────────────────────
-  // SUBSCRIPTION FLOW (direct anchor)
+  // SUBSCRIPTION FLOW (Direct ledger anchor)
   // ─────────────────────────────────────────────
-  const result = await anchorBusinessReservation(bookingId, operatorId)
+  const result = await anchorBusinessReservation(bookingId, operatorId);
 
-  await redis.del(`ledger_gate:${orgId}`)
+  // Invalidate ledger gate cache
+  await streamClient.del(`ledger_gate:${orgId}`);
+
+  // Track analytics with PostHog (correct usage)
+  const posthog = getPostHogClient();
 
   await posthog.capture({
     distinctId: operatorId,
     event: "business_reservation_ledger_anchored_api",
     properties: {
       booking_id: bookingId,
-      ledger_tx_id: result?.txId ?? null,
+      ledger_tx_id: result.txId,
+      org_id: orgId,
     },
-  })
+  });
 
   return json({
     status: "LEDGER_ANCHORED",
     ledger_tx_id: result.txId,
-  })
-}
+  });
+};

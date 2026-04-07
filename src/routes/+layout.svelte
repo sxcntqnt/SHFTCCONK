@@ -1,5 +1,5 @@
-<!-- src/routes/+layout.svelte -->
-<!--
+/* src/routes/+layout.svelte 
+
   Root layout: auth state listener + navigation progress bar.
 
   RESPONSIBILITIES:
@@ -18,7 +18,7 @@
     - auth.ts: checkVersionAndRefresh(), clearSession(), sessionStore
     - hooks.server.ts: supabase client from locals
     - +layout.ts: provides { supabase, session } via data
--->
+*/
 <script lang="ts">
   import "../app.css"
   import { invalidate, goto } from "$app/navigation"

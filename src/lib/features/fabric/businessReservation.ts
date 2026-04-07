@@ -1,35 +1,44 @@
-import { supabaseAdmin } from "$lib/server/db"
-import { redis } from "$lib/server/redis"
+// src/lib/features/billing/anchorBusinessReservation.ts
+import { supabaseAdmin } from "$lib/server/db";
+import { streamClient } from "$lib/server/redis";
 
-// Minimal Fabric gateway stub — in production this should call the Fabric SDK
+// Minimal Fabric gateway stub — replace with real Fabric SDK in production
 export const fabricGateway = {
   async submitTransaction(contract: string, fn: string, payload: string) {
-    const txId = `FABRIC-TX-${Date.now().toString(36)}`
-    return { transactionId: txId }
+    // TODO: In production, integrate with Hyperledger Fabric SDK
+    const txId = `FABRIC-TX-${Date.now().toString(36)}`;
+    return { transactionId: txId };
   },
-}
+};
 
+/**
+ * Anchors a business reservation to the ledger (Hyperledger Fabric)
+ * Called after successful payment (either subscription or per-event escrow)
+ */
 export async function anchorBusinessReservation(
   bookingId: string,
-  operatorId: string,
-) {
-  // ✅ Fetch booking
+  operatorId: string
+): Promise<{
+  txId: string;
+  status: string;
+}> {
+  // Fetch booking details
   const { data: booking, error: fetchError } = await supabaseAdmin
     .from("fleet_bookings")
     .select("*")
     .eq("id", bookingId)
-    .single()
+    .single();
 
   if (fetchError || !booking) {
-    throw new Error("Booking not found")
+    throw new Error("Booking not found");
   }
 
-  // (Optional but recommended) validate operator ownership
+  // Security: Validate operator ownership
   if (booking.operator_id !== operatorId) {
-    throw new Error("Operator mismatch")
+    throw new Error("Operator mismatch: Unauthorized");
   }
 
-  // ✅ Construct ledger payload
+  // Construct ledger payload
   const ledgerPayload = {
     event_type: "BUSINESS_RESERVATION",
     booking_id: booking.id,
@@ -43,18 +52,18 @@ export async function anchorBusinessReservation(
     agreed_fare_kes: booking.agreed_fare,
     mpesa_reference: booking.mpesa_reference,
     anchored_at: new Date().toISOString(),
-  }
+  };
 
-  // ✅ Send to Fabric
+  // Submit to Fabric ledger
   const fabricResult = await fabricGateway.submitTransaction(
     "FleetBookingContract",
     "CreateBusinessReservation",
-    JSON.stringify(ledgerPayload),
-  )
+    JSON.stringify(ledgerPayload)
+  );
 
-  const txId = fabricResult.transactionId
+  const txId = fabricResult.transactionId;
 
-  // ✅ Update booking (ADMIN)
+  // Update booking status in Supabase
   const { error: updateError } = await supabaseAdmin
     .from("fleet_bookings")
     .update({
@@ -63,14 +72,17 @@ export async function anchorBusinessReservation(
       route_deviation_authorised: true,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", bookingId)
+    .eq("id", bookingId);
 
   if (updateError) {
-    throw new Error(`Failed to update booking: ${updateError.message}`)
+    throw new Error(`Failed to update booking: ${updateError.message}`);
   }
 
-  // ✅ Invalidate gate cache
-  await redis.del(`ledger_gate:${booking.org_id}`)
+  // Invalidate ledger gate cache so the next check reflects the new anchor count
+  await streamClient.del(`ledger_gate:${booking.org_id}`);
 
-  return { txId, status: "LEDGER_ANCHORED" }
+  return {
+    txId,
+    status: "LEDGER_ANCHORED",
+  };
 }

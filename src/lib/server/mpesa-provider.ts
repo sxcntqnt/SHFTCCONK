@@ -1,14 +1,4 @@
 // src/lib/server/mpesa-provider.ts
-//
-// Centralised M-Pesa provider — Safaricom Daraja API.
-//
-// METHODS:
-//   processMpesaPush()       STK Push — passenger pays reservation fee / plan
-//   queryStkStatus()         Poll STK Push result (fallback if callback is slow)
-//   sendB2CPayment()         B2C — tip payouts to drivers / conductors (10% each)
-//   sendB2BPayment()         B2B — SACCO → paybill revenue share settlement
-//   queryTransactionStatus() General transaction status query
-
 import {
   MPESA_CONSUMER_KEY,
   MPESA_CONSUMER_SECRET,
@@ -19,321 +9,263 @@ import {
   MPESA_B2C_SHORT_CODE,
   MPESA_B2B_SHORT_CODE,
   MPESA_CALLBACK_URL,
-} from "$env/static/private"
-
-// ── Environment switch ────────────────────────────────────────────────────────
+} from "$env/static/private";
 
 const BASE_URL =
   process.env.NODE_ENV === "production"
     ? "https://api.safaricom.co.ke"
-    : "https://sandbox.safaricom.co.ke"
+    : "https://sandbox.safaricom.co.ke";
 
-// ── OAuth token cache ─────────────────────────────────────────────────────────
-
-let cachedToken: string | null = null
-let tokenExpiry = 0
+// ── Token Cache ─────────────────────────────────────────────────────────────
+let cachedToken: string | null = null;
+let tokenExpiry = 0;
 
 async function getAccessToken(): Promise<string> {
-  const now = Date.now()
-  if (cachedToken && now < tokenExpiry) return cachedToken
+  const now = Date.now();
+  if (cachedToken && now < tokenExpiry) return cachedToken;
 
-  const auth = Buffer.from(
-    `${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`,
-  ).toString("base64")
+  const auth = Buffer.from(`${MPESA_CONSUMER_KEY}:${MPESA_CONSUMER_SECRET}`).toString("base64");
 
-  const res = await fetch(
-    `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
-    { headers: { Authorization: `Basic ${auth}` } },
-  )
+  const res = await fetch(`${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
 
-  if (!res.ok) throw new Error(`M-Pesa auth failed: ${res.status}`)
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`M-Pesa OAuth failed: ${res.status} - ${err}`);
+  }
 
-  const data = await res.json()
-  cachedToken = data.access_token as string
-  tokenExpiry = now + (data.expires_in as number) * 1000 - 60_000 // 60s buffer
-  return cachedToken!
+  const data = await res.json();
+  cachedToken = data.access_token;
+  tokenExpiry = now + (data.expires_in as number) * 1000 - 60_000; // 60s buffer
+
+  return cachedToken!;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// ── Helpers ─────────────────────────────────────────────────────────────────
 function generateTimestamp(): string {
-  return new Date()
-    .toISOString()
-    .replace(/[-:T.Z]/g, "")
-    .slice(0, 14)
+  return new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
 }
 
 function generatePassword(timestamp: string): string {
   return Buffer.from(
-    `${MPESA_BUSINESS_SHORT_CODE}${MPESA_API_PASS_KEY}${timestamp}`,
-  ).toString("base64")
+    `${MPESA_BUSINESS_SHORT_CODE}${MPESA_API_PASS_KEY}${timestamp}`
+  ).toString("base64");
 }
 
 /**
- * Normalise a Kenyan phone to 2547XXXXXXXX (Daraja format).
- * Accepts: 07XX, +2547XX, 2547XX
+ * Normalizes Kenyan phone number to 2547XXXXXXXX format
  */
 export function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  if (digits.startsWith("0")) return "254" + digits.slice(1)
-  if (digits.startsWith("254")) return digits
-  return digits
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("0")) return "254" + digits.slice(1);
+  if (digits.startsWith("254")) return digits;
+  if (digits.length === 9 && digits.startsWith("7")) return "254" + digits;
+  return digits;
 }
 
-// ── Daraja response types ─────────────────────────────────────────────────────
-
+// ── Response Interfaces ─────────────────────────────────────────────────────
 export interface StkPushResponse {
-  MerchantRequestID: string
-  CheckoutRequestID: string
-  ResponseCode: string
-  ResponseDescription: string
-  CustomerMessage: string
+  MerchantRequestID: string;
+  CheckoutRequestID: string;
+  ResponseCode: string;
+  ResponseDescription: string;
+  CustomerMessage: string;
 }
 
 export interface StkStatusResponse {
-  ResponseCode: string
-  ResponseDescription: string
-  MerchantRequestID: string
-  CheckoutRequestID: string
-  ResultCode: string
-  ResultDesc: string
+  ResponseCode: string;
+  ResponseDescription: string;
+  MerchantRequestID: string;
+  CheckoutRequestID: string;
+  ResultCode?: string;
+  ResultDesc?: string;
 }
 
-export interface AsyncDarajaResponse {
-  ConversationID: string
-  OriginatorConversationID: string
-  ResponseCode: string
-  ResponseDescription: string
+export interface AsyncResponse {
+  ConversationID: string;
+  OriginatorConversationID: string;
+  ResponseCode: string;
+  ResponseDescription: string;
 }
 
-// ── 1. STK Push (Customer → Platform) ────────────────────────────────────────
+// ── Main M-Pesa Service Object ──────────────────────────────────────────────
+export const mpesa = {
+  // ── STK Push ─────────────────────────────────────────────────────────────
+  async stkPush(params: {
+    phone: string;
+    amount: number;
+    account_reference?: string;
+    transaction_desc?: string;
+    callback_url?: string; // optional override
+  }): Promise<{ success: boolean; checkout_request_id: string | null; data?: StkPushResponse }> {
+    const token = await getAccessToken();
+    const timestamp = generateTimestamp();
+    const password = generatePassword(timestamp);
 
-/**
- * Initiate an M-Pesa STK Push to a passenger's phone.
- *
- * Used for:
- *   - Seat reservation fee (KES 19 × seats)
- *   - Plan subscription payment (KES 1,499 / custom)
- *
- * @param phoneNumber       Kenyan phone in any format
- * @param amount            KES whole number
- * @param accountReference  Shows on customer M-Pesa receipt (max 12 chars)
- * @param transactionDesc   Short description on STK prompt (max 13 chars)
- */
-export async function processMpesaPush(
-  phoneNumber: string,
-  amount: number,
-  accountReference = "MATATU_PULSE",
-  transactionDesc = "Payment",
-): Promise<StkPushResponse> {
-  const token = await getAccessToken()
-  const timestamp = generateTimestamp()
-  const password = generatePassword(timestamp)
+    const payload = {
+      BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: Math.round(params.amount),
+      PartyA: formatPhone(params.phone),
+      PartyB: MPESA_BUSINESS_SHORT_CODE,
+      PhoneNumber: formatPhone(params.phone),
+      CallBackURL: params.callback_url || `${MPESA_CALLBACK_URL}/stk-callback`,
+      AccountReference: (params.account_reference || "MATATU_PULSE").slice(0, 12),
+      TransactionDesc: (params.transaction_desc || "Payment").slice(0, 13),
+    };
 
-  const payload = {
-    BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: "CustomerPayBillOnline",
-    Amount: Math.round(amount),
-    PartyA: formatPhone(phoneNumber),
-    PartyB: MPESA_BUSINESS_SHORT_CODE,
-    PhoneNumber: formatPhone(phoneNumber),
-    CallBackURL: `${MPESA_CALLBACK_URL}/stk-callback`,
-    AccountReference: accountReference.slice(0, 12),
-    TransactionDesc: transactionDesc.slice(0, 13),
-  }
+    const res = await fetch(`${BASE_URL}/mpesa/stkpush/v1/processrequest`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const res = await fetch(`${BASE_URL}/mpesa/stkpush/v1/processrequest`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
+    const data = await res.json();
 
-  const data = await res.json()
-  if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(
-      data?.errorMessage ?? data?.ResponseDescription ?? "STK Push failed",
-    )
-  }
+    if (!res.ok || data.ResponseCode !== "0") {
+      console.error("STK Push failed:", data);
+      return {
+        success: false,
+        checkout_request_id: null,
+        data,
+      };
+    }
 
-  return data as StkPushResponse
-}
+    return {
+      success: true,
+      checkout_request_id: data.CheckoutRequestID,
+      data: data as StkPushResponse,
+    };
+  },
 
-/**
- * Poll STK Push result by CheckoutRequestID.
- * Use if the STK callback hasn't arrived within ~30s.
- */
-export async function queryStkStatus(
-  checkoutRequestId: string,
-): Promise<StkStatusResponse> {
-  const token = await getAccessToken()
-  const timestamp = generateTimestamp()
-  const password = generatePassword(timestamp)
+  // ── Query STK Status ─────────────────────────────────────────────────────
+  async queryStkStatus(checkoutRequestId: string): Promise<StkStatusResponse> {
+    const token = await getAccessToken();
+    const timestamp = generateTimestamp();
+    const password = generatePassword(timestamp);
 
-  const payload = {
-    BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
-    Password: password,
-    Timestamp: timestamp,
-    CheckoutRequestID: checkoutRequestId,
-  }
+    const payload = {
+      BusinessShortCode: MPESA_BUSINESS_SHORT_CODE,
+      Password: password,
+      Timestamp: timestamp,
+      CheckoutRequestID: checkoutRequestId,
+    };
 
-  const res = await fetch(`${BASE_URL}/mpesa/stkpushquery/v1/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
+    const res = await fetch(`${BASE_URL}/mpesa/stkpushquery/v1/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-  return res.json() as Promise<StkStatusResponse>
-}
+    return res.json();
+  },
 
-// ── 2. B2C (Platform → Customer) — Tip payouts ───────────────────────────────
+  // ── B2C Payment (Tips, etc.) ─────────────────────────────────────────────
+  async sendB2CPayment(params: {
+    phoneNumber: string;
+    amount: number;
+    remarks?: string;
+    occasion?: string;
+  }): Promise<AsyncResponse> {
+    const token = await getAccessToken();
 
-/**
- * Send an M-Pesa B2C payment to a driver or conductor.
- *
- * Fee model: each gets 10% of the tip total.
- * e.g. KES 100 tip → driver KES 10, conductor KES 10, platform KES 80.
- *
- * Call this twice per tip — once for driver, once for conductor.
- * Result arrives asynchronously via b2c-callback webhook.
- */
-export async function sendB2CPayment({
-  phoneNumber,
-  amount,
-  remarks,
-  occasion,
-}: {
-  phoneNumber: string
-  amount: number
-  remarks?: string
-  occasion?: string
-}): Promise<AsyncDarajaResponse> {
-  const token = await getAccessToken()
+    const payload = {
+      InitiatorName: MPESA_INITIATOR_NAME,
+      SecurityCredential: MPESA_INITIATOR_PASSWORD,
+      CommandID: "BusinessPayment",
+      Amount: Math.round(params.amount),
+      PartyA: MPESA_B2C_SHORT_CODE,
+      PartyB: formatPhone(params.phoneNumber),
+      Remarks: (params.remarks ?? "Tip payout").slice(0, 100),
+      QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2c-timeout`,
+      ResultURL: `${MPESA_CALLBACK_URL}/b2c-callback`,
+      Occasion: (params.occasion ?? "Tip payout").slice(0, 100),
+    };
 
-  const payload = {
-    InitiatorName: MPESA_INITIATOR_NAME,
-    SecurityCredential: MPESA_INITIATOR_PASSWORD,
-    CommandID: "BusinessPayment",
-    Amount: Math.round(amount),
-    PartyA: MPESA_B2C_SHORT_CODE,
-    PartyB: formatPhone(phoneNumber),
-    Remarks: (remarks ?? "Tip payout").slice(0, 100),
-    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2c-timeout`,
-    ResultURL: `${MPESA_CALLBACK_URL}/b2c-callback`,
-    Occasion: (occasion ?? "Tip payout").slice(0, 100),
-  }
+    const res = await fetch(`${BASE_URL}/mpesa/b2c/v1/paymentrequest`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  const res = await fetch(`${BASE_URL}/mpesa/b2c/v1/paymentrequest`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
+    const data = await res.json();
+    if (!res.ok || data.ResponseCode !== "0") {
+      throw new Error(data?.errorMessage ?? data?.ResponseDescription ?? "B2C failed");
+    }
 
-  const data = await res.json()
-  if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(
-      data?.errorMessage ?? data?.ResponseDescription ?? "B2C payment failed",
-    )
-  }
+    return data as AsyncResponse;
+  },
 
-  return data as AsyncDarajaResponse
-}
+  // ── B2B Payment (SACCO settlements) ───────────────────────────────────────
+  async sendB2BPayment(params: {
+    shortcode: string;
+    amount: number;
+    remarks?: string;
+    accountReference?: string;
+  }): Promise<AsyncResponse> {
+    const token = await getAccessToken();
 
-// ── 3. B2B (Platform → Business) — Revenue share settlement ──────────────────
+    const payload = {
+      Initiator: MPESA_INITIATOR_NAME,
+      SecurityCredential: MPESA_INITIATOR_PASSWORD,
+      CommandID: "BusinessPayBill",
+      SenderIdentifierType: "4",
+      RecieverIdentifierType: "4",
+      Amount: Math.round(params.amount),
+      PartyA: MPESA_B2B_SHORT_CODE,
+      PartyB: params.shortcode,
+      AccountReference: (params.accountReference ?? "SETTLEMENT").slice(0, 12),
+      Remarks: (params.remarks ?? "Revenue share settlement").slice(0, 100),
+      QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2b-timeout`,
+      ResultURL: `${MPESA_CALLBACK_URL}/b2b-callback`,
+    };
 
-/**
- * Send an M-Pesa B2B payment to a SACCO paybill or till number.
- *
- * Used for daily/weekly SACCO share settlements.
- * SACCO receives their cut of the reservation fee (4/19 ≈ KES 4 per seat).
- *
- * Result arrives asynchronously via b2b-callback webhook.
- */
-export async function sendB2BPayment({
-  shortcode,
-  amount,
-  remarks,
-  accountReference,
-}: {
-  shortcode: string
-  amount: number
-  remarks?: string
-  accountReference?: string
-}): Promise<AsyncDarajaResponse> {
-  const token = await getAccessToken()
+    const res = await fetch(`${BASE_URL}/mpesa/b2b/v1/paymentrequest`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  const payload = {
-    Initiator: MPESA_INITIATOR_NAME,
-    SecurityCredential: MPESA_INITIATOR_PASSWORD,
-    CommandID: "BusinessPayBill",
-    SenderIdentifierType: "4",
-    RecieverIdentifierType: "4",
-    Amount: Math.round(amount),
-    PartyA: MPESA_B2B_SHORT_CODE,
-    PartyB: shortcode,
-    AccountReference: (accountReference ?? "SETTLEMENT").slice(0, 12),
-    Remarks: (remarks ?? "Revenue share settlement").slice(0, 100),
-    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/b2b-timeout`,
-    ResultURL: `${MPESA_CALLBACK_URL}/b2b-callback`,
-  }
+    const data = await res.json();
+    if (!res.ok || data.ResponseCode !== "0") {
+      throw new Error(data?.errorMessage ?? data?.ResponseDescription ?? "B2B failed");
+    }
 
-  const res = await fetch(`${BASE_URL}/mpesa/b2b/v1/paymentrequest`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
+    return data as AsyncResponse;
+  },
 
-  const data = await res.json()
-  if (!res.ok || data.ResponseCode !== "0") {
-    throw new Error(
-      data?.errorMessage ?? data?.ResponseDescription ?? "B2B payment failed",
-    )
-  }
+  // ── Transaction Status Query ─────────────────────────────────────────────
+  async queryTransactionStatus(transactionId: string) {
+    const token = await getAccessToken();
 
-  return data as AsyncDarajaResponse
-}
+    const payload = {
+      Initiator: MPESA_INITIATOR_NAME,
+      SecurityCredential: MPESA_INITIATOR_PASSWORD,
+      CommandID: "TransactionStatusQuery",
+      TransactionID: transactionId,
+      PartyA: MPESA_BUSINESS_SHORT_CODE,
+      IdentifierType: "4",
+      ResultURL: `${MPESA_CALLBACK_URL}/status-callback`,
+      QueueTimeOutURL: `${MPESA_CALLBACK_URL}/status-timeout`,
+      Remarks: "Status check",
+      Occasion: "Status",
+    };
 
-// ── 4. Transaction status query ───────────────────────────────────────────────
+    const res = await fetch(`${BASE_URL}/mpesa/transactionstatus/v1/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-export async function queryTransactionStatus(
-  transactionId: string,
-): Promise<unknown> {
-  const token = await getAccessToken()
-
-  const payload = {
-    Initiator: MPESA_INITIATOR_NAME,
-    SecurityCredential: MPESA_INITIATOR_PASSWORD,
-    CommandID: "TransactionStatusQuery",
-    TransactionID: transactionId,
-    PartyA: MPESA_BUSINESS_SHORT_CODE,
-    IdentifierType: "4",
-    ResultURL: `${MPESA_CALLBACK_URL}/status-callback`,
-    QueueTimeOutURL: `${MPESA_CALLBACK_URL}/status-timeout`,
-    Remarks: "Status check",
-    Occasion: "Status",
-  }
-
-  const res = await fetch(`${BASE_URL}/mpesa/transactionstatus/v1/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
-
-  return res.json()
-}
+    return res.json();
+  },
+};

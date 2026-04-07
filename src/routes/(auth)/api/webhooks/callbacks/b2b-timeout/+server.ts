@@ -4,52 +4,59 @@
 // TABLE: mpesa_settlements
 // LOOKUP KEY: conversation_id
 
-import type { RequestHandler } from "./$types"
-import { json } from "@sveltejs/kit"
-import { createClient } from "@supabase/supabase-js"
-import { PRIVATE_SUPABASE_SERVICE_ROLE } from "$env/static/private"
-import { PUBLIC_SUPABASE_URL } from "$env/static/public"
-
-const supabaseAdmin = createClient(
-  PUBLIC_SUPABASE_URL,
-  PRIVATE_SUPABASE_SERVICE_ROLE,
-)
+import type { RequestHandler } from "./$types";
+import { json } from "@sveltejs/kit";
+import { supabaseAdmin } from "$lib/server/db";
 
 export const POST: RequestHandler = async ({ request }) => {
-  let body: unknown
+  let body: unknown;
+
   try {
-    body = await request.json()
+    body = await request.json();
   } catch {
-    return json({ ResultCode: 0, ResultDesc: "Received" })
+    // Even on invalid JSON, we should acknowledge to Safaricom
+    return json({ ResultCode: 0, ResultDesc: "Received" });
   }
 
-  const conversationId = (body as Record<string, unknown>)?.ConversationID as
-    | string
-    | undefined
+  const conversationId = (body as Record<string, unknown>)?.ConversationID as string | undefined;
 
-  if (conversationId) {
-    const { error } = await supabaseAdmin
-      .from("mpesa_settlements")
-      .update({
-        status: "failed",
-        result_code: null,
-        result_description:
-          "Queue timeout — request did not reach Safaricom in time",
-      })
-      .eq("conversation_id", conversationId)
+  if (!conversationId) {
+    console.warn("[b2b-timeout] Received timeout callback without ConversationID");
+    return json({ ResultCode: 0, ResultDesc: "Received" });
+  }
 
-    if (error) {
-      console.error("[b2b-timeout] DB update failed:", error)
-    }
-
-    await supabaseAdmin.from("audit_logs").insert({
-      event_type: "mpesa_b2b_timeout",
-      target_table: "mpesa_settlements",
-      details: { conversation_id: conversationId },
+  // ── Mark settlement as timed out ───────────────────────────────────────
+  const { error: updateError } = await supabaseAdmin
+    .from("mpesa_settlements")
+    .update({
+      status: "failed",
+      result_code: null,
+      result_description: "Queue timeout — request did not reach Safaricom in time",
+      completed_at: null,
+      updated_at: new Date().toISOString(),
     })
+    .eq("conversation_id", conversationId);
 
-    console.warn("[b2b-timeout] Settlement timed out:", conversationId)
+  if (updateError) {
+    console.error("[b2b-timeout] Failed to update mpesa_settlements:", updateError);
   }
 
-  return json({ ResultCode: 0, ResultDesc: "Received" })
-}
+  // ── Audit log ───────────────────────────────────────────────────────────
+  const { error: auditError } = await supabaseAdmin.from("audit_logs").insert({
+    event_type: "mpesa_b2b_timeout",
+    target_table: "mpesa_settlements",
+    details: {
+      conversation_id: conversationId,
+      reason: "Queue timeout",
+    },
+  });
+
+  if (auditError) {
+    console.error("[b2b-timeout] Failed to insert audit log:", auditError);
+  }
+
+  console.warn("[b2b-timeout] B2B Settlement timed out:", conversationId);
+
+  // Always acknowledge to Safaricom
+  return json({ ResultCode: 0, ResultDesc: "Received" });
+};
