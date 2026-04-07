@@ -230,7 +230,7 @@ function resolveDestination(
   // ─── Just accepted invite → org dashboard ────────────────
   if (ctx.inviteRedeemed && ctx.inviteResult) {
     if (profileIncomplete) {
-      return "/account?complete_profile=true"
+      return "/app/create_profile"
     }
 
     // Direct to the invited org's dashboard

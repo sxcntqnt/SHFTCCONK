@@ -4,6 +4,7 @@
   import { goto } from "$app/navigation"
   import { page } from "$app/state" // Svelte 5 — not $app/stores
   import { setUserFromBootstrap } from "$lib/features/auth/stores/auth"
+  import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute"
   import posthog from "posthog-js"
   import { browser } from "$app/environment"
 
@@ -34,7 +35,7 @@
 
           if (error) {
             console.error("bootstrap_session:", error)
-            goto("/account")
+            goto("/app/dashboard")
             return
           }
 
@@ -55,11 +56,11 @@
             })
           }
 
-          goto(payload?.route ?? "/account")
+          goto(resolveRouteFromBootstrap(payload))
         } catch (err) {
           if (!mounted) return
           console.error("bootstrap_session threw:", err)
-          goto("/account")
+          goto("/app/dashboard")
         }
       },
     )

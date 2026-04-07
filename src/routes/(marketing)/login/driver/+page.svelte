@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation"
   import { onMount } from "svelte"
+  import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute"
 
   let { data } = $props()
 
@@ -75,11 +76,11 @@
         await data.supabase.rpc("bootstrap_session")
       if (rpcErr) {
         console.error("bootstrap_session", rpcErr)
-        goto("/account")
+        goto("/app/dashboard")
         return
       }
       const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
-      goto(payload?.route ?? "/account")
+      goto(resolveRouteFromBootstrap(payload))
     } catch (e: any) {
       error = e.message ?? "Invalid code. Please check and try again."
     } finally {
