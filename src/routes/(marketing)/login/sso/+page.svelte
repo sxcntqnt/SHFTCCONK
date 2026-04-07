@@ -66,7 +66,7 @@
     loading = provId
     try {
       const options: Record<string, any> = {
-        redirectTo: `${window.location.origin}/auth/callback?next=/account`,
+        redirectTo: `${window.location.origin}/auth/callback`,
       }
       // Restrict to the authority's domain when known
       if (hd) {
