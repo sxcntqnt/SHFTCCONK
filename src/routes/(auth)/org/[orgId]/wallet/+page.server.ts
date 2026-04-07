@@ -13,7 +13,7 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { sendB2BPayment } from "$lib/server/mpesa-provider"
+import { mpesa } from "$lib/server/mpesa-provider"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
 import type {
   WalletTransaction,
@@ -31,11 +31,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // ── Gate ──────────────────────────────────────────────────────────────────
   if (!userState || !user) throw redirect(303, "/login")
 
-  // Requires finance.list permission scoped to this org
   const actorCtx = userState.activeContexts.find((ctx) => {
     if (ctx.status !== "active") return false
 
-    // Chair/admin always have finance access
     if (
       [
         ACTOR_TYPES.SUPER_ADMIN,
@@ -49,7 +47,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       )
     }
 
-    // Staff: must have finance.list permission scoped to this org
     if (ORG_STAFF_TYPES.includes(ctx.type)) {
       return ctx.permissions.some(
         (p) =>
@@ -71,7 +68,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     ACTOR_TYPES.ORG_CHAIR,
   ].includes(actorCtx.type as any)
 
-  // Org name from memberships
   const orgMembership = actorCtx.orgMemberships.find(
     (m) => m.organization_id === orgId,
   )
@@ -98,8 +94,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       .order("created_at", { ascending: false })
       .limit(50),
 
-    // Org's Hyperledger registration — event_name = 'register_organisation'
-    // Find via any actor in this org that completed org registration
     supabase
       .from("hyperledger_enrollment_queue")
       .select("status, enrolled_at, fabric_user_id, msp_id, last_error")
@@ -109,7 +103,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       .maybeSingle(),
   ])
 
-  // ── Levy transactions ──────────────────────────────────────────────────────
   const levyRate = DEFAULT_REVENUE_CONFIG.daily.saccoLevyRate
 
   const levyTransactions: WalletTransaction[] = (reconResult.data ?? []).map(
@@ -132,7 +125,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     },
   )
 
-  // ── Settlement transactions ────────────────────────────────────────────────
   const settlementTx: WalletTransaction[] = (settlementResult.data ?? []).map(
     (r) => ({
       id: r.id,
@@ -183,7 +175,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     (reconResult.data ?? []).map((r) => r.vehicle_id),
   ).size
 
-  // ── Hyperledger org registration status ───────────────────────────────────
   const hlfData = hlfResult.data
   const hlfStatus = hlfData
     ? {
@@ -191,7 +182,6 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         enrolledAt: hlfData.enrolled_at,
         fabricId: hlfData.fabric_user_id,
         mspId: hlfData.msp_id,
-        // Org must be registered on-chain to validate crew trips
         canValidate: true,
       }
     : {
@@ -223,7 +213,6 @@ export const actions: Actions = {
 
     const { orgId } = params
 
-    // Re-validate finance.write permission in the action
     const canSettle = userState.activeContexts.some((ctx) => {
       if (ctx.status !== "active") return false
       if (
@@ -260,7 +249,6 @@ export const actions: Actions = {
         success: false,
       }
 
-    // Daily cap check
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
     const { data: todaySettlements } = await supabase
@@ -281,14 +269,13 @@ export const actions: Actions = {
       }
 
     try {
-      const response = await sendB2BPayment({
+      const response = await mpesa.sendB2BPayment({
         shortcode,
         amount: amountKes,
         remarks: reference || "SACCO settlement",
         accountReference: reference || "SETTLEMENT",
       })
 
-      // Find the initiating actor for this org
       const initiatingCtx = userState.activeContexts.find(
         (ctx) =>
           ctx.status === "active" &&

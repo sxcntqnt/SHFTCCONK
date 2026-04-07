@@ -13,7 +13,7 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { processMpesaPush, sendB2BPayment } from "$lib/server/mpesa-provider"
+import { mpesa } from "$lib/server/mpesa-provider"
 import type {
   WalletTransaction,
   WalletSummary,
@@ -177,12 +177,19 @@ export const actions: Actions = {
       return { error: "Enter a valid Kenyan phone (+254...)", success: false }
 
     try {
-      const response = await processMpesaPush(
+      const response = await mpesa.stkPush({
         phone,
-        amountKes,
-        "OP_WITHDRAW",
-        "Operator withdrawal",
-      )
+        amount: amountKes,
+        account_reference: "OP_WITHDRAW",
+        transaction_desc: "Operator withdrawal",
+      })
+
+      if (!response.success || !response.checkout_request_id) {
+        return {
+          error: "Failed to initiate withdrawal request.",
+          success: false,
+        }
+      }
 
       await supabase.from("wallet_transactions").insert({
         actor_id: operatorCtxData.actorId,
@@ -192,7 +199,7 @@ export const actions: Actions = {
         amount_kes: amountKes,
         direction: "out",
         status: "pending",
-        mpesa_ref: response.CheckoutRequestID,
+        mpesa_ref: response.checkout_request_id,
       })
 
       await supabase.from("audit_logs").insert({
@@ -204,7 +211,7 @@ export const actions: Actions = {
         details: {
           amount_kes: amountKes,
           phone,
-          checkout_request_id: response.CheckoutRequestID,
+          checkout_request_id: response.checkout_request_id,
         },
       })
 
@@ -244,7 +251,7 @@ export const actions: Actions = {
       }
 
     try {
-      const response = await sendB2BPayment({
+      const response = await mpesa.sendB2BPayment({
         shortcode,
         amount: amountKes,
         remarks: reference || "Operator B2B settlement",

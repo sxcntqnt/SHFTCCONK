@@ -23,7 +23,7 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { processMpesaPush } from "$lib/server/mpesa-provider"
+import { mpesa } from "$lib/server/mpesa-provider"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
 import type {
   WalletTransaction,
@@ -53,9 +53,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   const crewType = actorCtx.type === ACTOR_TYPES.DRIVER ? "DRIVER" : "CONDUCTOR"
 
   // ── Vehicle assignment ─────────────────────────────────────────────────────
-  // Driver: driverAssignment from resolveUserState
-  // Conductor: conductorAssignment from resolveUserState
-  // Plate comes from a vehicles join — same approach as crew +layout.server.ts
   const activeVehicleId =
     crewType === "DRIVER"
       ? (actorCtx.driverAssignment?.vehicle_id ?? null)
@@ -78,8 +75,6 @@ export const load: PageServerLoad = async ({ locals }) => {
   // ── Parallel fetch ─────────────────────────────────────────────────────────
   const [vehicleResult, tipResult, withdrawResult, hlfResult] =
     await Promise.all([
-      // Vehicle plate — re-query with reg_number join
-      // (resolveUserState has vehicle_id but not reg_number — see crew layout note)
       activeVehicleId
         ? supabase
             .from("vehicles")
@@ -88,7 +83,6 @@ export const load: PageServerLoad = async ({ locals }) => {
             .maybeSingle()
         : Promise.resolve({ data: null }),
 
-      // Tip payouts received by this actor
       supabase
         .from("mpesa_payouts")
         .select("id, amount, status, transaction_id, remarks, created_at")
@@ -97,7 +91,6 @@ export const load: PageServerLoad = async ({ locals }) => {
         .order("created_at", { ascending: false })
         .limit(60),
 
-      // Withdrawal outflows
       supabase
         .from("mpesa_payouts")
         .select("id, amount, status, transaction_id, created_at")
@@ -106,7 +99,6 @@ export const load: PageServerLoad = async ({ locals }) => {
         .order("created_at", { ascending: false })
         .limit(20),
 
-      // Hyperledger enrollment status for this crew actor
       supabase
         .from("hyperledger_enrollment_queue")
         .select(
@@ -120,7 +112,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const vehiclePlate = vehicleResult.data?.reg_number ?? null
 
-  // ── Tip transactions ───────────────────────────────────────────────────────
   const tipTx: WalletTransaction[] = (tipResult.data ?? []).map((p) => ({
     id: p.id,
     type: "tip_share",
@@ -137,8 +128,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     createdAt: p.created_at,
   }))
 
-  // ── Reservation share transactions ─────────────────────────────────────────
-  // KES 2 per seat — calculated from confirmed bookings on the assigned vehicle
   const perSeatShare =
     crewType === "DRIVER"
       ? Math.floor(
@@ -175,7 +164,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     })
   }
 
-  // ── Withdrawal transactions ────────────────────────────────────────────────
   const withdrawTx: WalletTransaction[] = (withdrawResult.data ?? []).map(
     (w) => ({
       id: `wd-${w.id}`,
@@ -194,12 +182,10 @@ export const load: PageServerLoad = async ({ locals }) => {
     }),
   )
 
-  // ── Merge and sort ─────────────────────────────────────────────────────────
   const transactions = [...tipTx, ...resTx, ...withdrawTx].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )
 
-  // ── Summary ────────────────────────────────────────────────────────────────
   const completedIn = transactions.filter(
     (t) => t.direction === "in" && t.status === "completed",
   )
@@ -222,9 +208,6 @@ export const load: PageServerLoad = async ({ locals }) => {
     currency: "KES",
   }
 
-  // ── Hyperledger identity status ────────────────────────────────────────────
-  // Crew need an active Fabric identity to log fares and trips on-chain.
-  // This does NOT block M-Pesa wallet actions — only on-chain logging.
   const hlfData = hlfResult.data
   const hlfStatus = hlfData
     ? {
@@ -234,12 +217,10 @@ export const load: PageServerLoad = async ({ locals }) => {
         mspId: hlfData.msp_id,
         lastError: hlfData.last_error,
         attempts: hlfData.attempts,
-        // Crew can only log on-chain with an active Fabric identity
         canLogOnChain: hlfData.status === "success",
       }
     : null
 
-  // Phone from profiles (added via migration 20260327000006)
   const mpesaPhone = ((userState.profile as any).phone as string | null) ?? null
 
   return {
@@ -263,7 +244,6 @@ export const actions: Actions = {
     const { user, userState, supabase } = locals
     if (!user || !userState) throw redirect(303, "/login")
 
-    // Re-validate crew actor in the action — don't trust client-side state
     const actorCtx =
       userState.activeContexts.find(
         (ctx) => ctx.type === ACTOR_TYPES.DRIVER && ctx.status === "active",
@@ -294,15 +274,22 @@ export const actions: Actions = {
       actorCtx.type === ACTOR_TYPES.DRIVER ? "DRIVER" : "CONDUCTOR"
 
     try {
-      const response = await processMpesaPush(
+      const response = await mpesa.stkPush({
         phone,
-        amountKes,
-        "CREW_WITHDRAW",
-        "Crew wallet withdrawal",
-      )
+        amount: amountKes,
+        account_reference: "CREW_WITHDRAW",
+        transaction_desc: "Crew wallet withdrawal",
+      })
+
+      if (!response.success || !response.checkout_request_id) {
+        return {
+          error: "Failed to initiate withdrawal request.",
+          success: false,
+        }
+      }
 
       await supabase.from("mpesa_payouts").insert({
-        conversation_id: response.CheckoutRequestID,
+        conversation_id: response.checkout_request_id,
         actor_id: actorCtx.actorId,
         phone,
         amount: amountKes,
@@ -321,7 +308,7 @@ export const actions: Actions = {
         details: {
           amount_kes: amountKes,
           phone,
-          checkout_request_id: response.CheckoutRequestID,
+          checkout_request_id: response.checkout_request_id,
           crew_type: crewType,
         },
       })

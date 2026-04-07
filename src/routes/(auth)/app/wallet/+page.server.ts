@@ -17,7 +17,7 @@
 
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { processMpesaPush } from "$lib/server/mpesa-provider"
+import { mpesa } from "$lib/server/mpesa-provider"
 import type {
   WalletTransaction,
   WalletSummary,
@@ -171,12 +171,19 @@ export const actions: Actions = {
     }
 
     try {
-      const response = await processMpesaPush(
+      const response = await mpesa.stkPush({
         phone,
-        amountKes,
-        "WALLET_TOPUP",
-        "Wallet top-up",
-      )
+        amount: amountKes,
+        account_reference: "WALLET_TOPUP",
+        transaction_desc: "Wallet top-up",
+      })
+
+      if (!response.success || !response.checkout_request_id) {
+        return {
+          error: "Failed to initiate M-Pesa request. Try again.",
+          success: false,
+        }
+      }
 
       await supabase.from("wallet_transactions").insert({
         profile_id: user.id,
@@ -185,15 +192,16 @@ export const actions: Actions = {
         amount_kes: amountKes,
         direction: "in",
         status: "pending",
-        mpesa_ref: response.CheckoutRequestID,
+        mpesa_ref: response.checkout_request_id,
       })
 
       return {
         success: true,
-        checkoutRequestId: response.CheckoutRequestID,
+        checkoutRequestId: response.checkout_request_id,
         message: "Check your phone and enter your M-Pesa PIN.",
       }
-    } catch {
+    } catch (err) {
+      console.error("Top-up error:", err)
       return { error: "Top-up failed. Please try again.", success: false }
     }
   },
