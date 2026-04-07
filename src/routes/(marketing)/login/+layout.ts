@@ -34,7 +34,11 @@ export const load = async ({ fetch, data, depends }) => {
   // Redirect if already logged in — route to the correct role dashboard
   const { session, user } = await load_helper(data.session, supabase)
   if (session && user) {
-    const { data: rpcData } = await supabase.rpc("bootstrap_session")
+    const { data: rpcData, error: rpcError } =
+      await supabase.rpc("bootstrap_session")
+    if (rpcError) {
+      console.error("[login/+layout] bootstrap_session failed:", rpcError)
+    }
     const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
     redirect(303, resolveRouteFromBootstrap(payload))
   }

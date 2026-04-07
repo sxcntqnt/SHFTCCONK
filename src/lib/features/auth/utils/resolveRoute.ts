@@ -69,8 +69,8 @@ export function resolveRouteFromBootstrap(
   if (ORG_ACTOR_TYPES.some((t) => actorTypes.has(t))) {
     if (orgs.length === 1) return `/org/${orgs[0].organization_id}/dashboard`
     if (orgs.length > 1) return "/org/select"
-    // Org actor but no org memberships yet — safe fallback
-    return "/org/dashboard"
+    // Org actor but no org memberships yet — fall back to the picker
+    return "/org/select"
   }
 
   if (actorTypes.has("DRIVER") || actorTypes.has("CONDUCTOR")) {
