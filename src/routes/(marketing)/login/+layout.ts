@@ -9,6 +9,7 @@ import {
 } from "@supabase/ssr"
 import { redirect } from "@sveltejs/kit"
 import { load_helper } from "$lib/load_helpers.js"
+import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute.js"
 
 export const load = async ({ fetch, data, depends }) => {
   depends("supabase:auth")
@@ -30,10 +31,12 @@ export const load = async ({ fetch, data, depends }) => {
         },
       })
 
-  // Redirect if already logged in
+  // Redirect if already logged in — route to the correct role dashboard
   const { session, user } = await load_helper(data.session, supabase)
   if (session && user) {
-    redirect(303, "/account")
+    const { data: rpcData } = await supabase.rpc("bootstrap_session")
+    const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
+    redirect(303, resolveRouteFromBootstrap(payload))
   }
 
   const url = data.url

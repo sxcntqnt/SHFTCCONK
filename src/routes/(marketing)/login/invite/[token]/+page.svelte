@@ -3,6 +3,7 @@
   import type { PageData } from "./$types"
   import posthog from "posthog-js"
   import { browser } from "$app/environment"
+  import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute"
 
   let { data } = $props()
 
@@ -80,7 +81,7 @@
         })
       }
 
-      setTimeout(() => goto(payload?.route ?? "/account"), 1800)
+      setTimeout(() => goto(resolveRouteFromBootstrap(payload)), 1800)
     } catch (e: any) {
       error =
         e.message ?? "Could not redeem invitation. The link may have expired."
