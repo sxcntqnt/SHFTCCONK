@@ -1,4 +1,4 @@
-script lang="ts">
+<script lang="ts">
   import { fly, fade } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { onMount } from 'svelte';
@@ -148,12 +148,12 @@ script lang="ts">
     flex-direction: column;
     padding: 30px;
     box-sizing: border-box;
-    'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', monospace;
     color: #fff;
     overflow: hidden;
   }
 
-  .alerts-header { display: flex; justify-content: space-between; align-items: center; 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; }
+  .alerts-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; }
   .alerts-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.15em; color: #555; display: flex; align-items: center; gap: 12px; }
   .status-dot { width: 8px; height: 8px; background: #00ff9d; border-radius: 50%; box-shadow: 0 0 12px #00ff9d; animation: pulse 2s infinite; }
   @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
@@ -170,14 +170,14 @@ script lang="ts">
 
   .accent-line { position: absolute; left: 0; top: 20%; height: 60%; width: 3px; border-radius: 0 4px 4px 0; }
   .alert-body { padding: 20px 24px; }
-  .alert-top { display: flex; justify-content: space-between; align-items: flex-start; 12px; }
+  .alert-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
   .vehicle-info { display: flex; align-items: center; gap: 14px; }
   .bus-icon { width: 22px; height: 22px; }
   .naming { display: flex; flex-direction: column; }
   .route-badge { font-size: 0.55rem; color: #ffffff44; letter-spacing: 0.1em; }
   .vehicle-id { font-size: 1.1rem; font-weight: 700; color: #fff; }
   .tag { font-size: 0.6rem; font-weight: 800; padding: 4px 12px; border-radius: 20px; border: 1px solid; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.3); }
-  .alert-msg { font-size: 0.8rem; color: #999; 24px; }
+  .alert-msg { font-size: 0.8rem; color: #999; margin-bottom: 24px; }
   
   .eta-container { display: flex; flex-direction: column; gap: 10px; }
   .track-info { display: flex; justify-content: space-between; align-items: center; }
@@ -232,7 +232,7 @@ script lang="ts">
   }
 
   /* --- PROGRESS BAR --- */
-  .progress-outer { height: 4px; background: rgba(255, 255, 255, 0.03); border-radius: 10px; position: relative; 4px; }
+  .progress-outer { height: 4px; background: rgba(255, 255, 255, 0.03); border-radius: 10px; position: relative; margin-top: 4px; }
   .progress-inner { height: 100%; border-radius: 10px; transition: width 3.5s linear; }
   .glow-head {
     position: absolute;
@@ -247,4 +247,3 @@ script lang="ts">
 
   .empty { height: 100%; display: flex; align-items: center; justify-content: center; color: #444; font-size: 0.7rem; letter-spacing: 0.2em; }
 </style>
-
