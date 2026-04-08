@@ -120,16 +120,6 @@ const blogPosts: BlogPost[] = [
     author: "Matatu Pulse Team",
   },
   {
-    title:
-      "2-Minute Arrival Alerts: The Engineering Behind Our Notification System",
-    description:
-      "Getting a push notification to a commuter exactly 2–3 minutes before a matatu arrives sounds simple. The infrastructure behind it — GPS polling intervals, ETA modelling, fallback logic — is anything but. We open the hood.",
-    link: "/blog/arrival-alerts-engineering",
-    date: "2025-05-19",
-    category: "Product",
-    author: "Matatu Pulse Team",
-  },
-  {
     title: "Route 46 Case Study: How Supermetro Reduced Peak Delays by 23%",
     description:
       "A deep-dive into our six-week pilot with Supermetro Sacco on Route 46 (CBD to Kangemi). What changed, what we measured, and what every other sacco can learn from it.",

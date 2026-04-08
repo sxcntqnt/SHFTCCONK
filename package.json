@@ -19,8 +19,14 @@
     "prod-preview": "svelte-kit preview",
     "prod-start": "PORT=4173 node build",
     "wasm": "wasm-pack build --dev --target web ../backend",
-    "wasm-release": "wasm-pack build --release --target web ../backend",
-    "wasm-node": "wasm-pack build --dev --target nodejs ../backend"
+    "auth:dev": "go run ../backend/auth/main.go",
+    "chat:dev": "go run ../backend/chat/main.go",
+    "services:dev": "concurrently \"pnpm auth:dev\" \"pnpm chat:dev\"",
+    "auth:build": "go build -o auth ../backend/auth",
+    "chat:build": "go build -o chat ../backend/chat",
+    "auth:start": "../auth",
+    "chat:start": "../chat",
+    "services:prod": "pnpm auth:build && pnpm chat:build && concurrently \"pnpm auth:start\" \"pnpm chat:start\""
   },
   "type": "module",
   "devDependencies": {
