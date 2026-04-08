@@ -27,7 +27,7 @@ export default defineConfig({
 
   server: {
     host: true, // listen on all network interfaces
-    allowedHosts: ["sxcntcnqunts.org", "chat.sxcntcnqunts.com", "sentry.io"],
+    allowedHosts: ["sxcntcnqunts.org", "chat.sxcntcnqunts.com", "sentry.io", "eu.posthog.com"],
     fs: {
       allow: [".."], // allow accessing files outside project root
     },
@@ -35,7 +35,7 @@ export default defineConfig({
 
   preview: {
     host: true,
-    allowedHosts: ["sxcntcnqunts.com"],
+    allowedHosts: ["sxcntcnqunts.org"],
   },
   optimizeDeps: {
     exclude: ["layerchart"],

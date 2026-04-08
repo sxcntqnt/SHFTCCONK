@@ -1,34 +1,36 @@
-// src/routes/+layout.ts
-//
-// Root client layout — creates the Supabase browser client and
-// bootstraps the federated session store.
-//
-// ARCHITECTURE:
-//   +layout.server.ts now passes:
-//     { session, user, userState, activeContext, cookies }
-//
-//   This file:
-//     1. Creates the browser/SSR Supabase client (typed with Database)
-//     2. Passes userState + activeContext through to all child routes
-//     3. Runs bootstrap_session() RPC ONLY as a compatibility shim
-//        for components still reading from sessionStore
-//     4. Returns { supabase, session, userState, activeContext, ... }
-//
-// BOOTSTRAP SHIM STATUS:
-//   bootstrap_session() is now a compatibility bridge — NOT the source
-//   of truth for domain state. userState (resolved server-side by
-//   userStateHandle) is authoritative. The RPC call will be removed
-//   once all components are migrated away from sessionStore.
-//
-//   Skip conditions for bootstrap_session():
-//     - userState is present (server already resolved everything)
-//     - Store already initialized for the same user
-//     - No ?rebootstrap param
-//
-// CONTEXT STORE HYDRATION:
-//   Individual context activate*() functions are called from their
-//   respective route +layout.ts files (lazy pattern), NOT here.
-//   Root layout does not activate any context — it only passes data.
+/* 
+ src/routes/+layout.ts
+
+ Root client layout — creates the Supabase browser client and
+ bootstraps the federated session store.
+
+ ARCHITECTURE:
+   +layout.server.ts now passes:
+     { session, user, userState, activeContext, cookies }
+
+   This file:
+     1. Creates the browser/SSR Supabase client (typed with Database)
+     2. Passes userState + activeContext through to all child routes
+     3. Runs bootstrap_session() RPC ONLY as a compatibility shim
+        for components still reading from sessionStore
+     4. Returns { supabase, session, userState, activeContext, ... }
+
+ BOOTSTRAP SHIM STATUS:
+   bootstrap_session() is now a compatibility bridge — NOT the source
+   of truth for domain state. userState (resolved server-side by
+   userStateHandle) is authoritative. The RPC call will be removed
+   once all components are migrated away from sessionStore.
+
+   Skip conditions for bootstrap_session():
+     - userState is present (server already resolved everything)
+     - Store already initialized for the same user
+     - No ?rebootstrap param
+
+ CONTEXT STORE HYDRATION:
+   Individual context activate*() functions are called from their
+   respective route +layout.ts files (lazy pattern), NOT here.
+   Root layout does not activate any context — it only passes data.
+*/
 
 import {
   PUBLIC_SUPABASE_ANON_KEY,
@@ -74,7 +76,7 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
         },
       )
 
-  // ─── No session → clear store, return minimal context ─────────
+ //  ─── No session → clear store, return minimal context ─────────
   const session = data.session
   if (!session) {
     clearSession()
@@ -88,19 +90,19 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     }
   }
 
-  // ─── userState is present — server already resolved everything ─
-  // userStateHandle in hooks.server.ts ran resolveUserState() and
-  // activateXContext() before this load function was called.
-  // Pass it through and skip bootstrap_session() entirely.
-  // This is the fast path for all authenticated requests.
+  //  ─── userState is present — server already resolved everything ─
+   //  userStateHandle in hooks.server.ts ran resolveUserState() and
+   //  activateXContext() before this load function was called.
+   //  Pass it through and skip bootstrap_session() entirely.
+   //  This is the fast path for all authenticated requests.
   if (data.userState) {
     const current = get(sessionStore)
     const forceRefresh = url.searchParams.has("rebootstrap")
 
-    // Only bootstrap the sessionStore shim if it isn't already hydrated
-    // for this user, OR if a force refresh was requested.
-    // This keeps legacy components reading sessionStore functional
-    // without an unnecessary RPC round trip on every navigation.
+     //  Only bootstrap the sessionStore shim if it isn't already hydrated
+     //  for this user, OR if a force refresh was requested.
+     //  This keeps legacy components reading sessionStore functional
+     //  without an unnecessary RPC round trip on every navigation.
     const needsBootstrap =
       !current.initialized ||
       current.profile?.id !== session.user.id ||
@@ -111,9 +113,9 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
         await supabase.rpc("bootstrap_session")
 
       if (bootstrapError) {
-        // Non-fatal — userState is the authoritative source.
-        // sessionStore will remain stale but pages using the new
-        // context system are unaffected.
+     //    Non-fatal — userState is the authoritative source.
+     //    sessionStore will remain stale but pages using the new
+     //    context system are unaffected.
         console.warn(
           "[layout] bootstrap_session() shim failed — " +
             "sessionStore not updated. userState is still authoritative.",
@@ -136,11 +138,11 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     }
   }
 
-  // ─── Fallback: no userState (public route or resolution failure) ──
-  // userStateHandle skips resolution on public paths and swallows
-  // non-redirect errors. In both cases userState + activeContext are null.
-  // Still run bootstrap_session() so sessionStore-dependent components
-  // function correctly on partially-authenticated states.
+ //  ─── Fallback: no userState (public route or resolution failure) ──
+ //  userStateHandle skips resolution on public paths and swallows
+ //  non-redirect errors. In both cases userState + activeContext are null.
+ //  Still run bootstrap_session() so sessionStore-dependent components
+ //  function correctly on partially-authenticated states.
   const current = get(sessionStore)
   const forceRefresh = url.searchParams.has("rebootstrap")
 

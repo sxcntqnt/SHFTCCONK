@@ -1,25 +1,20 @@
-/* src/routes/+layout.svelte 
-
-  Root layout: auth state listener + navigation progress bar.
-
-  RESPONSIBILITIES:
-    - Listens to Supabase auth state changes (login, logout, token refresh)
-    - Triggers permission version checks on TOKEN_REFRESHED events
-    - Polls for permission revocations every 60s (long-lived sessions)
-    - Shows a navigation progress bar during page transitions
-
-  KILL-SWITCH INTEGRATION:
-    When an admin revokes permissions while a user is active:
-      1. TOKEN_REFRESHED event → checkVersionAndRefresh() detects mismatch
-      2. Periodic polling (60s) → catches it even without a token refresh
-      3. Either path: re-bootstraps store → UI re-renders with new permissions
-
-  ALIGNED WITH:
-    - auth.ts: checkVersionAndRefresh(), clearSession(), sessionStore
-    - hooks.server.ts: supabase client from locals
-    - +layout.ts: provides { supabase, session } via data
-*/
 <script lang="ts">
+  // src/routes/+layout.svelte
+  //  Root layout: auth state listener + navigation progress bar.
+  //  RESPONSIBILITIES:
+  // - Listens to Supabase auth state changes (login, logout, token refresh)
+  //  - Triggers permission version checks on TOKEN_REFRESHED events
+  //  - Polls for permission revocations every 60s (long-lived sessions)
+  //  - Shows a navigation progress bar during page transitions
+  //  KILL-SWITCH INTEGRATION:
+  //  When an admin revokes permissions while a user is active:
+  //  1. TOKEN_REFRESHED event → checkVersionAndRefresh() detects mismatch
+  //  2. Periodic polling (60s) → catches it even without a token refresh
+  //  3. Either path: re-bootstraps store → UI re-renders with new permissions
+  //  ALIGNED WITH:
+  //  - auth.ts: checkVersionAndRefresh(),
+  // clearSession(), sessionStore
+  //  - hooks.server.ts: supabase client from locals /
   import "../app.css"
   import { invalidate, goto } from "$app/navigation"
   import { navigating } from "$app/state"
