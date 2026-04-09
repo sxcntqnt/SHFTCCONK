@@ -50,6 +50,24 @@ const isDirectOrGroupSource = (source: string | null): boolean =>
   source === "direct" || (source?.startsWith("group:") ?? false)
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MpesaCustomerRow — mpesa_customers query result shape
+// Defined locally because mpesa_customers was added after DatabaseDefinitions
+// was last regenerated — Tables<'mpesa_customers'> does not exist yet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type MpesaCustomerRow = {
+  subscription_status: string | null
+  is_minor_account: boolean | null
+  guardian_phone: string | null
+  daily_limit: number | null
+  per_transaction_limit: number | null
+  send_money_enabled: boolean | null
+  lipa_na_mpesa_enabled: boolean | null
+  documents_submitted: boolean | null
+  documents_due_by: string | null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EnrichedOrgMember — organization_members joined with organizations.name
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -368,25 +386,26 @@ export async function resolveUserState(
   const stageAssignments = stageResult.data ?? []
   const outboundRows = outboundResult.data ?? []
 
-  // Paid plan: M-Pesa subscription must be explicitly 'active'
-  const hasPaidPlan = mpesaResult.data?.subscription_status === "active"
-
   // Build MpesaGoProfile from mpesa_customers row (null if row absent)
-  const mpesaRaw = mpesaResult.data
+  const mpesaRaw = mpesaResult.data as MpesaCustomerRow | null
+
+  // Paid plan: M-Pesa subscription must be explicitly 'active'
+  const hasPaidPlan = mpesaRaw?.subscription_status === "active"
+
   const mpesaGo: MpesaGoProfile | null = mpesaRaw
     ? {
-        isMinorAccount: (mpesaRaw as any).is_minor_account ?? false,
-        guardianPhone: (mpesaRaw as any).guardian_phone ?? null,
-        dailyLimit: (mpesaRaw as any).daily_limit ?? null,
-        perTransactionLimit: (mpesaRaw as any).per_transaction_limit ?? null,
-        sendMoneyEnabled: (mpesaRaw as any).send_money_enabled ?? false,
-        lipaNaMpesaEnabled: (mpesaRaw as any).lipa_na_mpesa_enabled ?? false,
-        documentsSubmitted: (mpesaRaw as any).documents_submitted ?? false,
-        documentsDueBy: (mpesaRaw as any).documents_due_by ?? null,
+        isMinorAccount: mpesaRaw.is_minor_account ?? false,
+        guardianPhone: mpesaRaw.guardian_phone ?? null,
+        dailyLimit: mpesaRaw.daily_limit ?? null,
+        perTransactionLimit: mpesaRaw.per_transaction_limit ?? null,
+        sendMoneyEnabled: mpesaRaw.send_money_enabled ?? false,
+        lipaNaMpesaEnabled: mpesaRaw.lipa_na_mpesa_enabled ?? false,
+        documentsSubmitted: mpesaRaw.documents_submitted ?? false,
+        documentsDueBy: mpesaRaw.documents_due_by ?? null,
         documentsOverdue:
-          (mpesaRaw as any).documents_due_by != null &&
-          !(mpesaRaw as any).documents_submitted &&
-          new Date((mpesaRaw as any).documents_due_by) < new Date(),
+          mpesaRaw.documents_due_by != null &&
+          !mpesaRaw.documents_submitted &&
+          new Date(mpesaRaw.documents_due_by) < new Date(),
       }
     : null
 
