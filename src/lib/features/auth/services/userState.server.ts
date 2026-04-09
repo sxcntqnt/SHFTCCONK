@@ -259,14 +259,18 @@ export async function resolveUserState(
   const actors = actorRows ?? []
   const actorIds = actors.map((a) => a.id)
 
-  // Belt-and-braces: guest if no active actors OR onboarding_status is GUEST.
-  // After migration, onboarding_status is the authoritative source.
-  // The actor check is a safety net for rows created before the migration.
-  const hasActiveActor = actors.some((a) => a.status === "active")
-  const isGuest =
-    !hasActiveActor || (profile as any).onboarding_status === "GUEST"
+  // A user is a guest if they have no active non-GUEST actors.
+  // We intentionally do NOT treat onboarding_status === "GUEST" as an
+  // authoritative override: that column can be stale when a kyc.expired
+  // event resets it for a user who already has an active PASSENGER/CREW/
+  // OPERATOR actor, or when the migration default was never backfilled.
+  // Active non-GUEST actors are the definitive proof of onboarding completion.
+  const hasActiveNonGuestActor = actors.some(
+    (a) => a.status === "active" && a.type !== "GUEST",
+  )
+  const isGuest = !hasActiveNonGuestActor
   const isVerified =
-    hasActiveActor && (profile as any).onboarding_status === "ACTIVE"
+    hasActiveNonGuestActor && (profile as any).onboarding_status === "ACTIVE"
 
   // ── 3. Early return for guests ─────────────────────────────────────────────
   // hooks.server.ts reads isGuest and profile.onboarding_status to decide
