@@ -22,7 +22,7 @@
 //   No org-scoping needed — super admin sees everything.
 
 import { derived, get } from "svelte/store"
-import type { Tables } from "../../../DatabaseDefinitions"
+import type { Tables } from "../../../../DatabaseDefinitions"
 import type { UserState } from "$lib/features/auth/services/userState.server"
 import {
   createContextStore,

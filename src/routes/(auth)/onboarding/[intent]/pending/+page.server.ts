@@ -1,11 +1,10 @@
 // src/routes/(auth)/onboarding/[intent]/pending/+page.server.ts
 //
-// Polls kyc_status. On approval, redirects to the CORRECT role dashboard.
-// crew → /crew/dashboard, not /app/dashboard.
+// Polls kyc_status. On approval, redirects to create_profile so the user
+// can complete their profile before entering the role dashboard.
 
 import type { PageServerLoad } from "./$types"
 import { redirect } from "@sveltejs/kit"
-import { intentToDashboard } from "$lib/features/onboarding/intents"
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const { supabase, user } = locals
@@ -21,12 +20,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
   const kycStatus = profile?.kyc_status
 
-  // Webhook approved — redirect to the CORRECT dashboard for this role
+  // Webhook approved — redirect to create_profile so the user can complete
+  // their profile before entering the role dashboard.
   // ?rebootstrap=1 forces +layout.ts to re-run bootstrap_session()
   // so the new actor appears in userState on the next request
   if (kycStatus === "approved") {
-    const destination = intentToDashboard(intent)
-    throw redirect(303, `${destination}?rebootstrap=1`)
+    throw redirect(303, `/onboarding/${intent}/create_profile?rebootstrap=1`)
   }
 
   // Rejected — back to KYC page with retry flag

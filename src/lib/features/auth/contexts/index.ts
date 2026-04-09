@@ -267,17 +267,7 @@ export {
 
 export type { PassengerContext } from "./passenger.context"
 
-// Add to userState.server.ts types:
-
-export type MpesaGoProfile = {
-  isMinorAccount: boolean
-  guardianPhone: string | null
-  dailyLimit: number | null
-  perTransactionLimit: number | null
-  sendMoneyEnabled: boolean
-  lipaNaMpesaEnabled: boolean
-  documentsSubmitted: boolean
-  documentsDueBy: string | null // ISO timestamp
-  /** True if 30-day document window has expired without submission */
-  documentsOverdue: boolean
-}
+// MpesaGoProfile is defined in userState.server.ts (passenger.context.ts imports
+// it from there).  Re-export here so any code that imports from contexts/index
+// continues to work without changes.
+export type { MpesaGoProfile } from "$lib/features/auth/services/userState.server"
