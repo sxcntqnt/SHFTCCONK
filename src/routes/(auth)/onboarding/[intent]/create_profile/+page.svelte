@@ -1,4 +1,4 @@
-<!-- src/routes/(auth)/app/create_profile/+page.svelte -->
+<!-- src/routes/(auth)/onboarding/[intent]/create_profile/+page.svelte -->
 <script lang="ts">
   import { applyAction, enhance } from "$app/forms"
   import type { SubmitFunction } from "@sveltejs/kit"

@@ -2,8 +2,8 @@
 //
 // Shared business logic for profile creation / update.
 // Used by:
-//   /app/create_profile/+page.server.ts  (form action)
-//   /app/settings/+page.server.ts        (edit profile)
+//   /onboarding/[intent]/create_profile/+page.server.ts  (form action)
+//   /app/settings/+page.server.ts                        (edit profile)
 //
 // EXPORTS:
 //   _hasFullProfile   — profile completeness gate (used by layout guards)
@@ -56,9 +56,9 @@ export interface Organization {
 // Profile completeness gate
 //
 // Single source of truth — imported by:
-//   /app/create_profile/+page.server.ts  (skip if already complete)
-//   /app/settings/+layout.server.ts      (redirect if incomplete)
-//   /app/security/+layout.server.ts      (redirect if incomplete)
+//   /onboarding/[intent]/create_profile/+page.server.ts  (skip if already complete)
+//   /app/settings/+layout.server.ts                      (redirect if incomplete)
+//   /app/security/+layout.server.ts                      (redirect if incomplete)
 //
 // ⚠️  HELD: extending this check (date_of_birth, guardian) deferred
 //     until minor flow is finalized.

@@ -15,13 +15,13 @@
 //             → /onboarding/passenger (Ballerine kyc_light)
 //             → /onboarding/passenger/pending
 //             → webhook fires → actor created
-//             → /app/create_profile?rebootstrap=1
+//             → /onboarding/passenger/create_profile?rebootstrap=1
 //
 //   Invite flow → redeem_invite sets kyc_intent on profile
 //              → /onboarding/[intent] (skips this page)
 //              → Ballerine kyc_full_ntsa
 //              → webhook fires → actor created (pending, org approves)
-//              → /[role]/create_profile?rebootstrap=1
+//              → /onboarding/[intent]/create_profile?rebootstrap=1
 //
 // WHY PASSENGER ONLY FOR SELF-REGISTRATION:
 //   Roles (except PASSENGER) are organization-assigned — not user-selected.
