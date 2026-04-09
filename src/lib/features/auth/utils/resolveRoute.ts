@@ -7,7 +7,7 @@
 //
 // Priority:
 //   1. No profile                    → /onboarding
-//   2. Incomplete profile            → /app/create_profile
+//   2. Incomplete profile            → /onboarding/[intent]/create_profile
 //   3. Platform admin permission     → /admin/dashboard
 //   4. ADMIN actor                   → /admin/dashboard
 //   5. REGULATOR / PLANNER           → /app/dashboard
@@ -21,7 +21,7 @@ import type { BootstrapSessionPayload } from "../stores/auth"
  * Resolves the post-login destination route from a bootstrap_session() payload.
  *
  * Uses `hasFullProfile` to gate the create-profile step: incomplete profiles
- * are redirected to /app/create_profile before reaching any role dashboard.
+ * are redirected to /onboarding/[intent]/create_profile before reaching any role dashboard.
  *
  * @param payload - The raw return value of supabase.rpc("bootstrap_session"),
  *   already unwrapped from the array form (i.e. `rpcData[0] ?? rpcData`).
@@ -39,7 +39,7 @@ export function resolveRouteFromBootstrap(
 
   // Profile completeness gate — must have a real full_name
   if (!hasFullProfile(profile)) {
-    return "/app/create_profile"
+    return `/onboarding/${(profile as any).kyc_intent ?? "passenger"}/create_profile`
   }
 
   // Active actors only

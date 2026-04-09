@@ -139,6 +139,7 @@ interface BootstrapPayload {
     id: string
     full_name: string | null
     permissions_version: number
+    kyc_intent: string | null
   } | null
   actors: Array<{
     id: string
@@ -230,7 +231,8 @@ function resolveDestination(
   // ─── Just accepted invite → org dashboard ────────────────
   if (ctx.inviteRedeemed && ctx.inviteResult) {
     if (profileIncomplete) {
-      return "/app/create_profile"
+      const intent = profile.kyc_intent ?? "passenger"
+      return `/onboarding/${intent}/create_profile`
     }
 
     // Direct to the invited org's dashboard

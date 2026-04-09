@@ -1,10 +1,10 @@
-// src/routes/(auth)/app/create_profile/+page.server.ts
+// src/routes/(auth)/onboarding/[intent]/create_profile/+page.server.ts
 //
 // One-time profile completion after KYC approval.
 //
 // FLOW:
 //   KYC approved → webhook creates actor → pending page detects →
-//   intentToDashboard()→ if profile incomplete → /app/create_profile →
+//   intentToDashboard()→ if profile incomplete → /onboarding/[intent]/create_profile →
 //   save → intentToDashboard(kyc_intent)?rebootstrap=1
 //
 // MIGRATION:
@@ -26,14 +26,15 @@ export type { Organization }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, params }) => {
   const { user, userState, supabase } = locals
   if (!user) throw redirect(303, "/login")
 
   // Already complete — go to role dashboard
   if (userState && _hasFullProfile(userState.profile)) {
     const next = url.searchParams.get("next")
-    const intent = (userState.profile as any).kyc_intent as string | null
+    const intent =
+      ((userState.profile as any).kyc_intent as string | null) ?? params.intent
     throw redirect(
       303,
       next
@@ -59,7 +60,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 export const actions: Actions = {
-  updateProfile: async ({ request, locals }) => {
+  updateProfile: async ({ request, locals, params }) => {
     const { user, supabase } = locals
     if (!user) throw redirect(303, "/login")
 
@@ -122,7 +123,7 @@ export const actions: Actions = {
       .eq("id", user.id)
       .single()
 
-    const intent = fresh?.kyc_intent as string | null
+    const intent = (fresh?.kyc_intent as string | null) ?? params.intent
     throw redirect(
       303,
       `${intentToDashboard(intent ?? "passenger")}?rebootstrap=1`,
