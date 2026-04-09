@@ -31,7 +31,7 @@ import type {
   PermissionEntry,
   EnrichedOrgMember,
 } from "$lib/features/auth/services/userState.server"
-import type { Tables } from "../../../DatabaseDefinitions"
+import type { Tables } from "../../../../DatabaseDefinitions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Re-exported shared types

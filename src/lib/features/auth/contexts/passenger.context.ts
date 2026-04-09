@@ -35,7 +35,7 @@
 //   hooks.server.ts guards this via profile.onboarding_status.
 
 import { derived, get } from "svelte/store"
-import type { Tables } from "../../../DatabaseDefinitions"
+import type { Tables } from "../../../../DatabaseDefinitions"
 import type {
   UserState,
   MpesaGoProfile,
