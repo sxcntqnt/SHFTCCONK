@@ -219,13 +219,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
 
     case "kyc.expired": {
+      // Check whether the user already has an active non-GUEST actor.
+      // If they do, they have already completed onboarding — resetting
+      // onboarding_status to "GUEST" would trap them in the guest flow
+      // and break the auth routing.  Only regress the status for users
+      // who genuinely have not finished onboarding.
+      const { data: activeActorRows, error: actorQueryError } = await supabase
+        .from("actors")
+        .select("id")
+        .eq("profile_id", profile.id)
+        .eq("status", "active")
+        .neq("type", "GUEST")
+        .limit(1)
+
+      if (actorQueryError) {
+        console.error("[ballerine] Failed to check active actors on kyc.expired:", actorQueryError)
+      }
+
+      const alreadyOnboarded = (activeActorRows?.length ?? 0) > 0
+
       await supabase
         .from("profiles")
         .update({
           kyc_status: "expired",
-          onboarding_status: "GUEST",
-          kyc_intent: null,
           ballerine_case_id: null,
+          ...(alreadyOnboarded
+            ? {}
+            : { onboarding_status: "GUEST", kyc_intent: null }),
         })
         .eq("id", profile.id)
       break
