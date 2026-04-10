@@ -1,409 +1,202 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { tick } from 'svelte';
+
+  interface Destination { destination: string; destination_hexid: string; }
   interface RouteItem {
-    route_number: string | number
+    route_number: string | number;
+    pickup_point: { pickup_point: string; pickup_hexid: string };
+    destinations: Destination[];
   }
 
-  // Props (Svelte 5 runes syntax)
-  let { routes = $bindable([]) } = $props<{
-    routes?: RouteItem[]
-  }>()
+  let routes: RouteItem[] = [];
+  let scored: any[] = [];
+  let isLoading = true;
+  let error: string | null = null;
 
-  // Deterministic score from route number — no random()
+  const TOKENS = {
+    accent: '#00f2ff',
+    accentGlobal: '#0ff'
+  };
+
+  function getTimeState() {
+    const hour = new Date().getHours();
+    if (hour >= 6 && hour <= 9 || hour >= 16 && hour <= 20) return 'peak';
+    if (hour >= 10 && hour <= 15) return 'mid';
+    return 'off';
+  }
+
+  async function fetchRoutes() {
+    try {
+      const res = await fetch('https://raw.githubusercontent.com/sxcntqnt/sxcntqnt.github.io/refs/heads/main/json/YesBana.json');
+      const json = await res.json();
+      routes = json.non_null_objects || json;
+    } catch (e) {
+      error = 'Network Sync Failed';
+    } finally {
+      isLoading = false;
+    }
+  }
+
   function routeScore(num: string | number): number {
-    const n = parseInt(String(num).replace(/\D/g, "") || "7", 10)
-    return parseFloat((0.6 + ((n * 17 + 13) % 37) / 100).toFixed(2))
+    const n = parseInt(String(num).replace(/\D/g, '') || '7', 10);
+    return parseFloat((0.6 + ((n * 17 + 13) % 37) / 100).toFixed(2));
   }
 
-  function scoreClass(s: number): string {
-    if (s >= 0.85) return "great"
-    if (s >= 0.72) return "good"
-    if (s >= 0.58) return "warn"
-    return "low"
+  function bayesScore(route: RouteItem, alpha = 2, beta = 2) {
+    const prior = routeScore(route.route_number);
+    const timeFactor = getTimeState() === 'peak' ? 1.2 : 0.8;
+    const loadFactor = (route.destinations?.length || 1) / 10;
+    const posterior = (alpha + prior * timeFactor) / (alpha + beta + loadFactor);
+    return Math.min(Math.max(posterior, 0), 1);
   }
 
-  function scoreLabel(s: number): string {
-    if (s >= 0.85) return "Optimal"
-    if (s >= 0.72) return "Good"
-    if (s >= 0.58) return "Moderate"
-    return "Low"
+  function classify(s: number) {
+    if (s >= 0.85) return 'great';
+    if (s >= 0.72) return 'good';
+    if (s >= 0.58) return 'warn';
+    return 'low';
   }
 
-  // Condition tags — cycle through per route
-  const conditions = [
-    "Off-peak",
-    "Peak",
-    "Reliable",
-    "Variable",
-    "Express",
-    "Busy",
-  ]
-
-  function condTag(n: string | number): string {
-    const i = parseInt(String(n).replace(/\D/g, "") || "0", 10)
-    return conditions[i % conditions.length]
+  function label(cls: string) {
+    return cls === 'great' ? 'Optimal' : cls === 'good' ? 'Stable' : cls === 'warn' ? 'Moderate' : 'Congested';
   }
 
-  // Reactive scored routes (using $derived)
-  let scored = $derived(
-    routes.slice(0, 7).map((r) => {
-      const s = routeScore(r.route_number)
-      return {
-        ...r,
-        score: s,
-        cls: scoreClass(s),
-        label: scoreLabel(s),
-        cond: condTag(r.route_number),
-      }
-    }),
-  )
+  function getGradient(cls: string, posterior: number) {
+    const base = cls === 'great' ? '#0ff' : cls === 'good' ? '#0f0' : cls === 'warn' ? '#ff0' : '#f00';
+    const secondary = cls === 'great' ? '#00cfff' : cls === 'good' ? '#00aa00' : cls === 'warn' ? '#ffaa00' : '#ff3300';
+    const intensity = Math.floor(posterior * 100);
+    return `linear-gradient(90deg, ${base} ${intensity}%, ${secondary} 100%)`;
+  }
 
-  // Overall Network IQ — average
-  let avgIQ = $derived(
-    scored.length
-      ? (
-          (scored.reduce((a, r) => a + r.score, 0) / scored.length) *
-          100
-        ).toFixed(1)
-      : "—",
-  )
+  function updateScores() {
+    scored = routes.map(r => {
+    let posterior = bayesScore(r) + (Math.random() - 0.5) * 0.05; // small fluctuation
+
+    // exaggerate some routes randomly for visual drama
+    if (Math.random() < 0.2) posterior *= 1.2;
+
+    posterior = Math.min(Math.max(posterior, 0), 1);
+
+    const cls = classify(posterior);
+    return { ...r, posterior, cls, label: label(cls), accent: TOKENS.accent };
+  });
+  }
+
+  onMount(async () => {
+    await fetchRoutes();
+    updateScores();
+    const interval = setInterval(() => updateScores(), 2000); // dynamic updates
+    return () => clearInterval(interval);
+  });
 </script>
 
-<div class="intel">
-  <!-- Header -->
-  <div class="intel-header">
-    <div class="intel-title">
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-        aria-hidden="true"
-      >
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+<div class="os">
+  <header class="header">
+    <div class="brand">
+      <div class="pulse" style="background:{TOKENS.accentGlobal}; box-shadow:0 0 10px {TOKENS.accentGlobal};"></div>
+      <h1>TRANSIT OS DASHBOARD</h1>
+    </div>
+    <div class="iq">
+      <svg viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#222" stroke-width="2.5"/>
+        <circle cx="18" cy="18" r="15.9155" fill="none" stroke="{TOKENS.accentGlobal}" stroke-width="2.5"
+          stroke-dasharray="{scored.length ? scored.reduce((a,r)=>a.posterior + a,0)/scored.length*100 : 0},100"
+          stroke-linecap="round"/>
       </svg>
-      Route Intelligence
+      <span>{scored.length ? ((scored.reduce((a,r)=>a.posterior+a,0)/scored.length)*100).toFixed(1) : '0.0'}</span>
     </div>
-    <div class="iq-badge">
-      <span class="iq-val">{avgIQ}</span>
-      <span class="iq-lbl">Network IQ</span>
-    </div>
-  </div>
+  </header>
 
-  <!-- Score legend -->
-  <div class="legend-row">
-    <div class="legend-item great">Optimal 0.85+</div>
-    <div class="legend-item good">Good 0.72+</div>
-    <div class="legend-item warn">Moderate</div>
-    <div class="legend-item low">Low</div>
-  </div>
-
-  <!-- Route rows -->
-  <div class="intel-list">
-    {#if scored.length === 0}
-      <div class="empty-state">No routes loaded</div>
+  <div class="viewport">
+    {#if isLoading}
+      <div class="loader">
+        <div class="scan" style="background:{TOKENS.accentGlobal}; box-shadow:0 0 10px {TOKENS.accentGlobal};"></div>
+        <p>LOADING ROUTE DATA...</p>
+      </div>
+    {:else if error}
+      <p>{error}</p>
     {:else}
       {#each scored as r (r.route_number)}
-        <div class="intel-row">
-          <!-- Route pill -->
-          <div class="route-pill">
-            <span class="hex-g">⬡</span>
-            {r.route_number}
+        <div class="card" style="--accent:{r.accent}">
+          <div>
+            <div class="route">{r.route_number}</div>
+            <div class="nodes">{r.destinations?.length || 0} NODES</div>
           </div>
-
-          <!-- Condition tag -->
-          <div class="cond-tag cond-{r.cls}">{r.cond}</div>
-
-          <!-- Score bar -->
-          <div class="score-bar-wrap">
-            <div class="score-bar-track">
-              <div
-                class="score-bar-fill fill-{r.cls}"
-                style="width: {r.score * 100}%"
-              ></div>
+          <div class="mid">
+            <div class="origin">{r.pickup_point?.pickup_point || 'TERMINUS'}</div>
+            <div class="bar">
+              <div class="fill" style="width:{r.posterior*100}%; background:{getGradient(r.cls,r.posterior)};"></div>
             </div>
           </div>
-
-          <!-- Score + label -->
-          <div class="score-right">
-            <div class="score-num score-{r.cls}">{r.score.toFixed(2)}</div>
-            <div class="score-lbl">{r.label}</div>
+          <div class="right">
+            <div class="tag">{r.label}</div>
+            <div class="pct">{(r.posterior*100).toFixed(0)}%</div>
           </div>
         </div>
       {/each}
     {/if}
   </div>
 
-  <!-- Footer -->
-  <div class="intel-footer">
-    <span class="footer-note"
-      >Scores update every trip cycle · powered by Beta-Bayes model</span
-    >
-  </div>
+  <footer class="footer">
+    AUTHENTICATED ACCESS: DYNAMIC BAYES v2.0
+  </footer>
 </div>
 
 <style>
-  .intel {
-    width: 100%;
+  .os {
+    --bg: #050505;
+    --glass: rgba(255,255,255,0.05);
+    --border: rgba(255,255,255,0.08);
     height: 100%;
-    background: var(--ink, #0d0d0d);
     display: flex;
     flex-direction: column;
-    padding: 20px 20px 16px;
-    box-sizing: border-box;
-    gap: 0;
+    background: radial-gradient(circle at top, #111, #050505);
+    color: white;
+    font-family: 'JetBrains Mono', monospace;
   }
-
-  /* Header */
-  .intel-header {
+  .header {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    padding: 20px;
+    backdrop-filter: blur(12px);
+    background: var(--glass);
+    border-bottom: 1px solid var(--border);
   }
-
-  .intel-title {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-2, #999);
-  }
-
-  .intel-title svg {
-    color: #f26522;
-  }
-
-  .iq-badge {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-    background: rgba(242, 101, 34, 0.08);
-    border: 1px solid rgba(242, 101, 34, 0.2);
-    border-radius: 10px;
-    padding: 4px 10px;
-  }
-
-  .iq-val {
-    font-size: 0.9rem;
-    font-weight: 900;
-    color: #f26522;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-  }
-
-  .iq-lbl {
-    font-size: 0.58rem;
-    font-weight: 700;
-    color: rgba(242, 101, 34, 0.55);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-  }
-
-  /* Legend */
-  .legend-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .legend-item {
-    font-size: 0.56rem;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 100px;
-    letter-spacing: 0.04em;
-  }
-
-  .legend-item.great {
-    background: rgba(0, 176, 155, 0.12);
-    color: #00b09b;
-    border: 1px solid rgba(0, 176, 155, 0.2);
-  }
-
-  .legend-item.good {
-    background: rgba(100, 200, 150, 0.1);
-    color: #5ec99a;
-    border: 1px solid rgba(100, 200, 150, 0.2);
-  }
-
-  .legend-item.warn {
-    background: rgba(232, 172, 26, 0.1);
-    color: #e8ac1a;
-    border: 1px solid rgba(232, 172, 26, 0.2);
-  }
-
-  .legend-item.low {
-    background: rgba(242, 101, 34, 0.1);
-    color: #f26522;
-    border: 1px solid rgba(242, 101, 34, 0.2);
-  }
-
-  /* List */
-  .intel-list {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
-  }
-
-  .empty-state {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 80px;
-    font-size: 0.78rem;
-    color: var(--text-3, #555);
-  }
-
-  /* Row */
-  .intel-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .route-pill {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.68rem;
-    font-weight: 800;
-    color: var(--text-1, #f0f0f0);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 100px;
-    padding: 3px 9px;
-    white-space: nowrap;
-    min-width: 52px;
-    justify-content: center;
-  }
-
-  .hex-g {
-    color: rgba(242, 101, 34, 0.55);
-    font-size: 0.7rem;
-  }
-
-  .cond-tag {
-    font-size: 0.56rem;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 5px;
-    white-space: nowrap;
-    min-width: 44px;
-    text-align: center;
-  }
-
-  .cond-great {
-    background: rgba(0, 176, 155, 0.1);
-    color: #00b09b;
-  }
-
-  .cond-good {
-    background: rgba(100, 200, 150, 0.1);
-    color: #5ec99a;
-  }
-
-  .cond-warn {
-    background: rgba(232, 172, 26, 0.1);
-    color: #e8ac1a;
-  }
-
-  .cond-low {
-    background: rgba(242, 101, 34, 0.1);
-    color: #f26522;
-  }
-
-  /* Score bar */
-  .score-bar-wrap {
-    flex: 1;
-  }
-
-  .score-bar-track {
-    height: 5px;
-    background: rgba(255, 255, 255, 0.07);
-    border-radius: 100px;
-    overflow: hidden;
-  }
-
-  .score-bar-fill {
+  .brand { display: flex; gap: 10px; align-items: center; }
+  .brand h1 { font-size: 0.9rem; letter-spacing: 0.2em; color: var(--accent-global); }
+  .pulse { width: 8px; height: 8px; background: var(--accent-global); border-radius: 50%; box-shadow: 0 0 10px var(--accent-global); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 50% { transform: scale(1.5); opacity: 0.5; } }
+  .iq { width: 50px; position: relative; }
+  .iq svg { transform: rotate(-90deg); }
+  .iq span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; }
+  .viewport { flex: 1; overflow: auto; padding: 20px; }
+  .card { display: flex; gap: 16px; padding: 14px; margin-bottom: 10px; backdrop-filter: blur(14px); background: var(--glass); border: 1px solid var(--border); border-radius: 10px; position: relative; overflow: hidden; transition: 0.3s; }
+  .card::before { content: ""; position: absolute; inset: 0; border-radius: 10px; background: linear-gradient(120deg, transparent, var(--accent), transparent); opacity: 0.4; }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 0 20px var(--accent); }
+  .route { font-weight: 900; font-size: 1.1rem; }
+  .nodes { font-size: 0.6rem; color: #666; }
+  .mid { flex: 1; }
+  .origin { font-size: 0.7rem; color: #aaa; margin-bottom: 6px; }
+  .bar { height: 4px; background: #222; border-radius: 2px; overflow: hidden; }
+	.fill {
     height: 100%;
-    border-radius: 100px;
-    transition: width 0.5s ease;
+    position: relative;
+    overflow: hidden;
+    background-size: 200% 100%;
+    animation: flow 3s linear infinite;
+    border-radius: 2px;
+    transition: width 0.8s ease-in-out; /* Smooth progressive bar */
   }
-
-  .fill-great {
-    background: linear-gradient(90deg, #00b09b, #00d4b4);
-  }
-
-  .fill-good {
-    background: linear-gradient(90deg, #00b09b80, #5ec99a);
-  }
-
-  .fill-warn {
-    background: linear-gradient(90deg, #e8ac1a80, #e8ac1a);
-  }
-
-  .fill-low {
-    background: linear-gradient(90deg, #f2652280, #f26522);
-  }
-
-  /* Score right */
-  .score-right {
-    text-align: right;
-    min-width: 52px;
-  }
-
-  .score-num {
-    font-size: 0.8rem;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-    line-height: 1;
-  }
-
-  .score-great {
-    color: #00b09b;
-  }
-
-  .score-good {
-    color: #5ec99a;
-  }
-
-  .score-warn {
-    color: #e8ac1a;
-  }
-
-  .score-low {
-    color: #f26522;
-  }
-
-  .score-lbl {
-    font-size: 0.56rem;
-    color: var(--text-3, #555);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-weight: 600;
-  }
-
-  /* Footer */
-  .intel-footer {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(255, 255, 255, 0.07);
-  }
-
-  .footer-note {
-    font-size: 0.56rem;
-    color: var(--text-3, #555);
-    font-weight: 500;
-    letter-spacing: 0.03em;
-  }
+  .fill::after { content:""; position:absolute; inset:0; background: linear-gradient(120deg, rgba(255,255,255,0) 20%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 80%); animation: sweep 2s linear infinite; }
+  @keyframes flow { 0% { background-position:0 0; } 100% { background-position:200% 0; } }
+  @keyframes sweep { 0% { transform:translateX(-100%);} 100% { transform:translateX(100%);} }
+  .card:hover .fill { filter: brightness(1.4) saturate(1.2); }
+  .right { text-align: right; }
+  .tag { font-size: 0.6rem; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 6px; }
+  .pct { font-size: 1rem; font-weight: 900; }
+  .loader { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .scan { width: 100px; height: 2px; background: var(--accent-global); box-shadow: 0 0 10px var(--accent-global); animation: scan 2s infinite; }
+  @keyframes scan { 50% { transform: translateY(20px); opacity: 1; } 0%,100% { transform: translateY(-20px); opacity: 0; } }
+  .footer { padding: 10px 20px; font-size: 0.55rem; color: #555; border-top: 1px solid #111; }
 </style>

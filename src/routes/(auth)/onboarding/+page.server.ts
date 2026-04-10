@@ -15,13 +15,13 @@
 //             → /onboarding/passenger (Ballerine kyc_light)
 //             → /onboarding/passenger/pending
 //             → webhook fires → actor created
-//             → /app/create_profile?rebootstrap=1
+//             → /onboarding/passenger/create_profile?rebootstrap=1
 //
 //   Invite flow → redeem_invite sets kyc_intent on profile
 //              → /onboarding/[intent] (skips this page)
 //              → Ballerine kyc_full_ntsa
 //              → webhook fires → actor created (pending, org approves)
-//              → /[role]/create_profile?rebootstrap=1
+//              → /onboarding/[intent]/create_profile?rebootstrap=1
 //
 // WHY PASSENGER ONLY FOR SELF-REGISTRATION:
 //   Roles (except PASSENGER) are organization-assigned — not user-selected.
@@ -32,7 +32,7 @@
 // src/routes/(auth)/onboarding/+page.server.ts
 
 import type { PageServerLoad, Actions } from "./$types"
-import { redirect, error } from "@sveltejs/kit"
+import { redirect, fail } from "@sveltejs/kit"
 
 import {
   SELF_SELECTABLE_INTENTS,
@@ -70,11 +70,11 @@ export const actions: Actions = {
 
     // Only passengers can self-select
     if (!SELF_SELECTABLE_INTENTS.includes(intent as SelfSelectIntent)) {
-      throw error(
-        400,
-        "Only passenger registration is available here. " +
+      return fail(400, {
+        message:
+          "Only passenger registration is available here. " +
           "Other roles require an invite from a registered organisation.",
-      )
+      })
     }
 
     const { error: updateError } = await supabase
@@ -86,7 +86,7 @@ export const actions: Actions = {
       .eq("id", user.id)
 
     if (updateError) {
-      throw error(500, "Failed to save intent. Please try again.")
+      return fail(500, { message: "Failed to save intent. Please try again." })
     }
 
     throw redirect(303, `/onboarding/${intent}`)

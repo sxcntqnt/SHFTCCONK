@@ -18,7 +18,7 @@
 //   - Guest early-return now preserves onboarding_status for hook redirects
 
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { Database, Tables } from "../../../DatabaseDefinitions"
+import type { Database, Tables } from "../../../../DatabaseDefinitions"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Derived row types
@@ -48,6 +48,24 @@ const isDelegatedSource = (source: string | null): boolean =>
 
 const isDirectOrGroupSource = (source: string | null): boolean =>
   source === "direct" || (source?.startsWith("group:") ?? false)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MpesaCustomerRow — mpesa_customers query result shape
+// Defined locally because mpesa_customers was added after DatabaseDefinitions
+// was last regenerated — Tables<'mpesa_customers'> does not exist yet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type MpesaCustomerRow = {
+  subscription_status: string | null
+  is_minor_account: boolean | null
+  guardian_phone: string | null
+  daily_limit: number | null
+  per_transaction_limit: number | null
+  send_money_enabled: boolean | null
+  lipa_na_mpesa_enabled: boolean | null
+  documents_submitted: boolean | null
+  documents_due_by: string | null
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EnrichedOrgMember — organization_members joined with organizations.name
@@ -127,6 +145,24 @@ export type AssignmentBundle = {
   orgMemberships: EnrichedOrgMember[]
   fleetOwnership: FleetOwnershipRow[]
   stageAssignments: StageAssignmentRow[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MpesaGoProfile — minor/guardian M-PESA GO account details
+// Moved here from contexts/index.ts so passenger.context.ts can import it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MpesaGoProfile = {
+  isMinorAccount: boolean
+  guardianPhone: string | null
+  dailyLimit: number | null
+  perTransactionLimit: number | null
+  sendMoneyEnabled: boolean
+  lipaNaMpesaEnabled: boolean
+  documentsSubmitted: boolean
+  documentsDueBy: string | null // ISO timestamp
+  /** True if 30-day document window has expired without submission */
+  documentsOverdue: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,6 +286,7 @@ export async function resolveUserState(
         stageAssignments: [],
       },
       hasPaidPlan: false,
+      mpesaGo: null,
     }
   }
 
@@ -263,6 +300,7 @@ export async function resolveUserState(
     orgMemberResult,
     fleetResult,
     stageResult,
+    outboundResult,
     mpesaResult,
   ] = await Promise.all([
     // effective_permissions_raw view handles:
@@ -346,9 +384,30 @@ export async function resolveUserState(
   const rawOrgMembers = orgMemberResult.data ?? []
   const fleetOwnership = fleetResult.data ?? []
   const stageAssignments = stageResult.data ?? []
+  const outboundRows = outboundResult.data ?? []
+
+  // Build MpesaGoProfile from mpesa_customers row (null if row absent)
+  const mpesaRaw = mpesaResult.data as MpesaCustomerRow | null
 
   // Paid plan: M-Pesa subscription must be explicitly 'active'
-  const hasPaidPlan = mpesaResult.data?.subscription_status === "active"
+  const hasPaidPlan = mpesaRaw?.subscription_status === "active"
+
+  const mpesaGo: MpesaGoProfile | null = mpesaRaw
+    ? {
+        isMinorAccount: mpesaRaw.is_minor_account ?? false,
+        guardianPhone: mpesaRaw.guardian_phone ?? null,
+        dailyLimit: mpesaRaw.daily_limit ?? null,
+        perTransactionLimit: mpesaRaw.per_transaction_limit ?? null,
+        sendMoneyEnabled: mpesaRaw.send_money_enabled ?? false,
+        lipaNaMpesaEnabled: mpesaRaw.lipa_na_mpesa_enabled ?? false,
+        documentsSubmitted: mpesaRaw.documents_submitted ?? false,
+        documentsDueBy: mpesaRaw.documents_due_by ?? null,
+        documentsOverdue:
+          mpesaRaw.documents_due_by != null &&
+          !mpesaRaw.documents_submitted &&
+          new Date(mpesaRaw.documents_due_by) < new Date(),
+      }
+    : null
 
   // ── 6. Normalise org members ───────────────────────────────────────────────
   // Supabase returns organizations as { name: string } | null from the join.
@@ -384,9 +443,7 @@ export async function resolveUserState(
         scope_id: p.scope_id,
         source: p.source,
       }))
-    outboundDelegations: outboundRows.filter(
-      (d) => d.from_actor_id === actor.id,
-    )
+
     const policyGroupIds = actorPolicyGroups
       .filter((apg) => apg.actor_id === actor.id)
       .map((apg) => apg.group_id)
@@ -408,6 +465,13 @@ export async function resolveUserState(
       stageAssignments: stageAssignments.filter(
         (s) => s.operator_id === actor.id,
       ),
+      outboundDelegations: outboundRows
+        .filter((d) => d.from_actor_id === actor.id)
+        .map((d) => ({
+          to_actor_id: d.to_actor_id,
+          permission_id: d.permission_id,
+          expires_at: d.expires_at,
+        })),
     }
   })
 
@@ -426,5 +490,6 @@ export async function resolveUserState(
       stageAssignments,
     },
     hasPaidPlan,
+    mpesaGo,
   }
 }

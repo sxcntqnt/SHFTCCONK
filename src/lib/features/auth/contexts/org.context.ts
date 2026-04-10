@@ -28,7 +28,7 @@
 //   STAFF_ROLE_PRIORITY picks the highest-authority actor.
 
 import { derived, get } from "svelte/store"
-import type { Tables } from "../../../DatabaseDefinitions"
+import type { Tables } from "../../../../DatabaseDefinitions"
 import type {
   UserState,
   ActorContext,

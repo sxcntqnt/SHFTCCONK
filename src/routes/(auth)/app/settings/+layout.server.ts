@@ -22,7 +22,9 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // Profile must be complete before editing settings
   if (!_hasFullProfile(userState.profile)) {
     const returnTo = encodeURIComponent(url.pathname + url.search)
-    throw redirect(303, `/app/create_profile?next=${returnTo}`)
+    const intent =
+      ((userState.profile as any).kyc_intent as string | null) ?? "passenger"
+    throw redirect(303, `/onboarding/${intent}/create_profile?next=${returnTo}`)
   }
 
   return {
