@@ -81,3 +81,261 @@ export interface DuckDBLayerConfig {
   fillOpacity?: number // Default: 0.25
   strokeColor?: string // Default: "#f26522"
 }
+
+// ============================================
+// Core Coordinate & Geometry Types
+// ============================================
+
+export interface Coordinates {
+  lat: number
+  lng: number
+}
+
+export interface BoundingBox {
+  northEast: Coordinates
+  southWest: Coordinates
+}
+
+// ============================================
+// Map Marker Types
+// ============================================
+
+export interface MapMarker {
+  id: string
+  position: Coordinates
+  label?: string
+  color?: string
+  icon?: string
+  metadata?: Record<string, unknown>
+  createdAt?: Date
+  updatedAt?: Date
+}
+
+export interface MarkerCluster {
+  id: string
+  center: Coordinates
+  bounds: BoundingBox
+  count: number
+  markers: MapMarker[]
+}
+
+// ============================================
+// H3 Grid Types (from Uber's H3 library)
+// ============================================
+
+export interface H3Cell {
+  cellId: string
+  resolution: number
+  boundary: Coordinates[]
+  center: Coordinates
+  properties?: Record<string, unknown>
+}
+
+export interface H3Metrics {
+  cellId: string
+  commuterThroughput: number
+  averageDwellTime: number // seconds
+  transferVelocity: number // passengers per minute
+  walkingToWaitingRatio: number
+  nodeSaturation: number // 0-1 scale
+}
+
+// ============================================
+// Traffic Data Types
+// ============================================
+
+export interface TrafficNode {
+  id: string
+  name: string
+  position: Coordinates
+  type: 'terminus' | 'interchange' | 'staging_point'
+  metrics: {
+    passengerThroughput: number
+    averageDwellTime: number
+    peakHour: string // "HH:MM"
+    saturationLevel: number // 0-1
+  }
+  connectedRoutes: string[]
+}
+
+export interface CorridorAnalytics {
+  id: string
+  name: string
+  startNode: string
+  endNode: string
+  geometry: Coordinates[]
+  metrics: {
+    fuelBurnRate: number // liters per km
+    idlingHotspotScore: number // 0-100
+    vehicleStressIndex: number // 0-100
+    averageSpeed: number // km/h
+    peakFlowTime: string
+  }
+}
+
+export interface RouteSegment {
+  id: string
+  routeId: string
+  startPoint: Coordinates
+  endPoint: Coordinates
+  distance: number // meters
+  duration: number // seconds
+  geometry: Coordinates[]
+}
+
+// ============================================
+// Fleet & Reservation Types
+// ============================================
+
+export interface Vehicle {
+  id: string
+  saccoId: string
+  saccoName: string
+  plateNumber: string
+  capacity: number
+  currentPosition: Coordinates
+  heading: number // degrees
+  speed: number // km/h
+  status: 'active' | 'idle' | 'maintenance' | 'reserved'
+  lastUpdated: Date
+}
+
+export interface FleetReservation {
+  id: string
+  organizationId: string
+  organizationName: string
+  routeId: string
+  routeName: string
+  vehicleId: string
+  vehiclePlate: string
+  scheduledStart: Date
+  scheduledEnd: Date
+  status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+  passengerCount: number
+  pickupPoint: Coordinates
+  dropoffPoint: Coordinates
+  createdAt: Date
+}
+
+export interface SeatBlock {
+  id: string
+  reservationId: string
+  seatCount: number
+  routeId: string
+  validFrom: Date
+  validTo: Date
+  assignedEmployees: string[]
+}
+
+// ============================================
+// Event Types for SSE Streaming
+// ============================================
+
+export type StreamEventType =
+  | 'vehicle_update'
+  | 'traffic_update'
+  | 'reservation_update'
+  | 'node_saturation'
+  | 'corridor_alert'
+  | 'heartbeat'
+  | 'error'
+  | 'connected'
+
+export interface StreamEvent<T = unknown> {
+  type: StreamEventType
+  timestamp: string
+  data: T
+  metadata?: {
+    source?: string
+    requestId?: string
+    retry?: number
+  }
+}
+
+export interface VehicleStreamData {
+  vehicles: Vehicle[]
+  bounds: BoundingBox
+}
+
+export interface TrafficStreamData {
+  nodes: TrafficNode[]
+  corridors: CorridorAnalytics[]
+  updatedAt: string
+}
+
+// ============================================
+// API Response Types
+// ============================================
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    hasMore: boolean
+  }
+}
+
+export interface GeoJSONFeature {
+  type: 'Feature'
+  geometry: {
+    type: 'Point' | 'LineString' | 'Polygon'
+    coordinates: number[] | number[][] | number[][][]
+  }
+  properties: Record<string, unknown>
+}
+
+export interface GeoJSONFeatureCollection {
+  type: 'FeatureCollection'
+  features: GeoJSONFeature[]
+}
+
+// ============================================
+// Filter & Query Types
+// ============================================
+
+export interface MapQueryFilters {
+  bounds?: BoundingBox
+  center?: Coordinates
+  radius?: number // meters
+  nodeTypes?: TrafficNode['type'][]
+  minSaturation?: number
+  maxSaturation?: number
+  routeIds?: string[]
+  saccoIds?: string[]
+  includeMetrics?: boolean
+}
+
+export interface H3QueryFilters extends MapQueryFilters {
+  resolution?: number // 0-15, default 7 for neighborhood level
+  metrics?: H3Metrics['cellId'][]
+}
+
+// ============================================
+// Configuration Types
+// ============================================
+
+export interface MapServiceConfig {
+  postgis: {
+    host: string
+    port: number
+    database: string
+    user: string
+    password: string
+    poolSize: number
+  }
+  sse: {
+    heartbeatInterval: number // ms
+    reconnectDelay: number // ms
+    maxConnections: number
+  }
+  upstream: {
+    baseUrl: string
+    timeout: number // ms
+    retryAttempts: number
+  }
+  h3: {
+    defaultResolution: number
+  }
+}
