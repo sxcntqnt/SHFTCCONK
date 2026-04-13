@@ -3,6 +3,19 @@
 import type { HandleClientError } from "@sveltejs/kit"
 import { browser } from "$app/environment"
 import { PUBLIC_POSTHOG_KEY } from "$env/static/public"
+import type {
+  Coordinates,
+  BoundingBox,
+  TrafficNode,
+  CorridorAnalytics,
+  Vehicle,
+  H3Cell,
+  MapMarker,
+  StreamEvent,
+  VehicleStreamData,
+  TrafficStreamData,
+  GeoJSONFeatureCollection,
+} from '$lib/map/types/MapTypes'
 
 /* ============================================================
    LAZY SINGLETONS
@@ -115,19 +128,7 @@ export const handleError: HandleClientError = async ({
 // React/Vue/Svelte compatible TypeScript hooks
 // ============================================
 
-import type {
-  Coordinates,
-  BoundingBox,
-  TrafficNode,
-  CorridorAnalytics,
-  Vehicle,
-  H3Cell,
-  MapMarker,
-  StreamEvent,
-  VehicleStreamData,
-  TrafficStreamData,
-  GeoJSONFeatureCollection,
-} from './types'
+
 
 // ============================================
 // Configuration
@@ -585,7 +586,7 @@ export function useMapData(
 // Re-export utilities
 // ============================================
 
-export { distanceBetween, createBoundingBox, sortMarkersByDistance } from './utils/distance'
+export { distanceBetween, createBoundingBox, sortMarkersByDistance } from '$lib/map/utils/distance'
 
 // ============================================
 // Placeholder imports (replace with actual React imports)
