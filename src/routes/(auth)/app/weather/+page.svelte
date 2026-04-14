@@ -179,15 +179,18 @@
     {#if $weatherCards.length > 0}
       <div class="cards-grid">
         {#each $weatherCards as weather (weather.name)}
-          <WeatherCard
-            temperature={weather.temperature}
-            windspeed={weather.windspeed}
-            weathercode={weather.weathercode}
-            time={weather.time}
-            location={weather.name}
-            source={weather.source}
-            on:remove={(e) => removeWeather(e.detail.location)}
-          />
+<WeatherCard
+  temperature={weather.temperature}
+  windspeed={weather.windspeed}
+  weathercode={weather.weathercode}
+  humidity={weather.humidity}
+  time={weather.time}
+  location={weather.name}
+  source={weather.source}
+  nasaEvents={weather.nasaEvents}
+  on:remove={(e) => removeWeather(e.detail.location)}
+/>
+          
         {/each}
       </div>
     {:else}
