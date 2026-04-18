@@ -57,9 +57,7 @@ export default defineConfig({
         '@duckdb/node-bindings-darwin-x64',
         '@duckdb/node-bindings-darwin-arm64',
         '@duckdb/node-bindings-win32-x64',
-        '@duckdb/node-bindings-win32-arm64'
-
-              // snappy
+        '@duckdb/node-bindings-win32-arm64',
       '@napi-rs/snappy-linux-x64-gnu',
       '@napi-rs/snappy-linux-arm64-gnu',
       '@napi-rs/snappy-darwin-x64',
