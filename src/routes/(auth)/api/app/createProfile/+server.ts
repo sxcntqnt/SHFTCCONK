@@ -5,18 +5,13 @@ import {
   loadProfileFormData,
   saveProfile,
 } from "$lib/features/profile/profile.service"
+import { profileCreateSchema } from "$lib/security/onboarding.schema"
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   const { session } = await locals.safeGetSession()
   if (!session) error(401, "Unauthorised")
 
-  let body: {
-    fullName: string
-    phone: string
-    companyName?: string
-    website?: string
-    orgIds?: string[]
-  }
+  let body: any
 
   try {
     body = await request.json()
@@ -24,13 +19,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(400, "Invalid JSON body")
   }
 
-  const result = await saveProfile(locals.supabase, session.user.id, {
-    fullName: body.fullName,
-    phone: body.phone,
-    companyName: body.companyName,
-    website: body.website,
-    orgIds: body.orgIds ?? [],
-  })
+  const parsed = profileCreateSchema.safeParse(body)
+  if (!parsed.success) {
+    return json({ error: "Validation failed", fields: parsed.error.flatten().fieldErrors }, { status: 400 })
+  }
+
+  const validBody = parsed.data
+
+  const result = await saveProfile(locals.supabase, session.user.id, validBody)
 
   if (result && "fields" in result) {
     return json(

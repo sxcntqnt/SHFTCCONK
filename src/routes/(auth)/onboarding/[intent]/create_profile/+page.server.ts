@@ -98,6 +98,8 @@ export const actions: Actions = {
       return fail(400, { errorFields: parsed.error.flatten().fieldErrors, errorMessage: "Validation failed", returnTo, ...raw })
     }
 
+    const input = parsed.data
+
     const result = await saveProfile(supabase, user.id, input)
 
     if (result && "fields" in result) {

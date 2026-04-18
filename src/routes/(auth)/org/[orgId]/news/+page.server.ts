@@ -197,11 +197,11 @@ export const actions: Actions = {
 
   toggle_pin: async ({ request, locals }) => {
     const form = await request.formData()
-    const raw = { id: form.get("id") }
-    const parsed = idSchema.safeParse(raw)
+    const raw = { id: form.get("id"), pinned: form.get("pinned") }
+    const parsed = idSchema.extend({ pinned: z.preprocess((v) => v === "true" || v === true, z.boolean()).optional().default(false) }).safeParse(raw)
     if (!parsed.success) return fail(400, { error: "Missing id" })
     const id = parsed.data.id
-    const pinned = form.get("pinned") === "true"
+    const pinned = parsed.data.pinned
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")
@@ -214,11 +214,11 @@ export const actions: Actions = {
 
   toggle_publish: async ({ request, locals }) => {
     const form = await request.formData()
-    const raw = { id: form.get("id") }
-    const parsed = idSchema.safeParse(raw)
+    const raw = { id: form.get("id"), published: form.get("published") }
+    const parsed = idSchema.extend({ published: z.preprocess((v) => v === "false" ? false : v === "true" || v === true, z.boolean()).optional().default(true) }).safeParse(raw)
     if (!parsed.success) return fail(400, { error: "Missing id" })
     const id = parsed.data.id
-    const published = form.get("published") === "true"
+    const published = parsed.data.published
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")
