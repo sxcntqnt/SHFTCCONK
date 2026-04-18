@@ -1,4 +1,5 @@
-// lib/features/services/weatherApi.ts
+import { fetchNearbyEonetEvents, type EonetEvent } from "./nasaApi"
+
 export type WeatherData = {
   name: string
   lat: number
@@ -6,8 +7,10 @@ export type WeatherData = {
   temperature: number
   windspeed: number
   weathercode: number
-  time: string // ISO 8601 in local timezone thanks to &timezone=auto
-  source: "search" | "map-click" | "geofence"
+  humidity: number          // ← new: relative humidity %
+  time: string
+  source: "search" | "map-click" | "geofence" | "default"
+  nasaEvents: EonetEvent[]  // ← new: nearby EONET events
 }
 
 export async function fetchWeather(
@@ -20,37 +23,44 @@ export async function fetchWeather(
     throw new Error("Invalid coordinates")
   }
 
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m,weather_code&timezone=auto`
+  // Fire both requests in parallel — EONET failure never blocks weather
+  const weatherUrl =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lng}` +
+    `&current=temperature_2m,wind_speed_10m,weather_code,relative_humidity_2m` +
+    `&timezone=auto`
 
-  const res = await fetch(url)
+  const [res, nasaEvents] = await Promise.all([
+    fetch(weatherUrl),
+    fetchNearbyEonetEvents(lat, lng).catch(() => [] as EonetEvent[]),
+  ])
 
   if (!res.ok) {
-    let errorMsg = `Failed to fetch weather (HTTP ${res.status})`
+    let msg = `Failed to fetch weather (HTTP ${res.status})`
     try {
-      const errJson = await res.json()
-      errorMsg += `: ${errJson.reason || errJson.error?.message || res.statusText}`
+      const err = await res.json()
+      msg += `: ${err.reason || err.error?.message || res.statusText}`
     } catch {
-      errorMsg += `: ${res.statusText}`
+      msg += `: ${res.statusText}`
     }
-    throw new Error(errorMsg)
+    throw new Error(msg)
   }
 
   const json = await res.json()
+  if (!json.current) throw new Error("No current weather data in response")
 
-  if (!json.current) {
-    throw new Error("No current weather data in response")
-  }
-
-  const current = json.current
+  const c = json.current
 
   return {
     name,
     lat,
     lng,
-    temperature: current.temperature_2m,
-    windspeed: current.wind_speed_10m,
-    weathercode: current.weather_code,
-    time: current.time,
+    temperature: c.temperature_2m,
+    windspeed:   c.wind_speed_10m,
+    weathercode: c.weather_code,
+    humidity:    c.relative_humidity_2m ?? 0,
+    time:        c.time,
     source,
+    nasaEvents,
   }
 }
