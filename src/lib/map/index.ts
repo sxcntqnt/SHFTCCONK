@@ -5,11 +5,11 @@
 // ============================================
 
 // Types
-export * from './types/MapTypess'
+export * from './types/MapTypes'
 
 // Services
-export { PostGISService } from './services/postgis.service'
-export { SSEStreamManager, sseStreamManager } from './services/ssestreamer.service'
+export { PostGISService } from './services/postgis'
+export { SSEStreamManager, sseStreamManager } from './services/ssestreamer'
 export { MapService, createMapService, getMapService } from './services/MapService'
 
 // Bootstrap / manifest system
