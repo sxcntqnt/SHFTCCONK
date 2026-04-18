@@ -6,7 +6,7 @@ export * from './types/MapTypes';
 // ── Services ──────────────────────────────────────────────────────────────────
 export { DuckDBService }                          from './services/DuckDB.service';
 export { SSEStreamManager, sseStreamManager }     from './services/SseStreamer.service';
-export { MapService, createMapService, getMapService } from './services/MapService';
+export { MapService, createMapService, getMapService } from './services/MapService.service';
 export {
   BootstrapManifestService,
   bootstrapManifestService,

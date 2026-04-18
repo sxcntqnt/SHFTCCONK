@@ -1,7 +1,7 @@
 // ============================================
 // Map Service - Main Entry Point (DuckDB + SvelteKit)
+// .server.ts suffix ensures this is NEVER included in the client bundle.
 // ============================================
-import { EventEmitter } from 'events';
 import type {
   Coordinates,
   BoundingBox,
@@ -20,7 +20,7 @@ import { DuckDBService } from './DuckDB.service';
 import type { SSEStreamManager } from './SseStreamer.service';
 
 // ============================================
-// Upstream Service Client (unchanged)
+// Upstream Service Client
 // ============================================
 class UpstreamMapClient {
   private baseUrl: string;
@@ -35,7 +35,11 @@ class UpstreamMapClient {
     this.retryDelay = config.retryAttempts > 0 ? 1000 : 0;
   }
 
-  async fetchTile(x: number, y: number, z: number): Promise<{ data: ArrayBuffer; headers: Record<string, string> }> {
+  async fetchTile(
+    x: number,
+    y: number,
+    z: number,
+  ): Promise<{ data: ArrayBuffer; headers: Record<string, string> }> {
     return this.request(`/tiles/${z}/${x}/${y}.pbf`);
   }
 
@@ -49,7 +53,9 @@ class UpstreamMapClient {
     return this.request(`/features?${query}`);
   }
 
-  async fetchRouteGeometry(routeId: string): Promise<{ geometry: Coordinates[]; segments: number }> {
+  async fetchRouteGeometry(
+    routeId: string,
+  ): Promise<{ geometry: Coordinates[]; segments: number }> {
     return this.request(`/routes/${routeId}/geometry`);
   }
 
@@ -91,7 +97,10 @@ class UpstreamMapClient {
         }
       }
     }
-    throw new Error(`Failed after ${this.retryAttempts + 1} attempts: ${lastError?.message}`);
+
+    throw new Error(
+      `Failed after ${this.retryAttempts + 1} attempts: ${lastError?.message}`,
+    );
   }
 
   private delay(ms: number): Promise<void> {
@@ -101,8 +110,12 @@ class UpstreamMapClient {
 
 // ============================================
 // Main Map Service
+//
+// EventEmitter intentionally removed — it pulled in Node's `events`
+// module which Vite stubs to a browser no-op, breaking SSR builds.
+// Event broadcasting is handled directly via SSEStreamManager.
 // ============================================
-export class MapService extends EventEmitter {
+export class MapService {
   private db: DuckDBService;
   private sse: SSEStreamManager;
   private upstream: UpstreamMapClient;
@@ -110,7 +123,6 @@ export class MapService extends EventEmitter {
   private isRunning: boolean = false;
 
   constructor(db: DuckDBService, sse: SSEStreamManager, config: MapServiceConfig) {
-    super();
     this.db = db;
     this.sse = sse;
     this.upstream = new UpstreamMapClient(config.upstream);
@@ -151,7 +163,7 @@ export class MapService extends EventEmitter {
   // ============================================
   async getTrafficNodes(
     bounds: BoundingBox,
-    options?: { nodeTypes?: TrafficNode['type'][]; minSaturation?: number }
+    options?: { nodeTypes?: TrafficNode['type'][]; minSaturation?: number },
   ): Promise<TrafficNode[]> {
     return this.db.getNodesInBounds(bounds, options);
   }
@@ -214,7 +226,9 @@ export class MapService extends EventEmitter {
     return this.upstream.fetchFeatures(bounds);
   }
 
-  async getRouteGeometry(routeId: string): Promise<{ geometry: Coordinates[]; segments: number }> {
+  async getRouteGeometry(
+    routeId: string,
+  ): Promise<{ geometry: Coordinates[]; segments: number }> {
     return this.upstream.fetchRouteGeometry(routeId);
   }
 
@@ -225,13 +239,13 @@ export class MapService extends EventEmitter {
     // Refresh vehicles every 5 seconds
     this.updateIntervals.set(
       'vehicle_refresh',
-      setInterval(() => this.refreshVehicles(), 5000)
+      setInterval(() => this.refreshVehicles(), 5000),
     );
 
     // Refresh traffic data every 30 seconds
     this.updateIntervals.set(
       'traffic_refresh',
-      setInterval(() => this.refreshTrafficData(), 30000)
+      setInterval(() => this.refreshTrafficData(), 30000),
     );
   }
 
