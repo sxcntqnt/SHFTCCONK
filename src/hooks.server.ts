@@ -5,19 +5,20 @@
 // Composed via sequence():
 //   1. Sentry        — error reporting & tracing
 //   2. Cloudflare    — HTTPS protocol fix behind proxy
-//   3. PostHog       — analytics ingest reverse proxy
-//   4. Supabase      — client creation + safeGetSession
-//   5. Auth Guard    — basic session check + route protection
-//   6. User State    — resolveUserState + activateXContext (THE BRAIN)
+//   3. Location      — geo seed from CF headers → requestContext (NOT auth)
+//   4. PostHog       — analytics ingest reverse proxy
+//   5. Supabase      — client creation + safeGetSession
+//   6. Auth Guard    — basic session check + route protection
+//   7. User State    — resolveUserState + activateXContext (THE BRAIN)
 //
-// CHANGES from previous version:
-//   - Added userStateHandle (step 6) — the enterprise context resolver
-//   - supabaseHandle now initializes userState + activeContext to null
-//     alongside session/user (previously missing — violated app.d.ts)
-//   - authGuardHandle unchanged — still handles basic session guard only
-//   - userStateHandle owns ALL domain redirects (guest trap, KYC trap)
-//     authGuardHandle only redirects to /login on missing session
-//   - stripe_customers references replaced with mpesa_customers
+// ARCHITECTURE NOTE — WHY locationHandle IS NOT AUTH:
+//   requestContext is a request optimization concern, not identity.
+//   It seeds the map bootstrap (which data slice to load) and is
+//   completely independent from UserState / ActiveContext.
+//   Never reads from auth. Never gates routes.
+//
+//   auth pipeline:  supabaseHandle → authGuardHandle → userStateHandle
+//   map pipeline:   locationHandle → requestContext → BootstrapManifestService
 
 import * as Sentry from "@sentry/sveltekit"
 import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
@@ -46,14 +47,7 @@ type SafeSessionResult = {
   amr: AuthenticatorAssuranceLevelEntry[] | null
 }
 
-// Paths where userStateHandle must NOT run —
-// either because there is no session yet, or because redirecting
-// from these paths would cause an infinite loop.
 const PUBLIC_PATHS = ["/login", "/verify", "/auth/callback", "/auth/confirm"]
-
-// Paths that authenticated users are allowed on regardless of
-// onboarding_status — without this, the onboarding flow itself
-// would be redirect-looped by the guest trap.
 const ONBOARDING_PREFIX = "/onboarding"
 
 const isPublicPath = (pathname: string): boolean =>
@@ -63,19 +57,96 @@ const isOnboardingPath = (pathname: string): boolean =>
   pathname.startsWith(ONBOARDING_PREFIX)
 
 /* ============================================================
+   LOCATION HANDLE — GEO SEED (REQUEST LAYER, NOT AUTH)
+
+   Reads Cloudflare edge headers to build a requestContext that
+   seeds the map bootstrap pipeline. This is NOT identity — it
+   is a performance optimization: "which spatial slice of the
+   world should exist in this session?"
+
+   Placement: AFTER cloudflareHttpsFix (so protocol is clean),
+   BEFORE posthogProxy (so analytics can use regionKey).
+
+   Locals set: event.locals.requestContext
+   Locals NOT touched: session, user, userState, activeContext
+============================================================ */
+
+// Cloudflare returns edge-case codes we must not treat as real countries
+const INVALID_CF_CODES = new Set(["XX", "T1", "A1", "A2"])
+
+function normalizeCountry(code: string | null): string | null {
+  if (!code) return null
+  const upper = code.toUpperCase()
+  return INVALID_CF_CODES.has(upper) ? null : upper
+}
+
+// Approximate city centers — Kenya/Nairobi subset only for now.
+// Expand when dataset grows beyond this region.
+const KE_CITY_CENTERS: Record<string, { lat: number; lng: number }> = {
+  Nairobi:  { lat: -1.2921, lng: 36.8219 },
+  Mombasa:  { lat: -4.0435, lng: 39.6682 },
+  Kisumu:   { lat: -0.0917, lng: 34.7679 },
+  Nakuru:   { lat: -0.3031, lng: 36.0800 },
+  Eldoret:  { lat:  0.5143, lng: 35.2698 },
+  Thika:    { lat: -1.0332, lng: 37.0693 },
+  Machakos: { lat: -1.5177, lng: 37.2634 },
+}
+
+// Nairobi is the primary dataset anchor — default to it
+const DEFAULT_CENTER = KE_CITY_CENTERS.Nairobi
+
+function inferApproxCenter(
+  city: string | null,
+  country: string | null,
+): { lat: number; lng: number } {
+  // Only apply city lookup for KE dataset — prevents wrong centres
+  // when a non-KE user accesses the app
+  if (country !== "KE" || !city) return DEFAULT_CENTER
+  return KE_CITY_CENTERS[city] ?? DEFAULT_CENTER
+}
+
+// H3 seed resolution — determines the coarseness of the initial
+// bootstrap manifest. Zoom level refines this on the client.
+// 7 = city/metro level (~5km² cells) — right for Nairobi initial load
+function inferH3SeedResolution(country: string | null): number {
+  if (!country) return 6  // unknown → extra coarse, minimize data
+  return 7               // country known → city-level seed
+}
+
+const locationHandle: Handle = async ({ event, resolve }) => {
+  const headers = event.request.headers
+
+  const rawCountry = headers.get("cf-ipcountry")
+  const city      = headers.get("cf-ipcity")
+  const ip        = headers.get("cf-connecting-ip")
+
+  const country = normalizeCountry(rawCountry)
+
+  event.locals.requestContext = {
+    country,
+    city:              city ?? null,
+    ip:                ip ?? null,
+    // regionKey is stable per city — usable as cache key and analytics dim
+    regionKey:         `${country ?? "XX"}:${city ?? "unknown"}`,
+    approxCenter:      inferApproxCenter(city, country),
+    h3SeedResolution:  inferH3SeedResolution(country),
+  }
+
+  return resolve(event)
+}
+
+/* ============================================================
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
 
 const supabaseHandle: Handle = async ({ event, resolve }) => {
   // Initialize ALL locals to null — prevents undefined on public routes.
-  // Matches app.d.ts type contract (all fields are T | null, never undefined).
   event.locals.session = null
   event.locals.user = null
   event.locals.userState = null
   event.locals.activeContext = null
+  // Note: requestContext is already set by locationHandle above
 
-  // ─── User-scoped client (anon key + user JWT from cookies) ──
-  // RLS applies. Runs as the authenticated user.
   event.locals.supabase = createServerClient(
     PUBLIC_SUPABASE_URL,
     PUBLIC_SUPABASE_ANON_KEY,
@@ -97,9 +168,6 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
     },
   )
 
-  // ─── Service role client (bypasses RLS) ─────────────────────
-  // Use for: invite_tokens INSERT, M-Pesa webhooks, admin bulk ops.
-  // NEVER expose to the client.
   event.locals.supabaseServiceRole = createClient(
     PUBLIC_SUPABASE_URL,
     PRIVATE_SUPABASE_SERVICE_ROLE,
@@ -116,9 +184,6 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
     event.locals.supabase.auth.suppressGetSessionWarning = true
   }
 
-  // ─── Safe session helper ────────────────────────────────────
-  // Validates with getUser() (hits auth server) + includes MFA/AMR.
-  // More secure than getSession() alone which only reads cookies.
   event.locals.safeGetSession = async (): Promise<SafeSessionResult> => {
     const {
       data: { session },
@@ -149,12 +214,10 @@ const supabaseHandle: Handle = async ({ event, resolve }) => {
 
 /* ============================================================
    AUTH GUARD
-   
+
    Responsibility: session existence only.
-   Does NOT make domain decisions — that belongs to userStateHandle.
-   
-   Page routes  → redirect to /login
-   API routes   → 401 JSON
+   Does NOT make domain decisions.
+   Does NOT know about location.
 ============================================================ */
 
 const authGuardHandle: Handle = async ({ event, resolve }) => {
@@ -199,66 +262,36 @@ const authGuardHandle: Handle = async ({ event, resolve }) => {
 
 /* ============================================================
    USER STATE HANDLE — THE BRAIN
-   
-   Runs after authGuardHandle. By this point locals.user is
-   populated on protected routes and null on public routes.
-   
-   Responsibilities (in order):
-     1. Skip entirely on public paths (no session, no state to resolve)
-     2. resolveUserState() — full identity + capability resolution
-     3. GUEST TRAP — no active actors → /onboarding
-     4. KYC TRAP   — AWAITING_KYC mid-flow → /onboarding/[intent]
-     5. activateXContext() — build runtime context from cookie preference
-     6. Fallback to 'passenger' if preferred context is invalid
-   
-   ONLY this handle makes domain redirects.
-   authGuardHandle only redirects to /login on missing session.
-   Pages NEVER redirect for domain reasons.
+
+   Unchanged. Still owns: resolveUserState, activateXContext,
+   guest trap, KYC trap, context fallback.
+   Does NOT know about requestContext.
 ============================================================ */
 
 const userStateHandle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url
   const user = event.locals.user
 
-  // ── Skip if no authenticated user ──────────────────────────────────────────
-  // Public paths (login, verify, auth/callback) and unauthenticated requests
-  // get no state resolution. locals.userState + activeContext stay null.
   if (!user || isPublicPath(pathname)) {
     return resolve(event)
   }
 
   try {
-    // ── 1. Resolve full user state ────────────────────────────────────────────
-    // Fetches profile, actors, jurisdictions, assignments, permissions,
-    // delegated authority, and M-PESA subscription in one parallel round trip.
     const state = await resolveUserState(event.locals.supabase, user.id)
     event.locals.userState = state
 
-    // ── 2. GUEST TRAP ─────────────────────────────────────────────────────────
-    // isGuest = no active actors OR onboarding_status = 'GUEST'.
-    // Allow through if already on any /onboarding path.
     if (state.isGuest && !isOnboardingPath(pathname)) {
       const kycIntent = (state.profile as any).kyc_intent as string | null
-
-      // If they have a kyc_intent already set, they picked a role previously
-      // but navigated away — send them back to their specific intent flow.
-      // Otherwise send to the intent picker.
       if (kycIntent) {
         throw redirect(303, `/onboarding/${kycIntent}`)
       }
       throw redirect(303, "/onboarding")
     }
 
-    // ── 3. KYC TRAP ───────────────────────────────────────────────────────────
-    // User has chosen an intent and submitted to Ballerine but webhook
-    // hasn't fired yet (kyc_status = 'pending' or 'AWAITING_KYC').
-    const onboardingStatus = (state.profile as any).onboarding_status as
-      | string
-      | null
+    const onboardingStatus = (state.profile as any).onboarding_status as string | null
     const kycIntent = (state.profile as any).kyc_intent as string | null
     const kycStatus = (state.profile as any).kyc_status as string | null
 
-    // Lock to /onboarding/[intent] while KYC is in flight
     if (
       onboardingStatus === "AWAITING_KYC" &&
       kycStatus === "pending" &&
@@ -267,42 +300,28 @@ const userStateHandle: Handle = async ({ event, resolve }) => {
       throw redirect(303, `/onboarding/${kycIntent ?? "passenger"}`)
     }
 
-    // KYC was rejected — send back to retry
     if (kycStatus === "rejected" && !isOnboardingPath(pathname)) {
       throw redirect(303, `/onboarding/${kycIntent ?? "passenger"}?retry=true`)
     }
 
-    // ── 4. Runtime context activation ─────────────────────────────────────────
-    // Read the preferred context from the cookie set by the Context Switcher.
-    // Falls back to 'passenger' if no cookie is set.
     const preferredContext = (event.cookies.get("active_context") ??
       "passenger") as App.ContextType
 
     const preferredOrgId = event.cookies.get("active_org_id") ?? undefined
 
-    // activateXContext returns null if the user no longer has the required
-    // actor (e.g. a role was revoked since the cookie was set).
     let activeContext = activateXContext(state, preferredContext, {
       orgId: preferredOrgId,
     })
 
-    // ── 5. Fallback to passenger ──────────────────────────────────────────────
-    // If the preferred context is invalid, drop back to passenger.
-    // This handles revoked roles, expired delegations, and stale cookies.
     if (!activeContext) {
       activeContext = activateXContext(state, "passenger")
     }
 
     event.locals.activeContext = activeContext
   } catch (err) {
-    // Re-throw SvelteKit redirects — swallow everything else.
-    // A resolver failure should not break the whole request.
-    // The page will receive null userState + activeContext and can
-    // handle the degraded state gracefully.
     if (err instanceof Error && "status" in err && "location" in err) {
       throw err
     }
-
     console.error("[hooks:userStateHandle] Resolution failed:", err)
   }
 
@@ -364,15 +383,25 @@ const posthogProxy: Handle = async ({ event, resolve }) => {
 
 /* ============================================================
    COMPOSED HOOK SEQUENCE
+   
+   Order matters:
+   1. Sentry       — must be first for full trace coverage
+   2. CF fix       — must run before any URL inspection
+   3. Location     — runs early: feeds PostHog + map pipeline
+   4. PostHog      — can now use requestContext.regionKey
+   5. Supabase     — clients + safeGetSession + null-init locals
+   6. Auth Guard   — session guard → /login or 401
+   7. User State   — domain resolution (auth-only, no location)
 ============================================================ */
 
 export const handle = sequence(
-  Sentry.sentryHandle(), // error reporting + tracing — must be first
-  cloudflareHttpsFix, // fix protocol before any URL inspection
-  posthogProxy, // proxy analytics before auth touches cookies
-  supabaseHandle, // clients + safeGetSession + null-initialize locals
-  authGuardHandle, // session existence guard → /login or 401
-  userStateHandle, // domain resolution → resolveUserState + activateXContext
+  Sentry.sentryHandle(),
+  cloudflareHttpsFix,
+  locationHandle,    // geo seed — request optimization, NOT auth
+  posthogProxy,
+  supabaseHandle,
+  authGuardHandle,
+  userStateHandle,
 )
 
 /* ============================================================

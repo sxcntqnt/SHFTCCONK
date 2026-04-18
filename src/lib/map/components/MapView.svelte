@@ -1,4 +1,14 @@
 <script lang="ts">
+  // MapView.svelte
+  //
+  // Interactive map with geofences, routes, and DuckDB H3 tiles.
+  //
+  // CHANGES from previous version:
+  //   - Accepts `requestContext` prop — seeds map center from CF geo
+  //   - Accepts `manifest` prop — passes to DuckDBTileProvider
+  //   - DuckDB tile source URL derived from manifest.cityId (not hardcoded)
+  //   - Emits `onViewportChange` so parent can feed new hexes to the SW
+
   import { onMount, onDestroy } from "svelte"
   import { browser } from "$app/environment"
   import {
@@ -7,12 +17,11 @@
     routesGeoJSON,
     addGeofence,
   } from "$lib/map/stores/MapStore"
+  import { prefetchHexesForViewport } from "$lib/hooks.client"
+  import { zoomToH3Resolution } from "$lib/map"
   import type { Coordinates, MapRoute, Geofence } from "$lib/map/types/MapTypes"
+  import type { CityBootstrapManifest, RequestContext } from "$lib/map"
 
-  // ── DuckDBLayerConfig defined locally with all fields optional ──────────
-  // Importing it from MapTypes caused `Property X does not exist on type '{}'`
-  // when the prop defaulted to `{}`. Declaring it here with optional fields
-  // and using it as the default type makes `cfg.sourceId ?? FALLBACK` safe.
   interface DuckDBLayerConfig {
     sourceId?: string
     fillLayerId?: string
@@ -22,10 +31,8 @@
     strokeColor?: string
   }
 
-  // ── Props ─────────────────────────────────────────────────────────────────
   interface Props {
-    initialCenter?: Coordinates
-    initialZoom?: number
+    // Existing props
     routes?: MapRoute[]
     nextName?: string
     dbReady?: boolean
@@ -33,26 +40,37 @@
     oncreated?: (g: Geofence) => void
     height?: string
     mapStyle?: string
+    // NEW: geo context + manifest
+    requestContext?: RequestContext | null
+    manifest?: CityBootstrapManifest | null
+    onViewportChange?: (hexes: string[], zoom: number) => void
   }
 
   let {
-    initialCenter = { lat: -1.286, lng: 36.817 },
-    initialZoom = 12,
     routes = [],
     nextName = "",
     dbReady = false,
-    duckdbLayer = {} as DuckDBLayerConfig, // ← typed default; no more `{}` mismatch
+    duckdbLayer = {} as DuckDBLayerConfig,
     oncreated,
     height = "100%",
     mapStyle = "https://api.protomaps.com/styles/v4/dark.json?key=REPLACE_WITH_KEY",
+    requestContext = null,
+    manifest = null,
+    onViewportChange,
   }: Props = $props()
 
-  // ── Map DOM ref & instance ────────────────────────────────────────────────
+  // Derive initial center from requestContext (CF geo) if available,
+  // fall back to Nairobi CBD
+  const initialCenter: Coordinates = requestContext?.approxCenter ?? {
+    lat: -1.286,
+    lng: 36.817,
+  }
+  const initialZoom = 12
+
   let container: HTMLDivElement
   let map: any
   let drawControl: any
 
-  // ── Source/layer IDs ──────────────────────────────────────────────────────
   const GEOFENCE_SOURCE = "geofences"
   const GEOFENCE_FILL = "geofence-fill"
   const GEOFENCE_STROKE = "geofence-stroke"
@@ -67,13 +85,33 @@
   const DUCKDB_FILL = "h3-fill"
   const DUCKDB_STROKE = "h3-stroke"
 
-  // ── Cleanup handles ───────────────────────────────────────────────────────
-  // Stored here so onDestroy can reach them — onMount is async so it cannot
-  // return a cleanup function (Svelte drops Promise<() => void> cleanups).
   let unsubGeofences: (() => void) | null = null
   let unsubRoutes: (() => void) | null = null
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // Derive tile URL from manifest — uses cityId not hardcoded string
+  function getDuckdbTileUrl(): string {
+    const cityId = manifest?.cityId ?? "nairobi"
+    return `duckdb://${cityId}?z={z}&x={x}&y={y}`
+  }
+
+  // Emit current viewport hexes to parent (→ SW prefetch)
+  function emitViewportHexes() {
+    if (!map) return
+
+    const bounds = map.getBounds()
+    const zoom = Math.round(map.getZoom())
+    const h3Res = zoomToH3Resolution(zoom)
+
+    // We don't compute H3 cells in the browser — that's the server's job.
+    // Instead, send bounds to parent; parent calls BootstrapManifestService.
+    // For SW prefetch, pass the manifest seed cells at this zoom resolution.
+    if (manifest?.h3Seeds?.cells?.length) {
+      prefetchHexesForViewport(manifest.h3Seeds.cells)
+    }
+
+    onViewportChange?.(manifest?.h3Seeds?.cells ?? [], zoom)
+  }
+
   onMount(async () => {
     if (!browser) return
 
@@ -114,7 +152,7 @@
       .querySelector(".maplibregl-ctrl-attrib")
       ?.classList.add("maplibregl-compact")
 
-    // ── Geofence sources + layers ────────────────────────────────────────
+    // ── Geofence sources + layers ──────────────────────────────────────
     map.addSource(GEOFENCE_SOURCE, { type: "geojson", data: $geofencesGeoJSON })
 
     map.addLayer({
@@ -162,7 +200,7 @@
       },
     })
 
-    // ── Route sources + layers ───────────────────────────────────────────
+    // ── Route sources + layers ─────────────────────────────────────────
     map.addSource(ROUTE_SOURCE, { type: "geojson", data: $routesGeoJSON })
 
     map.addLayer({
@@ -192,19 +230,18 @@
     map.on("mouseenter", ROUTE_LAYER, (e: any) => {
       map.getCanvas().style.cursor = "pointer"
       const id = e.features?.[0]?.properties?.id
-      if (id) {
+      if (id)
         new maplibregl.Popup({ closeButton: false, className: "mp-popup" })
           .setLngLat(e.lngLat)
           .setHTML(`<span>Route: ${id}</span>`)
           .addTo(map)
-      }
     })
     map.on("mouseleave", ROUTE_LAYER, () => {
       map.getCanvas().style.cursor = ""
       document.querySelectorAll(".mp-popup").forEach((el) => el.remove())
     })
 
-    // ── Draw toolbar ─────────────────────────────────────────────────────
+    // ── Draw toolbar ───────────────────────────────────────────────────
     drawControl = new MapboxDraw({
       displayControlsDefault: false,
       controls: { polygon: true, line_string: false, point: true, trash: true },
@@ -217,9 +254,13 @@
         drawControl.getMode() === "simple_select" ? "" : "crosshair"
     })
 
-    // ── Reactive subscriptions ───────────────────────────────────────────
-    // Stored in module-level variables so onDestroy can call them.
-    // NOT returned from this async onMount — Svelte can't use that.
+    // ── Viewport change → SW prefetch ──────────────────────────────────
+    map.on("moveend", emitViewportHexes)
+    map.on("zoomend", emitViewportHexes)
+    // Emit once on load
+    emitViewportHexes()
+
+    // ── Reactive subscriptions ─────────────────────────────────────────
     unsubGeofences = geofencesGeoJSON.subscribe((geoJSON) => {
       ;(map.getSource(GEOFENCE_SOURCE) as any)?.setData(geoJSON)
     })
@@ -228,12 +269,10 @@
     })
   })
 
-  // ── DuckDB layer — added reactively once dbReady flips ───────────────────
+  // ── DuckDB layer — added when dbReady flips ────────────────────────────
   $effect(() => {
     if (!dbReady || !map) return
 
-    // duckdbLayer is typed as DuckDBLayerConfig (all fields optional) so
-    // every `?.` access below is safe and TS no longer errors.
     const sourceId = duckdbLayer.sourceId ?? DUCKDB_SOURCE
     const fillId = duckdbLayer.fillLayerId ?? DUCKDB_FILL
     const strokeId = duckdbLayer.strokeLayerId ?? DUCKDB_STROKE
@@ -243,9 +282,10 @@
 
     if (map.getSource(sourceId)) return
 
+    // ✅ Tile URL derived from manifest — not hardcoded "nairobi"
     map.addSource(sourceId, {
       type: "vector",
-      tiles: [`duckdb://nairobi?z={z}&x={x}&y={y}`],
+      tiles: [getDuckdbTileUrl()],
       scheme: "xyz",
     })
     map.addLayer(
@@ -274,7 +314,7 @@
     )
   })
 
-  // ── Routes prop watcher ───────────────────────────────────────────────────
+  // ── Routes prop watcher ────────────────────────────────────────────────
   $effect(() => {
     if (!map) return
     const source = map.getSource?.(ROUTE_SOURCE) as any
@@ -300,7 +340,7 @@
     })
   })
 
-  // ── Draw create handler ───────────────────────────────────────────────────
+  // ── Draw create handler ────────────────────────────────────────────────
   function handleDrawCreate(e: any) {
     const feature = e.features?.[0]
     if (!feature) return
@@ -343,7 +383,7 @@
     oncreated?.(geofence)
   }
 
-  // ── Draw styles ───────────────────────────────────────────────────────────
+  // ── Draw styles ────────────────────────────────────────────────────────
   function drawStyles() {
     const ORANGE = "#f26522"
     const WHITE = "#ffffff"
@@ -413,10 +453,11 @@
     ]
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
   onDestroy(() => {
     unsubGeofences?.()
     unsubRoutes?.()
+    map?.off("moveend", emitViewportHexes)
+    map?.off("zoomend", emitViewportHexes)
     map?.remove()
   })
 </script>

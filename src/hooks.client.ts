@@ -1,21 +1,23 @@
 // src/hooks.client.ts
+//
+// Client-side SvelteKit hooks + map bootstrap wiring.
+//
+// RESPONSIBILITIES:
+//   1. Lazy-init Sentry + PostHog (fire-and-forget, non-blocking)
+//   2. Unified client error handler
+//   3. Map bootstrap bridge — reads requestContext from layout data,
+//      builds a CityBootstrapManifest, primes the service worker
+//
+// WHAT THIS FILE IS NOT:
+//   - Not React. The React useState/useEffect stubs have been removed.
+//   - Not auth. requestContext is a request optimization hint.
+//   - Not a data layer. That lives in map-service.
 
 import type { HandleClientError } from "@sveltejs/kit"
 import { browser } from "$app/environment"
 import { PUBLIC_POSTHOG_KEY } from "$env/static/public"
-import type {
-  Coordinates,
-  BoundingBox,
-  TrafficNode,
-  CorridorAnalytics,
-  Vehicle,
-  H3Cell,
-  MapMarker,
-  StreamEvent,
-  VehicleStreamData,
-  TrafficStreamData,
-  GeoJSONFeatureCollection,
-} from '$lib/map/types/MapTypes'
+import { bootstrapManifestService } from "$lib/map"
+import type { RequestContext, CityBootstrapManifest } from "$lib/map"
 
 /* ============================================================
    LAZY SINGLETONS
@@ -40,7 +42,7 @@ async function getPosthog() {
       api_host: "/ingest",
       ui_host: "https://eu.posthog.com",
       defaults: "2026-01-30",
-      capture_exceptions: false, // we'll handle manually
+      capture_exceptions: false,
     })
 
     posthogClient = posthog
@@ -63,12 +65,9 @@ async function initSentry() {
 
     Sentry.init({
       dsn: "https://939d30ef131c9c0d5ead2c2364017ae0@o4510964210073600.ingest.de.sentry.io/4510964215054416",
-
-      tracesSampleRate: 0.2, // reduce noise in prod
+      tracesSampleRate: 0.2,
       enableLogs: true,
-
-      // 🚫 no replay here (lazy later if needed)
-      sendDefaultPii: false, // safer default
+      sendDefaultPii: false,
     })
 
     sentryReady = true
@@ -82,7 +81,6 @@ async function initSentry() {
 ============================================================ */
 
 if (browser) {
-  // Fire and forget — don't block app startup
   initSentry()
   getPosthog()
 }
@@ -96,7 +94,6 @@ export const handleError: HandleClientError = async ({
   status,
   message,
 }) => {
-  // 🔹 Send to Sentry
   try {
     if (!sentryReady) await initSentry()
     const Sentry = await import("@sentry/sveltekit")
@@ -105,7 +102,6 @@ export const handleError: HandleClientError = async ({
     console.error("Sentry capture failed:", e)
   }
 
-  // 🔹 Send to PostHog
   try {
     const posthog = await getPosthog()
     posthog?.captureException?.(error)
@@ -122,491 +118,168 @@ export const handleError: HandleClientError = async ({
   }
 }
 
+/* ============================================================
+   MAP BOOTSTRAP BRIDGE
 
-// ============================================
-// Client-Side Hooks for Map Service
-// React/Vue/Svelte compatible TypeScript hooks
-// ============================================
+   Called from +layout.ts once requestContext is available.
+   Builds a CityBootstrapManifest and primes the service worker
+   so Parquet shards are warm before the user hits the map.
 
+   PIPELINE:
+     layout data (requestContext)
+       → BootstrapManifestService.build()
+       → CityBootstrapManifest
+       → postMessage(SW, BOOTSTRAP_MANIFEST)
+       → SW downloads + caches Parquet shards
+       → SW notifies clients when ready
+============================================================ */
 
+let bootstrapPromise: Promise<CityBootstrapManifest | null> | null = null
 
-// ============================================
-// Configuration
-// ============================================
+/**
+ * Bootstrap the map data pipeline from the server-resolved requestContext.
+ * Safe to call multiple times — subsequent calls return the cached promise.
+ *
+ * @param requestContext  From data.requestContext in +layout.ts
+ * @param zoom            Initial zoom level (default: 12 for city view)
+ */
+export async function initMapBootstrap(
+  requestContext: RequestContext | null,
+  zoom = 12,
+): Promise<CityBootstrapManifest | null> {
+  if (!browser) return null
+  if (bootstrapPromise) return bootstrapPromise
 
-interface MapClientConfig {
-  baseUrl: string
-  sseUrl: string
-  reconnectDelay?: number
-  maxReconnectAttempts?: number
+  bootstrapPromise = _doBootstrap(requestContext, zoom)
+  return bootstrapPromise
 }
 
-// ============================================
-// SSE Connection Hook
-// ============================================
+async function _doBootstrap(
+  requestContext: RequestContext | null,
+  zoom: number,
+): Promise<CityBootstrapManifest | null> {
+  try {
+    // Build the manifest — uses CF geo headers as seed, falls back to Nairobi
+    const ctx = requestContext ?? {
+      country: "KE",
+      city: "Nairobi",
+      ip: null,
+      regionKey: "KE:Nairobi",
+      approxCenter: { lat: -1.2921, lng: 36.8219 },
+      h3SeedResolution: 7,
+    }
 
-type SSEStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+    const manifest = bootstrapManifestService.build(ctx, { zoom })
 
-interface UseSSEStreamOptions {
-  bounds?: BoundingBox
-  onVehicleUpdate?: (data: VehicleStreamData) => void
-  onTrafficUpdate?: (data: TrafficStreamData) => void
-  onNodeSaturation?: (data: { nodeId: string; saturation: number }) => void
-  onError?: (error: Event) => void
-}
+    // Prime the service worker with the manifest
+    // SW will download Parquet shards in the background
+    await primeServiceWorker(manifest)
 
-interface UseSSEStreamReturn {
-  status: SSEStatus
-  clientId: string | null
-  connect: (options?: UseSSEStreamOptions) => void
-  disconnect: () => void
-  send: (event: StreamEvent) => void
-}
-
-export function useSSEStream(config: MapClientConfig): UseSSEStreamReturn {
-  let eventSource: EventSource | null = null
-  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-  let reconnectAttempts = 0
-  let currentOptions: UseSSEStreamOptions | null = null
-
-  const state: { status: SSEStatus; clientId: string | null } = {
-    status: 'disconnected',
-    clientId: null,
+    return manifest
+  } catch (err) {
+    console.error("[mapBootstrap] Failed:", err)
+    return null
   }
+}
 
-  function buildUrl(options?: UseSSEStreamOptions): string {
-    const params = new URLSearchParams()
-    
-    if (state.clientId) {
-      params.set('clientId', state.clientId)
-    }
-    
-    if (options?.bounds) {
-      params.set(
-        'bounds',
-        `${options.bounds.southWest.lat},${options.bounds.southWest.lng},${options.bounds.northEast.lat},${options.bounds.northEast.lng}`,
-      )
-    }
+/**
+ * Send the manifest to the service worker for background prefetch.
+ * Falls back gracefully if SW is not registered or not supported.
+ */
+async function primeServiceWorker(
+  manifest: CityBootstrapManifest,
+): Promise<void> {
+  if (!("serviceWorker" in navigator)) return
 
-    return `${config.sseUrl}?${params.toString()}`
-  }
+  try {
+    const registration = await navigator.serviceWorker.ready
+    if (!registration.active) return
 
-  function connect(options?: UseSSEStreamOptions): void {
-    if (eventSource) {
-      eventSource.close()
-    }
-
-    currentOptions = options || null
-    state.status = 'connecting'
-
-    const url = buildUrl(options)
-    eventSource = new EventSource(url)
-
-    eventSource.onopen = () => {
-      state.status = 'connected'
-      reconnectAttempts = 0
-    }
-
-    eventSource.onerror = (error) => {
-      state.status = 'error'
-      options?.onError?.(error)
-
-      // Auto-reconnect with exponential backoff
-      if (reconnectAttempts < (config.maxReconnectAttempts || 10)) {
-        const delay = config.reconnectDelay || 2000
-        reconnectTimeout = setTimeout(() => {
-          reconnectAttempts++
-          connect(currentOptions || undefined)
-        }, delay * Math.pow(2, reconnectAttempts))
-      }
-    }
-
-    // Handle specific event types
-    eventSource.addEventListener('connected', (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        state.clientId = data.clientId
-      } catch {
-        // Ignore parse errors
-      }
+    // Convert manifest to the SW message format
+    // SW handles: BOOTSTRAP_MANIFEST → downloads quadtile parquet shards
+    registration.active.postMessage({
+      type: "BOOTSTRAP_MANIFEST",
+      manifest,
+      // Backward compat: also send hex arrays for the existing PREFETCH_HEXES handler
+      mapHexes: manifest.h3Seeds.cells,
+      buildingHexes: [], // separate layer — not yet in dataset
     })
+  } catch (err) {
+    console.warn("[mapBootstrap] SW prime failed (non-fatal):", err)
+  }
+}
 
-    eventSource.addEventListener('vehicle_update', (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        options?.onVehicleUpdate?.(data.data)
-      } catch {
-        // Ignore parse errors
-      }
+/**
+ * Send updated hex sets to the SW when the user pans the map.
+ * Called from MapView on moveend events.
+ */
+export function prefetchHexesForViewport(
+  mapHexes: string[],
+  buildingHexes: string[] = [],
+): void {
+  if (!browser || !("serviceWorker" in navigator)) return
+
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      reg.active?.postMessage({
+        type: "PREFETCH_HEXES",
+        mapHexes,
+        buildingHexes,
+      })
     })
-
-    eventSource.addEventListener('traffic_update', (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        options?.onTrafficUpdate?.(data.data)
-      } catch {
-        // Ignore parse errors
-      }
+    .catch(() => {
+      // SW not ready — silently skip
     })
+}
 
-    eventSource.addEventListener('node_saturation', (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        options?.onNodeSaturation?.(data.data)
-      } catch {
-        // Ignore parse errors
-      }
+/**
+ * Trigger full city download for offline use.
+ * Called explicitly by the user (e.g. "Download Nairobi for offline").
+ */
+export function downloadCityForOffline(
+  manifest: CityBootstrapManifest,
+): void {
+  if (!browser || !("serviceWorker" in navigator)) return
+
+  navigator.serviceWorker.ready
+    .then((reg) => {
+      reg.active?.postMessage({
+        type: "CACHE_CITY",
+        manifest,
+        mapHexes: manifest.h3Seeds.cells,
+        buildingHexes: [],
+      })
     })
-
-    eventSource.addEventListener('heartbeat', () => {
-      // Heartbeat received - connection is alive
-    })
-  }
-
-  function disconnect(): void {
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout)
-      reconnectTimeout = null
-    }
-
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
-    }
-
-    state.status = 'disconnected'
-    state.clientId = null
-  }
-
-  function send(_event: StreamEvent): void {
-    // SSE is unidirectional, so we can't send events to the server
-    // Use the REST API instead
-    console.warn('SSE does not support sending events. Use the REST API.')
-  }
-
-  return {
-    get status() {
-      return state.status
-    },
-    get clientId() {
-      return state.clientId
-    },
-    connect,
-    disconnect,
-    send,
-  }
+    .catch(() => {})
 }
 
-// ============================================
-// REST API Client
-// ============================================
+/* ============================================================
+   SW MESSAGE LISTENER
 
-class MapAPIClient {
-  private baseUrl: string
+   Listens for messages back from the service worker and
+   exposes them as a typed event emitter.
+============================================================ */
 
-  constructor(config: MapClientConfig) {
-    this.baseUrl = config.baseUrl
-  }
+export type SWMessage =
+  | { type: "PREFETCH_COMPLETE" }
+  | { type: "CACHE_UPDATED"; url: string }
+  | { type: "CACHE_PROGRESS"; progress: number; phase: string }
+  | { type: "CITY_CACHED" }
+  | { type: "SYNC_COMPLETE" }
+  | { type: "BOOTSTRAP_READY"; cityId: string }
 
-  private async request<T>(
-    endpoint: string,
-    options?: RequestInit,
-  ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-      ...options,
-    })
+type SWMessageHandler = (msg: SWMessage) => void
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`API Error ${response.status}: ${error}`)
-    }
+const swListeners = new Set<SWMessageHandler>()
 
-    return response.json()
-  }
-
-  // Traffic Nodes
-  async getNodes(bounds: BoundingBox): Promise<TrafficNode[]> {
-    const response = await this.request<{ data: TrafficNode[] }>(
-      `/nodes?bounds=${boundsToString(bounds)}`,
-    )
-    return response.data
-  }
-
-  async getNodeById(id: string): Promise<TrafficNode> {
-    return this.request<TrafficNode>(`/nodes/${id}`)
-  }
-
-  async getNodeSaturation(
-    nodeId: string,
-  ): Promise<{ saturation: number; throughput: number }> {
-    return this.request(`/nodes/${nodeId}/saturation`)
-  }
-
-  // Corridors
-  async getCorridors(bounds: BoundingBox): Promise<CorridorAnalytics[]> {
-    const response = await this.request<{ data: CorridorAnalytics[] }>(
-      `/corridors?bounds=${boundsToString(bounds)}`,
-    )
-    return response.data
-  }
-
-  // Vehicles
-  async getVehicles(bounds?: BoundingBox): Promise<Vehicle[]> {
-    const url = bounds
-      ? `/vehicles?bounds=${boundsToString(bounds)}`
-      : '/vehicles'
-    const response = await this.request<{ data: Vehicle[] }>(url)
-    return response.data
-  }
-
-  async getNearestVehicles(
-    point: Coordinates,
-    options?: { limit?: number; maxDistance?: number },
-  ): Promise<(Vehicle & { distance: number; distanceFormatted: string })[]> {
-    const params = new URLSearchParams({
-      lat: point.lat.toString(),
-      lng: point.lng.toString(),
-    })
-    if (options?.limit) params.set('limit', options.limit.toString())
-    if (options?.maxDistance)
-      params.set('maxDistance', options.maxDistance.toString())
-
-    const response = await this.request<{
-      data: (Vehicle & { distance: number; distanceFormatted: string })[]
-    }>(`/vehicles/nearest?${params.toString()}`)
-    return response.data
-  }
-
-  // H3 Grid
-  async getH3Cells(
-    bounds: BoundingBox,
-    resolution?: number,
-  ): Promise<H3Cell[]> {
-    const params = new URLSearchParams({
-      bounds: boundsToString(bounds),
-    })
-    if (resolution) params.set('resolution', resolution.toString())
-
-    const response = await this.request<{ data: H3Cell[] }>(
-      `/h3?${params.toString()}`,
-    )
-    return response.data
-  }
-
-  // Markers
-  async getMarkers(bounds?: BoundingBox): Promise<MapMarker[]> {
-    const url = bounds
-      ? `/markers?bounds=${boundsToString(bounds)}`
-      : '/markers'
-    const response = await this.request<{ data: MapMarker[] }>(url)
-    return response.data
-  }
-
-  async getNearbyMarkers(
-    point: Coordinates,
-    radius?: number,
-  ): Promise<(MapMarker & { distance: number; distanceFormatted: string })[]> {
-    const params = new URLSearchParams({
-      lat: point.lat.toString(),
-      lng: point.lng.toString(),
-    })
-    if (radius) params.set('radius', radius.toString())
-
-    const response = await this.request<{
-      data: (MapMarker & { distance: number; distanceFormatted: string })[]
-    }>(`/markers/nearby?${params.toString()}`)
-    return response.data
-  }
-
-  // GeoJSON Export
-  async exportGeoJSON(bounds?: BoundingBox): Promise<GeoJSONFeatureCollection> {
-    const url = bounds
-      ? `/export/geojson?bounds=${boundsToString(bounds)}`
-      : '/export/geojson'
-    return this.request<GeoJSONFeatureCollection>(url)
-  }
-
-  async exportH3GeoJSON(
-    bounds?: BoundingBox,
-  ): Promise<GeoJSONFeatureCollection> {
-    const url = bounds
-      ? `/export/h3?bounds=${boundsToString(bounds)}`
-      : '/export/h3'
-    return this.request<GeoJSONFeatureCollection>(url)
-  }
-
-  // Site Simulation
-  async simulateSiteImpact(
-    point: Coordinates,
-    radius?: number,
-  ): Promise<{
-    dailyCommuters: number
-    peakHourVolume: number
-    vehiclePassThrough: number
-    saturationLevel: number
-    recommendations: string[]
-  }> {
-    return this.request('/simulate/site-impact', {
-      method: 'POST',
-      body: JSON.stringify({ lat: point.lat, lng: point.lng, radius }),
-    })
-  }
-
-  // Health
-  async getHealth(): Promise<{
-    healthy: boolean
-    postgis: boolean
-    sse: { clients: number }
-    uptime: number
-  }> {
-    return this.request('/health')
-  }
+if (browser && "serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const msg = event.data as SWMessage
+    swListeners.forEach((fn) => fn(msg))
+  })
 }
 
-// ============================================
-// Client Factory
-// ============================================
-
-let apiClient: MapAPIClient | null = null
-let sseStreamHook: ReturnType<typeof useSSEStream> | null = null
-
-export function createMapClient(config: MapClientConfig): {
-  api: MapAPIClient
-  sse: ReturnType<typeof useSSEStream>
-} {
-  apiClient = new MapAPIClient(config)
-  sseStreamHook = useSSEStream(config)
-
-  return {
-    api: apiClient,
-    sse: sseStreamHook,
-  }
-}
-
-export function getMapClient(): MapAPIClient | null {
-  return apiClient
-}
-
-// ============================================
-// Helper Functions
-// ============================================
-
-function boundsToString(bounds: BoundingBox): string {
-  return `${bounds.southWest.lat},${bounds.southWest.lng},${bounds.northEast.lat},${bounds.northEast.lng}`
-}
-
-// ============================================
-// React Hooks (if using React)
-// ============================================
-
-export interface UseMapDataOptions {
-  bounds?: BoundingBox
-  autoRefresh?: boolean
-  refreshInterval?: number
-}
-
-export interface UseMapDataReturn {
-  nodes: TrafficNode[]
-  vehicles: Vehicle[]
-  corridors: CorridorAnalytics[]
-  markers: MapMarker[]
-  loading: boolean
-  error: Error | null
-  refetch: () => Promise<void>
-}
-
-export function useMapData(
-  api: MapAPIClient,
-  options?: UseMapDataOptions,
-): UseMapDataReturn {
-  const [nodes, setNodes] = useState<TrafficNode[]>([])
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [corridors, setCorridors] = useState<CorridorAnalytics[]>([])
-  const [markers, setMarkers] = useState<MapMarker[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-
-  const fetchData = useCallback(async () => {
-    if (!options?.bounds) {
-      setLoading(false)
-      return
-    }
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      const [nodesData, vehiclesData, corridorsData, markersData] =
-        await Promise.all([
-          api.getNodes(options.bounds),
-          api.getVehicles(options.bounds),
-          api.getCorridors(options.bounds),
-          api.getMarkers(options.bounds),
-        ])
-
-      setNodes(nodesData)
-      setVehicles(vehiclesData)
-      setCorridors(corridorsData)
-      setMarkers(markersData)
-    } catch (err) {
-      setError(err as Error)
-    } finally {
-      setLoading(false)
-    }
-  }, [api, options?.bounds])
-
-  useEffect(() => {
-    fetchData()
-
-    if (options?.autoRefresh) {
-      const interval = setInterval(
-        fetchData,
-        options.refreshInterval || 30000,
-      )
-      return () => clearInterval(interval)
-    }
-  }, [fetchData, options?.autoRefresh, options?.refreshInterval])
-
-  return {
-    nodes,
-    vehicles,
-    corridors,
-    markers,
-    loading,
-    error,
-    refetch: fetchData,
-  }
-}
-
-// ============================================
-// Re-export utilities
-// ============================================
-
-export { distanceBetween, createBoundingBox, sortMarkersByDistance } from '$lib/map/utils/distance'
-
-// ============================================
-// Placeholder imports (replace with actual React imports)
-// ============================================
-
-function useState<T>(initial: T): [T, (value: T) => void] {
-  let value = initial
-  const setValue = (_value: T) => {
-    value = _value
-  }
-  return [value, setValue]
-}
-
-function useEffect(_callback: () => void | (() => void), _deps?: unknown[]): void {
-  // This is a placeholder - in real React, you'd use the actual useEffect
-}
-
-function useCallback<T extends (...args: unknown[]) => unknown>(
-  callback: T,
-  _deps: unknown[],
-): T {
-  return callback
+export function onSWMessage(handler: SWMessageHandler): () => void {
+  swListeners.add(handler)
+  return () => swListeners.delete(handler)
 }

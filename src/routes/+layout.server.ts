@@ -1,53 +1,48 @@
 // src/routes/+layout.server.ts
 //
 // Server-side root layout — passes session + resolved enterprise state
-// to the client-side +layout.ts.
+// + request geo context to the client-side +layout.ts.
 //
 // ARCHITECTURE:
 //   hooks.server.ts runs the full resolution chain:
-//     supabaseHandle  → creates clients + safeGetSession
-//     authGuardHandle → session guard → populates locals.session/user
-//     userStateHandle → resolveUserState + activateXContext
-//                     → populates locals.userState + locals.activeContext
+//     cloudflareHttpsFix  → protocol normalization
+//     locationHandle      → requestContext (geo seed, NOT auth)
+//     supabaseHandle      → creates clients + safeGetSession
+//     authGuardHandle     → session guard → populates locals.session/user
+//     userStateHandle     → resolveUserState + activateXContext
+//                         → populates locals.userState + locals.activeContext
 //
-//   This file is a pure pass-through — it reads from locals and hands
+//   This file is a pure pass-through — reads from locals, hands
 //   everything to +layout.ts. No DB queries, no business logic here.
 //
-// WHY NOT BOOTSTRAP SERVER-SIDE:
-//   1. Svelte stores (sessionStore, context stores) are client-side only
-//   2. bootstrap_session() RPC is now a compat shim — userState is the
-//      authoritative source and is already resolved by userStateHandle
-//   3. Server-side bootstrap + client re-bootstrap = double round trip
+// TWO SEPARATE PIPELINES (important — do not merge):
+//   Identity:  session → user → userState → activeContext
+//   Map seed:  requestContext → BootstrapManifestService → map system
 //
-// WHAT THIS FILE DOES:
-//   - Reads session, user, userState, activeContext from locals
-//   - Passes cookies for client-side Supabase SSR cookie sync
-//   - Returns all of the above to +layout.ts via data
+//   requestContext MUST NOT flow into userState/activeContext.
+//   It is a request optimization hint, not an identity claim.
 
 import type { LayoutServerLoad } from "./$types"
 
 export const load: LayoutServerLoad = async ({
-  locals: { session, user, userState, activeContext },
+  locals: { session, user, userState, activeContext, requestContext },
   cookies,
 }) => {
   return {
-    // ── Auth ──────────────────────────────────────────────────────
-    // Session object from safeGetSession in hooks
+    // ── Auth pipeline ─────────────────────────────────────────────
     session,
-    // Validated user from getUser() — not just cookie parsing
-    // null on public routes where authGuardHandle didn't run
     user,
-
-    // ── Enterprise state ──────────────────────────────────────────
-    // Both resolved by userStateHandle in hooks.server.ts.
-    // null on public routes and on resolution failure.
-    // Pages read these via data.userState / data.activeContext —
-    // never re-resolve in page or layout load functions.
     userState,
     activeContext,
 
+    // ── Map bootstrap pipeline ────────────────────────────────────
+    // requestContext is safe to expose to the client — it contains
+    // no secrets, only edge-inferred geo hints.
+    // The client uses this to call BootstrapManifestService before
+    // the user's first map interaction.
+    requestContext,
+
     // ── Cookies ───────────────────────────────────────────────────
-    // Forwarded for client-side Supabase client SSR cookie sync
     cookies: cookies.getAll(),
   }
 }
