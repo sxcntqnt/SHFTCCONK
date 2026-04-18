@@ -14,7 +14,7 @@ import type {
   MapServiceConfig,
   VehicleStreamData,
   TrafficStreamData,
-} from './types/MapTypes';
+} from '../types/MapTypes';
 
 import { DuckDBService } from './DuckDB.service';
 import type { SSEStreamManager } from './SseStreamer.service';
@@ -310,7 +310,7 @@ let mapServiceInstance: MapService | null = null;
 
 export async function createMapService(config: MapServiceConfig): Promise<MapService> {
   const db = new DuckDBService(config.duckdb);
-  const sse = (await import('./sse-streamer.service')).sseStreamManager;
+  const sse = (await import('./SseStreamer.service')).sseStreamManager;
 
   mapServiceInstance = new MapService(db, sse, config);
   await mapServiceInstance.start();
