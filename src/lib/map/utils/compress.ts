@@ -1,27 +1,28 @@
 // src/lib/map/utils/compress.ts
+import { json } from '@sveltejs/kit';  // ← top, before use
 import snappy from 'snappy';
 
+export { json };
+
 export async function compressedJsonResponse(
-  data: any, 
+  data: unknown,
   options: {
     contentType?: string;
     cacheSeconds?: number;
-    compress?: boolean;        // Allow forcing compression
+    compress?: boolean;
   } = {}
-) {
-  const { 
-    contentType = 'application/json', 
+): Promise<Response> {
+  const {
+    contentType = 'application/json',
     cacheSeconds = 60,
-    compress = true 
+    compress = true,
   } = options;
 
-  // If compression is disabled, return normal JSON
+  const cacheHeader = `public, max-age=${cacheSeconds}`;
+
   if (!compress) {
     return json(data, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': `public, max-age=${cacheSeconds}`
-      }
+      headers: { 'Content-Type': contentType, 'Cache-Control': cacheHeader },
     });
   }
 
@@ -29,26 +30,22 @@ export async function compressedJsonResponse(
     const jsonString = JSON.stringify(data);
     const compressed = await snappy.compress(Buffer.from(jsonString));
 
+    // NOTE: Snappy is not a browser-native Content-Encoding.
+    // Only use this endpoint for server-to-server consumers that
+    // explicitly request snappy. For browser clients, drop the
+    // compress flag and let the SvelteKit adapter handle gzip/br.
     return new Response(compressed, {
       headers: {
         'Content-Type': contentType,
-        'Content-Encoding': 'snappy',
-        'Cache-Control': `public, max-age=${cacheSeconds}`,
-        'Vary': 'Accept-Encoding'
-      }
+        'Cache-Control': cacheHeader,
+        'X-Content-Encoding': 'snappy', // custom header — signals codec without
+        'Vary': 'Accept-Encoding',       // tricking browsers into decompressing
+      },
     });
   } catch (err) {
-    // Fallback to uncompressed if snappy fails
-    console.warn('Snappy compression failed, falling back to JSON', err);
+    console.warn('[compress] Snappy failed, falling back to JSON:', err);
     return json(data, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': `public, max-age=${cacheSeconds}`
-      }
+      headers: { 'Content-Type': contentType, 'Cache-Control': cacheHeader },
     });
   }
 }
-
-// Also export json for convenience
-import { json } from '@sveltejs/kit';
-export { json };

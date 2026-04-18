@@ -1,34 +1,17 @@
 // src/lib/map/index.ts
-// ============================================
-// Map Service - Public API (DuckDB Edition)
-// Re-export all public types and classes
-// ============================================
 
-// ============================================
-// Types
-// ============================================
+// ── Types ─────────────────────────────────────────────────────────────────────
 export * from './types/MapTypes';
 
-// ============================================
-// Services
-// ============================================
-// Main DuckDB spatial service
-export { DuckDBService } from './services/DuckDB.service';
-
-// SSE Streaming
-export { SSEStreamManager, sseStreamManager } from './services/SseStreamer.service';
-
-// Main Map Service (now DuckDB-only)
+// ── Services ──────────────────────────────────────────────────────────────────
+export { DuckDBService }                          from './services/DuckDB.service';
+export { SSEStreamManager, sseStreamManager }     from './services/SseStreamer.service';
 export { MapService, createMapService, getMapService } from './services/MapService';
-
-// Bootstrap / Manifest system
-// Bridge between request layer (locationHandle) and map execution layer
 export {
   BootstrapManifestService,
   bootstrapManifestService,
   zoomToH3Resolution,
 } from './services/bootstrap-manifest.service';
-
 export type {
   RequestContext,
   CityBootstrapManifest,
@@ -37,14 +20,7 @@ export type {
   StorageHints,
 } from './services/bootstrap-manifest.service';
 
-// ============================================
-// Utilities
-// ============================================
+// ── Utilities ─────────────────────────────────────────────────────────────────
 export * from './utils/distance';
-
-// ============================================
-// Routes
-// ============================================
-
-export { compressedJsonResponse, parseBounds, saturationToColor } from './utils/compress';
-export { parseBounds, saturationToColor } from './utils/apiHelpers';
+export { parseBounds, saturationToColor } from './utils/apiHelpers';  // ← single source
+export { compressedJsonResponse, json }   from './utils/compress';    // ← no helpers here

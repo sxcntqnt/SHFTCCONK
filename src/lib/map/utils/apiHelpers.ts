@@ -1,23 +1,22 @@
 // src/lib/map/utils/apiHelpers.ts
 import type { BoundingBox } from '../types/MapTypes';
 
+function toNum(val: unknown): number {
+  const n = parseFloat(String(val));
+  if (isNaN(n)) throw new RangeError(`Cannot parse coordinate: ${val}`);
+  return n;
+}
+
 export function parseBounds(boundsStr?: string): BoundingBox | null {
   if (!boundsStr) return null;
   try {
     if (boundsStr.startsWith('{')) {
-      const parsed = JSON.parse(boundsStr);
+      const p = JSON.parse(boundsStr);
       return {
-        northEast: {
-          lat: parseFloat(parsed.neLat || parsed.northEast?.lat),
-          lng: parseFloat(parsed.neLng || parsed.northEast?.lng),
-        },
-        southWest: {
-          lat: parseFloat(parsed.swLat || parsed.southWest?.lat),
-          lng: parseFloat(parsed.swLng || parsed.southWest?.lng),
-        },
+        northEast: { lat: toNum(p.neLat ?? p.northEast?.lat), lng: toNum(p.neLng ?? p.northEast?.lng) },
+        southWest: { lat: toNum(p.swLat ?? p.southWest?.lat), lng: toNum(p.swLng ?? p.southWest?.lng) },
       };
     }
-
     const parts = boundsStr.split(',').map(Number);
     if (parts.length === 4 && parts.every(n => !isNaN(n))) {
       return {
