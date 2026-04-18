@@ -9,8 +9,8 @@ export * from './types/MapTypess'
 
 // Services
 export { PostGISService } from './services/postgis.service'
-export { SSEStreamManager, sseStreamManager } from './services/sse-streamer.service'
-export { MapService, createMapService, getMapService } from './services/map.service'
+export { SSEStreamManager, sseStreamManager } from './services/ssestreamer.service'
+export { MapService, createMapService, getMapService } from './services/MapService'
 
 // Bootstrap / manifest system
 // The BootstrapManifestService is the bridge between the request layer
