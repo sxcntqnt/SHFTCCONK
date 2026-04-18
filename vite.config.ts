@@ -51,6 +51,22 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+            external: [
+        '@duckdb/node-bindings-linux-x64',
+        '@duckdb/node-bindings-linux-arm64',
+        '@duckdb/node-bindings-darwin-x64',
+        '@duckdb/node-bindings-darwin-arm64',
+        '@duckdb/node-bindings-win32-x64',
+        '@duckdb/node-bindings-win32-arm64'
+
+              // snappy
+      '@napi-rs/snappy-linux-x64-gnu',
+      '@napi-rs/snappy-linux-arm64-gnu',
+      '@napi-rs/snappy-darwin-x64',
+      '@napi-rs/snappy-darwin-arm64',
+      '@napi-rs/snappy-win32-x64-msvc',
+      '@napi-rs/snappy-win32-arm64-msvc'
+      ],
       output: {
         manualChunks: {
           three: ["three", "@threlte/core", "@threlte/extras"],
