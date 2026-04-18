@@ -1,27 +1,33 @@
 // src/lib/map/index.ts
 // ============================================
-// Map Service - Public API
+// Map Service - Public API (DuckDB Edition)
 // Re-export all public types and classes
 // ============================================
 
+// ============================================
 // Types
-export * from './types/MapTypes'
+// ============================================
+export * from './types/MapTypes';
 
+// ============================================
 // Services
-export { PostGISService } from './services/postgis'
-export { SSEStreamManager, sseStreamManager } from './services/ssestreamer'
-export { MapService, createMapService, getMapService } from './services/MapService'
+// ============================================
+// Main DuckDB spatial service
+export { DuckDBService } from './services/DuckDB.service';
 
-// Bootstrap / manifest system
-// The BootstrapManifestService is the bridge between the request layer
-// (locationHandle → requestContext) and the execution layer
-// (DuckDB WASM + Service Worker + MapLibre).
-// It does NOT depend on auth. It does NOT depend on SvelteKit.
+// SSE Streaming
+export { SSEStreamManager, sseStreamManager } from './services/SseStreamer.service';
+
+// Main Map Service (now DuckDB-only)
+export { MapService, createMapService, getMapService } from './services/MapService';
+
+// Bootstrap / Manifest system
+// Bridge between request layer (locationHandle) and map execution layer
 export {
   BootstrapManifestService,
   bootstrapManifestService,
   zoomToH3Resolution,
-} from './services/bootstrap-manifest.service'
+} from './services/bootstrap-manifest.service';
 
 export type {
   RequestContext,
@@ -29,10 +35,16 @@ export type {
   QuadTile,
   H3Seed,
   StorageHints,
-} from './services/bootstrap-manifest.service'
+} from './services/bootstrap-manifest.service';
 
+// ============================================
 // Utilities
-export * from './utils/distance'
+// ============================================
+export * from './utils/distance';
 
+// ============================================
 // Routes
-export { createMapRoutes, createSSERoutes } from './routes'
+// ============================================
+
+export { compressedJsonResponse, parseBounds, saturationToColor } from './utils/compress';
+export { parseBounds, saturationToColor } from './utils/apiHelpers';

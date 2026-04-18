@@ -1,26 +1,10 @@
 <script lang="ts">
   // LiveTracking.svelte
-  //
-  // Real-time vehicle tracking visualization.
-  // Connects to the SSE endpoint for live vehicle positions and projects
-  // lat/lng coordinates into the SVG viewport using the city bounding box.
-  //
-  // PREVIOUS VERSION: decorative SVG with $bindable fake vehicles,
-  //   no SSE connection, no coordinate projection.
-  //
-  // THIS VERSION:
-  //   - Opens SSE connection to /api/map/stream (server-sent events)
-  //   - Reads requestContext to know which city and bounding box to use
-  //   - Projects real lat/lng → SVG x/y using the city bounds
-  //   - Reconnects with exponential backoff on error
-  //   - Preserves the exact SVG visualization (hex grid, roads, pulse, labels)
-  //   - Shows connection status to the user
-
+  // Real-time vehicle tracking visualization using SSE from SvelteKit API
   import { onMount, onDestroy } from "svelte"
   import type { RequestContext } from "$lib/map"
 
   // ── Types ────────────────────────────────────────────────────────────────
-
   interface SvgVehicle {
     id: string
     x: number
@@ -43,12 +27,11 @@
   }
 
   // ── Props ────────────────────────────────────────────────────────────────
-
   interface Props {
     requestContext?: RequestContext | null
     width?: number
     height?: number
-    /** SSE endpoint — defaults to /api/map/stream */
+    /** SSE endpoint — defaults to the new SvelteKit route */
     sseUrl?: string
     /** Highlight these sacco IDs in brand orange */
     partnerSaccoIds?: string[]
@@ -63,9 +46,6 @@
   }: Props = $props()
 
   // ── City bounding box for coordinate projection ───────────────────────────
-  // Derived from requestContext city, falling back to Nairobi metro.
-  // These match the bounds in BootstrapManifestService's CITY_INDEX.
-
   const CITY_BOUNDS: Record<
     string,
     { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } }
@@ -84,16 +64,11 @@
     return CITY_BOUNDS[requestContext.city] ?? DEFAULT_BOUNDS
   }
 
-  // Project real lat/lng to SVG coordinates
-  function projectToSvg(
-    lat: number,
-    lng: number,
-    bounds: typeof DEFAULT_BOUNDS,
-  ): { x: number; y: number } {
+  // Project real lat/lng to SVG coordinates (x,y)
+  function projectToSvg(lat: number, lng: number, bounds = getCityBounds()) {
     const { sw, ne } = bounds
     const x = ((lng - sw.lng) / (ne.lng - sw.lng)) * width
-    // Y is inverted: north is top (small y), south is bottom (large y)
-    const y = ((ne.lat - lat) / (ne.lat - sw.lat)) * height
+    const y = ((ne.lat - lat) / (ne.lat - sw.lat)) * height // Y inverted (north = top)
     return { x, y }
   }
 
@@ -106,7 +81,6 @@
   }
 
   // ── SSE State ────────────────────────────────────────────────────────────
-
   type ConnectionStatus =
     | "connecting"
     | "connected"
@@ -116,19 +90,17 @@
   let status = $state<ConnectionStatus>("connecting")
   let svgVehicles = $state<SvgVehicle[]>([])
   let clientId = $state<string | null>(null)
-
   let eventSource: EventSource | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let reconnectAttempts = 0
-  const MAX_RECONNECTS = 10
-  const BASE_DELAY_MS = 2000
+
+  const MAX_RECONNECTS = 8
+  const BASE_DELAY_MS = 1800
 
   function buildSSEUrl(): string {
     const params = new URLSearchParams()
-
     if (clientId) params.set("clientId", clientId)
 
-    // Send city bounds as the filter — server returns vehicles in this bbox
     const bounds = getCityBounds()
     params.set(
       "bounds",
@@ -163,23 +135,15 @@
         return
       }
 
-      const delay = BASE_DELAY_MS * Math.pow(1.5, reconnectAttempts)
+      const delay = BASE_DELAY_MS * Math.pow(1.6, reconnectAttempts)
       reconnectTimer = setTimeout(() => {
         reconnectAttempts++
         connect()
       }, delay)
     }
 
-    // ── SSE events ───────────────────────────────────────────────────────
-
-    eventSource.addEventListener("connected", (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        clientId = data.data?.clientId ?? null
-      } catch {}
-    })
-
-    eventSource.addEventListener("vehicle_update", (e) => {
+    // SSE Event Listeners
+    eventSource.addEventListener("vehicle_update", (e: MessageEvent) => {
       try {
         const payload = JSON.parse(e.data)
         const raw: SSEVehicle[] = payload?.data?.vehicles ?? []
@@ -199,17 +163,25 @@
               x,
               y,
               color: vehicleColor(v),
-              pulse: (i * 0.7) % (Math.PI * 2), // stagger pulse phase
-              label: v.saccoName,
+              pulse: (i * 0.7) % (Math.PI * 2),
+              label: v.saccoName || v.plateNumber,
             }
           })
-          // Only show vehicles within SVG bounds (clip to viewport)
           .filter((v) => v.x >= 0 && v.x <= width && v.y >= 0 && v.y <= height)
-      } catch {}
+      } catch (err) {
+        console.warn("Failed to parse vehicle_update event", err)
+      }
     })
 
     eventSource.addEventListener("heartbeat", () => {
-      // Connection alive — no action needed
+      // Connection is alive
+    })
+
+    eventSource.addEventListener("connected", (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data)
+        clientId = data.data?.clientId ?? null
+      } catch {}
     })
   }
 
@@ -224,8 +196,7 @@
     svgVehicles = []
   }
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────
-
+  // Lifecycle
   onMount(() => {
     connect()
   })
@@ -234,8 +205,42 @@
     disconnect()
   })
 
-  // ── SVG Hex grid ─────────────────────────────────────────────────────────
+  // ── Pulse Animation ───────────────────────────────────────────────────────
+  let tick = $state(0)
+  let rafId: number | null = null
 
+  $effect(() => {
+    function loop() {
+      tick = (tick + 1) % 120
+      rafId = requestAnimationFrame(loop)
+    }
+    rafId = requestAnimationFrame(loop)
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  })
+
+  const pulseScale = (base: number) =>
+    1 + Math.sin((tick / 120) * Math.PI * 2 + base) * 0.35
+
+  // ── UI Helpers ───────────────────────────────────────────────────────────
+  const cityName = requestContext?.city ?? "Nairobi"
+
+  const STATUS_COLOR: Record<ConnectionStatus, string> = {
+    connected: "#00b09b",
+    connecting: "#f59e0b",
+    reconnecting: "#f59e0b",
+    offline: "#ef4444",
+  }
+
+  const STATUS_LABEL: Record<ConnectionStatus, string> = {
+    connected: "LIVE",
+    connecting: "Connecting...",
+    reconnecting: "Reconnecting...",
+    offline: "Offline",
+  }
+
+  // ── Decorative Elements ───────────────────────────────────────────────────
   const HEX_R = 22
   const H = HEX_R * Math.sqrt(3)
   const cols = Math.ceil(width / (HEX_R * 1.5)) + 2
@@ -253,8 +258,8 @@
     cy: number
     key: string
   }
-  const hexGrid: HexCell[] = []
 
+  const hexGrid: HexCell[] = []
   for (let col = -1; col < cols; col++) {
     for (let row = -1; row < rows; row++) {
       const cx = col * HEX_R * 1.5
@@ -263,61 +268,14 @@
     }
   }
 
-  // ── Nairobi decorative road lines (matches the bounding box projection) ─
-  // These are approximate Nairobi roads mapped to the SVG coordinate space
-
   const roads = [
-    "M 60 190 Q 200 160 400 180 Q 500 185 580 170", // Ngong Rd
-    "M 0 240 Q 150 220 300 230 Q 450 240 600 220", // Outer Ring Rd
-    "M 300 0 Q 310 100 290 200 Q 275 300 300 380", // Uhuru Hwy
-    "M 0 80  Q 120 100 200 140 Q 300 175 400 300 Q 450 340 500 380", // Mombasa Rd
-    "M 100 380 Q 200 300 280 230", // Lang'ata Rd
-    "M 400 0  Q 380 80  350 160", // Thika Rd
+    "M 60 190 Q 200 160 400 180 Q 500 185 580 170",
+    "M 0 240 Q 150 220 300 230 Q 450 240 600 220",
+    "M 300 0 Q 310 100 290 200 Q 275 300 300 380",
+    "M 0 80 Q 120 100 200 140 Q 300 175 400 300 Q 450 340 500 380",
+    "M 100 380 Q 200 300 280 230",
+    "M 400 0 Q 380 80 350 160",
   ]
-
-  // ── Pulse animation ───────────────────────────────────────────────────────
-
-  let tick = $state(0)
-  let rafId: number | null = null
-
-  $effect(() => {
-    function loop() {
-      tick = (tick + 1) % 120
-      rafId = requestAnimationFrame(loop)
-    }
-    rafId = requestAnimationFrame(loop)
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
-    }
-  })
-
-  const pulseScale = (base: number) =>
-    1 + Math.sin((tick / 120) * Math.PI * 2 + base) * 0.35
-
-  // ── City corner labels (from bounds context) ──────────────────────────────
-
-  const cityName = requestContext?.city ?? "Nairobi"
-  const CORNER_LABELS: Record<string, [string, string, string, string]> = {
-    Nairobi: ["CBD Core", "Kasarani", "Lang'ata", "Eastlands"],
-    Mombasa: ["Old Town", "Nyali", "Likoni", "Bamburi"],
-    default: ["NW", "NE", "SW", "SE"],
-  }
-  const [nw, ne, sw, se] = CORNER_LABELS[cityName] ?? CORNER_LABELS.default
-
-  // ── Status indicator ──────────────────────────────────────────────────────
-
-  const STATUS_COLOR: Record<ConnectionStatus, string> = {
-    connected: "#00b09b",
-    connecting: "#f59e0b",
-    reconnecting: "#f59e0b",
-    offline: "#ef4444",
-  }
-  const STATUS_LABEL: Record<ConnectionStatus, string> = {
-    connected: "Live",
-    connecting: "Connecting",
-    reconnecting: "Reconnecting",
-    offline: "Offline",
-  }
 </script>
 
 <div class="map">
@@ -353,7 +311,7 @@
       />
     {/each}
 
-    <!-- Decorative road lines (approximate Nairobi arterials) -->
+    <!-- Decorative road lines -->
     {#each roads as d, i}
       <path
         {d}
@@ -365,10 +323,9 @@
       />
     {/each}
 
-    <!-- Live vehicles from SSE -->
+    <!-- Live Vehicles -->
     {#each svgVehicles as v (v.id)}
       {@const ps = pulseScale(v.pulse)}
-
       <!-- Outer pulse ring -->
       <circle
         cx={v.x}
@@ -379,7 +336,6 @@
         stroke-width="1"
         opacity={0.18 / ps}
       />
-
       <!-- Inner pulse ring -->
       <circle
         cx={v.x}
@@ -390,7 +346,6 @@
         stroke-width="0.8"
         opacity="0.30"
       />
-
       <!-- Vehicle body -->
       <rect
         x={v.x - 7}
@@ -402,7 +357,6 @@
         filter="url(#vglow)"
         opacity="0.92"
       />
-
       <!-- Windscreen reflection -->
       <rect
         x={v.x - 4}
@@ -412,20 +366,19 @@
         rx="1"
         fill="rgba(255,255,255,0.30)"
       />
-
       <!-- Route dot -->
       <circle cx={v.x + 4} cy={v.y - 1} r="1.5" fill="rgba(0,0,0,0.4)" />
     {/each}
 
-    <!-- Empty state when no vehicles -->
+    <!-- Empty state -->
     {#if svgVehicles.length === 0 && status === "connected"}
       <text
         x={width / 2}
         y={height / 2}
         text-anchor="middle"
         dominant-baseline="middle"
-        fill="rgba(255,255,255,0.2)"
-        font-size="12"
+        fill="rgba(255,255,255,0.25)"
+        font-size="13"
         font-family="system-ui"
       >
         No active vehicles in {cityName}
@@ -436,11 +389,11 @@
     <rect {width} {height} fill="url(#mapvign)" pointer-events="none" />
   </svg>
 
-  <!-- Corner labels (city-aware) -->
-  <div class="corner nw">{nw}</div>
-  <div class="corner ne">{ne}</div>
-  <div class="corner sw">{sw}</div>
-  <div class="corner se">{se}</div>
+  <!-- Corner labels -->
+  <div class="corner nw">CBD Core</div>
+  <div class="corner ne">Kasarani</div>
+  <div class="corner sw">Lang'ata</div>
+  <div class="corner se">Eastlands</div>
 
   <!-- Legend -->
   <div class="legend">
@@ -454,7 +407,7 @@
     </div>
   </div>
 
-  <!-- Connection status pill (replaces static "Live" label) -->
+  <!-- Connection Status -->
   <div
     class="live-pill"
     style="color:{STATUS_COLOR[status]}; background:{STATUS_COLOR[
@@ -463,8 +416,10 @@
   >
     <span
       class="live-dot"
-      style="background:{STATUS_COLOR[status]};
-      animation: {status === 'connected' ? 'ldot 1.5s ease infinite' : 'none'}"
+      style="background:{STATUS_COLOR[status]}; animation:{status ===
+      'connected'
+        ? 'ldot 1.5s ease infinite'
+        : 'none'}"
     ></span>
     {STATUS_LABEL[status]}{status === "connected"
       ? ` · ${svgVehicles.length}`
@@ -481,13 +436,13 @@
     border-radius: 0;
     overflow: hidden;
   }
+
   .map-svg {
     width: 100%;
     height: 100%;
     display: block;
   }
 
-  /* Corners */
   .corner {
     position: absolute;
     font-size: 0.56rem;
@@ -498,6 +453,7 @@
     padding: 4px;
     pointer-events: none;
   }
+
   .nw {
     top: 10px;
     left: 12px;
@@ -515,62 +471,56 @@
     right: 12px;
   }
 
-  /* Legend */
   .legend {
     position: absolute;
-    bottom: 10px;
+    bottom: 12px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 14px;
+    gap: 16px;
+    font-size: 0.58rem;
+    color: rgba(255, 255, 255, 0.35);
   }
+
   .legend-item {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.58rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.35);
-    letter-spacing: 0.04em;
-  }
-  .legend-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
+    gap: 6px;
   }
 
-  /* Status pill */
+  .legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
   .live-pill {
     position: absolute;
-    top: 10px;
+    top: 12px;
     right: 12px;
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.62rem;
+    gap: 6px;
+    font-size: 0.65rem;
     font-weight: 700;
     border: 1px solid;
-    border-radius: 100px;
-    padding: 3px 9px;
-    transition:
-      color 0.3s,
-      background 0.3s,
-      border-color 0.3s;
+    border-radius: 9999px;
+    padding: 4px 11px;
   }
+
   .live-dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    flex-shrink: 0;
   }
+
   @keyframes ldot {
     0%,
     100% {
       opacity: 1;
     }
     50% {
-      opacity: 0.3;
+      opacity: 0.4;
     }
   }
 </style>

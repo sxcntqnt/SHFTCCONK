@@ -63,6 +63,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.33.1-dev20.0",
+    "@duckdb/node-api": "1.5.2-r.1",
     "@duckdb/node-bindings": "1.5.0-r.1",
     "@grpc/grpc-js": "^1.14.3",
     "@hyperledger/fabric-gateway": "^1.10.1",
@@ -97,6 +98,7 @@
     "posthog-js": "^1.356.1",
     "posthog-node": "^5.26.0",
     "resend": "^3.5.0",
+    "snappy": "^7.3.3",
     "stripe": "^13.11.0",
     "three": "^0.183.1",
     "three-stdlib": "^2.36.1",

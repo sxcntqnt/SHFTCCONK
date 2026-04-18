@@ -3,7 +3,7 @@
 // Using the Haversine formula for accurate Earth surface calculations
 // ============================================
 
-import type { Coordinates, BoundingBox, MapMarker } from '../types'
+import type { Coordinates, BoundingBox, MapMarker } from '../types/MapTypes'
 
 const EARTH_RADIUS_METERS = 6371000
 const EARTH_RADIUS_KM = 6371

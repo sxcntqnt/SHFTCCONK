@@ -6,10 +6,11 @@
 //   1. Sentry        — error reporting & tracing
 //   2. Cloudflare    — HTTPS protocol fix behind proxy
 //   3. Location      — geo seed from CF headers → requestContext (NOT auth)
-//   4. PostHog       — analytics ingest reverse proxy
-//   5. Supabase      — client creation + safeGetSession
-//   6. Auth Guard    — basic session check + route protection
-//   7. User State    — resolveUserState + activateXContext (THE BRAIN)
+//   4. Map Service   — singleton DuckDB/SSE init (depends on locationHandle)
+//   5. PostHog       — analytics ingest reverse proxy
+//   6. Supabase      — client creation + safeGetSession
+//   7. Auth Guard    — basic session check + route protection
+//   8. User State    — resolveUserState + activateXContext (THE BRAIN)
 //
 // ARCHITECTURE NOTE — WHY locationHandle IS NOT AUTH:
 //   requestContext is a request optimization concern, not identity.
@@ -18,7 +19,7 @@
 //   Never reads from auth. Never gates routes.
 //
 //   auth pipeline:  supabaseHandle → authGuardHandle → userStateHandle
-//   map pipeline:   locationHandle → requestContext → BootstrapManifestService
+//   map pipeline:   locationHandle → mapServiceHandle → requestContext → BootstrapManifestService
 
 import * as Sentry from "@sentry/sveltekit"
 import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
@@ -36,6 +37,9 @@ import { getPostHogClient } from "$lib/server/posthog"
 import { resolveUserState } from "$lib/features/auth/services/userState.server"
 import { activateXContext } from "$lib/features/auth/contexts/context.template"
 import type { App } from "../app"
+
+import { createMapService, getMapService } from '$lib/server/map/map.service'
+import { buildMapServiceConfig } from '$lib/server/map/config'
 
 /* ============================================================
    TYPES & HELPERS
@@ -65,7 +69,7 @@ const isOnboardingPath = (pathname: string): boolean =>
    world should exist in this session?"
 
    Placement: AFTER cloudflareHttpsFix (so protocol is clean),
-   BEFORE posthogProxy (so analytics can use regionKey).
+   BEFORE mapServiceHandle + posthogProxy (so both can use regionKey).
 
    Locals set: event.locals.requestContext
    Locals NOT touched: session, user, userState, activeContext
@@ -124,14 +128,51 @@ const locationHandle: Handle = async ({ event, resolve }) => {
 
   event.locals.requestContext = {
     country,
-    city:              city ?? null,
-    ip:                ip ?? null,
+    city:             city ?? null,
+    ip:               ip ?? null,
     // regionKey is stable per city — usable as cache key and analytics dim
-    regionKey:         `${country ?? "XX"}:${city ?? "unknown"}`,
-    approxCenter:      inferApproxCenter(city, country),
-    h3SeedResolution:  inferH3SeedResolution(country),
+    regionKey:        `${country ?? "XX"}:${city ?? "unknown"}`,
+    approxCenter:     inferApproxCenter(city, country),
+    h3SeedResolution: inferH3SeedResolution(country),
   }
 
+  return resolve(event)
+}
+
+/* ============================================================
+   MAP SERVICE HANDLE — singleton init (REQUEST LAYER)
+
+   Initialises the DuckDB + SSE map service exactly once across
+   the lifetime of the process. Uses a module-level promise so
+   concurrent cold-boot requests all await the same init rather
+   than racing to spin up multiple DuckDB connections.
+
+   Placement: AFTER locationHandle (requestContext is ready),
+   BEFORE posthogProxy + supabaseHandle (no auth dependency).
+
+   On failure the promise is cleared so the next request retries
+   — avoids a permanently broken singleton after a transient
+   startup error (e.g. DuckDB file locked during deploy).
+============================================================ */
+
+let mapServiceReady = false
+let mapServiceInitPromise: Promise<void> | null = null
+
+const mapServiceHandle: Handle = async ({ event, resolve }) => {
+  if (!mapServiceReady) {
+    if (!mapServiceInitPromise) {
+      mapServiceInitPromise = createMapService(buildMapServiceConfig())
+        .then(() => {
+          mapServiceReady = true
+        })
+        .catch((err) => {
+          // Reset so the next request retries after a transient failure
+          mapServiceInitPromise = null
+          throw err
+        })
+    }
+    await mapServiceInitPromise
+  }
   return resolve(event)
 }
 
@@ -383,21 +424,23 @@ const posthogProxy: Handle = async ({ event, resolve }) => {
 
 /* ============================================================
    COMPOSED HOOK SEQUENCE
-   
+
    Order matters:
-   1. Sentry       — must be first for full trace coverage
-   2. CF fix       — must run before any URL inspection
-   3. Location     — runs early: feeds PostHog + map pipeline
-   4. PostHog      — can now use requestContext.regionKey
-   5. Supabase     — clients + safeGetSession + null-init locals
-   6. Auth Guard   — session guard → /login or 401
-   7. User State   — domain resolution (auth-only, no location)
+   1. Sentry          — must be first for full trace coverage
+   2. CF fix          — must run before any URL inspection
+   3. Location        — runs early: feeds map pipeline + PostHog
+   4. Map Service     — singleton init, depends on locationHandle
+   5. PostHog         — can now use requestContext.regionKey
+   6. Supabase        — clients + safeGetSession + null-init locals
+   7. Auth Guard      — session guard → /login or 401
+   8. User State      — domain resolution (auth-only, no location)
 ============================================================ */
 
 export const handle = sequence(
   Sentry.sentryHandle(),
   cloudflareHttpsFix,
   locationHandle,    // geo seed — request optimization, NOT auth
+  mapServiceHandle,  // map singleton init — depends on locationHandle
   posthogProxy,
   supabaseHandle,
   authGuardHandle,
