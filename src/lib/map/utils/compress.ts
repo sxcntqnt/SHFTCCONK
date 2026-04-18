@@ -1,6 +1,10 @@
 // src/lib/map/utils/compress.ts
-import { json } from '@sveltejs/kit';  // ← top, before use
-import snappy from 'snappy';
+import { json } from '@sveltejs/kit';
+import { gzip, brotliCompress } from 'node:zlib';
+import { promisify } from 'node:util';
+
+const gzipAsync = promisify(gzip);
+const brotliAsync = promisify(brotliCompress);
 
 export { json };
 
@@ -10,12 +14,14 @@ export async function compressedJsonResponse(
     contentType?: string;
     cacheSeconds?: number;
     compress?: boolean;
+    encoding?: 'gzip' | 'br';
   } = {}
 ): Promise<Response> {
   const {
     contentType = 'application/json',
     cacheSeconds = 60,
     compress = true,
+    encoding = 'br',      // brotli is smaller; gzip for wider compat
   } = options;
 
   const cacheHeader = `public, max-age=${cacheSeconds}`;
@@ -27,23 +33,21 @@ export async function compressedJsonResponse(
   }
 
   try {
-    const jsonString = JSON.stringify(data);
-    const compressed = await snappy.compress(Buffer.from(jsonString));
+    const jsonBytes = Buffer.from(JSON.stringify(data));
+    const compressed = encoding === 'br'
+      ? await brotliAsync(jsonBytes)
+      : await gzipAsync(jsonBytes);
 
-    // NOTE: Snappy is not a browser-native Content-Encoding.
-    // Only use this endpoint for server-to-server consumers that
-    // explicitly request snappy. For browser clients, drop the
-    // compress flag and let the SvelteKit adapter handle gzip/br.
     return new Response(compressed, {
       headers: {
         'Content-Type': contentType,
+        'Content-Encoding': encoding,   // standard — browsers decompress natively
         'Cache-Control': cacheHeader,
-        'X-Content-Encoding': 'snappy', // custom header — signals codec without
-        'Vary': 'Accept-Encoding',       // tricking browsers into decompressing
+        'Vary': 'Accept-Encoding',
       },
     });
   } catch (err) {
-    console.warn('[compress] Snappy failed, falling back to JSON:', err);
+    console.warn('[compress] Compression failed, falling back to JSON:', err);
     return json(data, {
       headers: { 'Content-Type': contentType, 'Cache-Control': cacheHeader },
     });

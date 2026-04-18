@@ -98,7 +98,6 @@
     "posthog-js": "^1.356.1",
     "posthog-node": "^5.26.0",
     "resend": "^3.5.0",
-    "snappy": "^7.3.3",
     "stripe": "^13.11.0",
     "three": "^0.183.1",
     "three-stdlib": "^2.36.1",
