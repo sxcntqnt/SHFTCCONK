@@ -33,8 +33,8 @@
   }: Props = $props()
 
   // Exposed for parent binding
-  export let db: any = $state(null)
-  export let conn: any = $state(null)
+  let db: any = $state(null)
+  let conn: any = $state(null)
 
   let initialised = $state(false)
   let error = $state<string | null>(null)

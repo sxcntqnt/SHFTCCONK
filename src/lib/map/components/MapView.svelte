@@ -17,7 +17,7 @@
     routesGeoJSON,
     addGeofence,
   } from "$lib/map/stores/MapStore"
-  import { prefetchHexesForViewport } from "$lib/hooks.client"
+  import { prefetchHexesForViewport } from "../../../hooks.client"
   import { zoomToH3Resolution } from "$lib/map"
   import type { Coordinates, MapRoute, Geofence } from "$lib/map/types/MapTypes"
   import type { CityBootstrapManifest, RequestContext } from "$lib/map"
