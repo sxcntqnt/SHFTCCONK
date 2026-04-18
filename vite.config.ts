@@ -47,6 +47,8 @@ export default defineConfig({
       "firebase/database",
       "firebase/auth",
       "layerchart",
+      "duckdb",
+       "snappy"
     ],
   },
   build: {
