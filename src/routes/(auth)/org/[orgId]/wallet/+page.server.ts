@@ -14,6 +14,7 @@
 import { redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
 import { mpesa } from "$lib/server/mpesa-provider"
+import { orgSettleSchema } from "$lib/security/orgWallet.schema"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
 import type {
   WalletTransaction,
@@ -237,17 +238,18 @@ export const actions: Actions = {
       }
 
     const formData = await request.formData()
-    const amountKes = Number(formData.get("amount"))
-    const shortcode = (formData.get("shortcode") as string)?.trim() ?? ""
-    const reference = (formData.get("reference") as string)?.trim() ?? ""
+    const raw = {
+      amount: formData.get("amount"),
+      shortcode: (formData.get("shortcode") as string)?.trim() ?? "",
+      reference: (formData.get("reference") as string)?.trim() ?? null,
+    }
 
-    if (!amountKes || amountKes < 100)
-      return { error: "Minimum settlement is KES 100", success: false }
-    if (!shortcode.match(/^\d{5,6}$/))
-      return {
-        error: "Enter a valid 5–6 digit paybill or till number",
-        success: false,
-      }
+    const parsed = orgSettleSchema.safeParse(raw)
+    if (!parsed.success) return { error: parsed.error.flatten().fieldErrors, success: false }
+
+    const amountKes = parsed.data.amount
+    const shortcode = parsed.data.shortcode
+    const reference = parsed.data.reference
 
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)

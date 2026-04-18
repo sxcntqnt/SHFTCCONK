@@ -1,6 +1,7 @@
 // src/routes/api/contact/+server.ts
 import type { RequestHandler } from "@sveltejs/kit"
 import { verifyTurnstile } from "$lib/security/verifyTurnstile"
+import { contactSchema } from "$lib/security/contact.schema"
 
 export const POST: RequestHandler = async ({ request, clientAddress, ip }) => {
   let token: string | null = null
@@ -32,7 +33,17 @@ export const POST: RequestHandler = async ({ request, clientAddress, ip }) => {
     )
   }
 
-  // Process your form data here
+  // Validate form fields using contactSchema where possible
+  try {
+    const parsed = contactSchema.safeParse(formData)
+    if (!parsed.success) {
+      return new Response(JSON.stringify({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }), { status: 400 })
+    }
+  } catch (e) {
+    // If contactSchema can't parse the shape, fall back to accepting the payload
+    console.warn("contact schema parse error", e)
+  }
+
   console.log("Contact form submitted:", formData)
 
   return new Response(JSON.stringify({ success: true }), { status: 200 })

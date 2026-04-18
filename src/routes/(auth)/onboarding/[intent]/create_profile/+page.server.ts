@@ -20,6 +20,7 @@ import {
   saveProfile,
   _hasFullProfile,
   type Organization,
+  profileCreateSchema,
 } from "$lib/features/profile/profile.service"
 import { intentToDashboard } from "$lib/features/onboarding/intents"
 export type { Organization }
@@ -67,7 +68,7 @@ export const actions: Actions = {
     const formData = await request.formData()
     const returnTo = (formData.get("returnTo") as string | null) ?? null
 
-    const input = {
+    const raw = {
       fullName: (formData.get("fullName") as string | null)?.trim() ?? "",
       phone: (formData.get("phone") as string | null)?.trim() ?? "",
       companyName: (formData.get("companyName") as string | null)?.trim() ?? "",
@@ -90,6 +91,11 @@ export const actions: Actions = {
       workingHoursEnd:
         (formData.get("workingHoursEnd") as string | null)?.trim() ?? "",
       orgIds: formData.getAll("org_ids") as string[],
+    }
+
+    const parsed = profileCreateSchema.safeParse(raw)
+    if (!parsed.success) {
+      return fail(400, { errorFields: parsed.error.flatten().fieldErrors, errorMessage: "Validation failed", returnTo, ...raw })
     }
 
     const result = await saveProfile(supabase, user.id, input)

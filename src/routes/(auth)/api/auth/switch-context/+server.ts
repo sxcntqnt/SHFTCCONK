@@ -1,13 +1,22 @@
 // src/routes/api/auth/switch-context/+server.ts
 import { redirect, error } from "@sveltejs/kit"
+import { switchContextSchema } from "$lib/security/switchContext.schema"
 
 export const POST = async ({ request, locals, cookies }) => {
   const { session, user } = await locals.safeGetSession()
   if (!session) throw error(401)
 
   const formData = await request.formData()
-  const targetContext = formData.get("context") as string // 'passenger', 'crew', 'orgStaff'
-  const orgId = formData.get("orgId") as string | null
+  const raw = {
+    context: (formData.get("context") as string) ?? "",
+    orgId: (formData.get("orgId") as string) ?? null,
+  }
+
+  const parsed = switchContextSchema.safeParse(raw)
+  if (!parsed.success) throw error(400, "Invalid request")
+
+  const targetContext = parsed.data.context
+  const orgId = parsed.data.orgId
 
   // 1. Validate the user actually has this capability
   // We use your resolveUserState logic here

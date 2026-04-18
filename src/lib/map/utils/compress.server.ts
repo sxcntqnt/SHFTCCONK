@@ -1,10 +1,6 @@
-// src/lib/map/utils/compress.ts
+// src/lib/map/utils/compress.server.ts
 import { json } from '@sveltejs/kit';
-import { gzip, brotliCompress } from 'node:zlib';
-import { promisify } from 'node:util';
-
-const gzipAsync = promisify(gzip);
-const brotliAsync = promisify(brotliCompress);
+import { promises as zlibPromises } from 'node:zlib';
 
 export { json };
 
@@ -21,7 +17,7 @@ export async function compressedJsonResponse(
     contentType = 'application/json',
     cacheSeconds = 60,
     compress = true,
-    encoding = 'br',      // brotli is smaller; gzip for wider compat
+    encoding = 'br',
   } = options;
 
   const cacheHeader = `public, max-age=${cacheSeconds}`;
@@ -35,13 +31,13 @@ export async function compressedJsonResponse(
   try {
     const jsonBytes = Buffer.from(JSON.stringify(data));
     const compressed = encoding === 'br'
-      ? await brotliAsync(jsonBytes)
-      : await gzipAsync(jsonBytes);
+      ? await zlibPromises.brotliCompress(jsonBytes)
+      : await zlibPromises.gzip(jsonBytes);
 
     return new Response(compressed, {
       headers: {
         'Content-Type': contentType,
-        'Content-Encoding': encoding,   // standard — browsers decompress natively
+        'Content-Encoding': encoding,
         'Cache-Control': cacheHeader,
         'Vary': 'Accept-Encoding',
       },

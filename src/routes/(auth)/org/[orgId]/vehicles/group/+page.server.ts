@@ -1,6 +1,7 @@
 // src/routes/(auth)/org/[orgId]/vehicles/group/+page.server.ts
 import type { PageServerLoad, Actions } from "./$types"
 import { redirect, fail } from "@sveltejs/kit"
+import { vehicleGroupCreateSchema } from "$lib/security/group.schema"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const { safeGetSession, supabase } = locals
@@ -43,14 +44,17 @@ export const actions: Actions = {
     if (!session) return fail(401, { message: "Unauthorised" })
 
     const form = await request.formData()
-    const name = form.get("name")?.toString().trim()
-    const description = form.get("description")?.toString().trim() ?? ""
+    const raw = {
+      name: (form.get("name") as string)?.toString().trim() ?? "",
+      description: (form.get("description") as string)?.toString().trim() ?? "",
+    }
 
-    if (!name) return fail(400, { message: "Group name is required" })
+    const parsed = vehicleGroupCreateSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
 
     const { error } = await supabase
       .from("vehicle_groups")
-      .insert({ organization_id: params.orgId, name, description })
+      .insert({ organization_id: params.orgId, name: parsed.data.name, description: parsed.data.description })
 
     if (error) return fail(500, { message: error.message })
 

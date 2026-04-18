@@ -23,4 +23,4 @@ export type {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 export * from './utils/distance';
 export { parseBounds, saturationToColor } from './utils/apiHelpers';  // ← single source
-export { compressedJsonResponse, json }   from './utils/compress';    // ← no helpers here
+export { compressedJsonResponse, json }   from './utils/compress.server';    // ← no helpers here

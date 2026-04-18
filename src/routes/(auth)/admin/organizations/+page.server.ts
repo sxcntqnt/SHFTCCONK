@@ -40,6 +40,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
+import { z } from "zod"
 
 const VALID_STATUSES = [
   "pending_activation",
@@ -157,15 +158,13 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const name = (form.get("name") as string)?.trim()
-    // FIX: default to pending_activation — aligns with the SACCO onboarding flow.
-    // An org must go through sxcntqnt verification before becoming active.
-    const status = ((form.get("status") as string) ||
-      "pending_activation") as OrgStatus
+    const rawName = (form.get("name") as string)?.trim() ?? ""
+    const rawStatus = ((form.get("status") as string) || "pending_activation") as string
 
-    if (!name) return fail(400, { error: "Organization name is required" })
-    if (!VALID_STATUSES.includes(status))
-      return fail(400, { error: "Invalid status" })
+    const parsedName = z.string().min(1).safeParse(rawName)
+    if (!parsedName.success) return fail(400, { error: "Organization name is required" })
+    const parsedStatus = z.enum(VALID_STATUSES as readonly string[]).safeParse(rawStatus as any)
+    if (!parsedStatus.success) return fail(400, { error: "Invalid status" })
 
     // Check for name collision
     const { data: existing } = await supabase
@@ -201,12 +200,13 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const id = (form.get("id") as string)?.trim()
-    const status = (form.get("status") as string)?.trim() as OrgStatus
+    const id = (form.get("id") as string)?.trim() ?? ""
+    const status = (form.get("status") as string) ?? ""
 
-    if (!id) return fail(400, { error: "Missing organization id" })
-    if (!VALID_STATUSES.includes(status))
-      return fail(400, { error: "Invalid status" })
+    const idParse = z.string().min(1).safeParse(id)
+    if (!idParse.success) return fail(400, { error: "Missing organization id" })
+    const statusParse = z.enum(VALID_STATUSES as readonly string[]).safeParse(status as any)
+    if (!statusParse.success) return fail(400, { error: "Invalid status" })
 
     const { error } = await supabase
       .from("organizations")
@@ -235,9 +235,10 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const id = (form.get("id") as string)?.trim()
+    const id = (form.get("id") as string)?.trim() ?? ""
 
-    if (!id) return fail(400, { error: "Missing organization id" })
+    const idParse = z.string().min(1).safeParse(id)
+    if (!idParse.success) return fail(400, { error: "Missing organization id" })
 
     // Safety: block deletion of orgs that have active members
     const { data: members } = await supabase

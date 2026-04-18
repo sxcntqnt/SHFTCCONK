@@ -1,6 +1,7 @@
 // src/routes/(auth)/org/[orgId]/vehicles/add/+page.server.ts
 import type { PageServerLoad, Actions } from "./$types"
 import { redirect, fail } from "@sveltejs/kit"
+import { vehicleCreateSchema } from "$lib/security/vehicle.schema"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const { safeGetSession, supabase } = locals
@@ -40,35 +41,44 @@ export const actions: Actions = {
     const orgId = params.orgId
     const form = await request.formData()
 
-    // ── Required fields ────────────────────────────────────────────────
-    const registration = form.get("registration")?.toString().trim()
-    const name = form.get("name")?.toString().trim()
-    const chassis = form.get("chassis")?.toString().trim()
-    const vehicleType = form.get("vehicle_type")?.toString().trim()
-    const groupId = form.get("group_id")?.toString() || null
-
-    if (!registration || !name || !chassis || !vehicleType) {
-      return fail(400, {
-        message: "Registration, name, chassis and type are required",
-      })
+    const raw = {
+      registration: form.get("registration")?.toString().trim() ?? "",
+      name: form.get("name")?.toString().trim() ?? "",
+      chassis: form.get("chassis")?.toString().trim() ?? "",
+      vehicle_type: form.get("vehicle_type")?.toString().trim() ?? "",
+      group_id: form.get("group_id")?.toString() || null,
+      model: form.get("model")?.toString().trim() || null,
+      engine: form.get("engine")?.toString().trim() || null,
+      manufactured_by: form.get("manufactured_by")?.toString().trim() || null,
+      color: form.get("color")?.toString().trim() || null,
+      registration_expiry: form.get("registration_expiry")?.toString() || null,
+      device_id: form.get("device_id")?.toString() || null,
+      api_url: form.get("api_url")?.toString().trim() || null,
+      api_username: form.get("api_username")?.toString().trim() || null,
+      api_password: form.get("api_password")?.toString().trim() || null,
     }
 
-    // ── Optional fields ────────────────────────────────────────────────
-    const model = form.get("model")?.toString().trim() || null
-    const engine = form.get("engine")?.toString().trim() || null
-    const manufacturedBy =
-      form.get("manufactured_by")?.toString().trim() || null
-    const color = form.get("color")?.toString().trim() || null
-    const registrationExpiry =
-      form.get("registration_expiry")?.toString() || null
+    const parsed = vehicleCreateSchema.safeParse(raw)
+    if (!parsed.success) {
+      return fail(400, { errors: parsed.error.flatten().fieldErrors })
+    }
 
-    // ── GPS / device fields ────────────────────────────────────────────
-    // User can either pick an existing device OR supply raw API credentials.
-    // If both, the existing device takes precedence.
-    const existingDeviceId = form.get("device_id")?.toString() || null
-    const apiUrl = form.get("api_url")?.toString().trim() || null
-    const apiUsername = form.get("api_username")?.toString().trim() || null
-    const apiPassword = form.get("api_password")?.toString().trim() || null
+    const {
+      registration,
+      name,
+      chassis,
+      vehicle_type: vehicleType,
+      group_id: groupId,
+      model,
+      engine,
+      manufactured_by: manufacturedBy,
+      color,
+      registration_expiry,
+      device_id: existingDeviceId,
+      api_url: apiUrl,
+      api_username: apiUsername,
+      api_password: apiPassword,
+    } = parsed.data
 
     // ── Insert vehicle ─────────────────────────────────────────────────
     const { data: vehicle, error: vehicleError } = await supabase

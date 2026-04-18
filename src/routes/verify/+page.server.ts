@@ -25,6 +25,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
+import { verifySmsSchema } from "$lib/security/verify.schema"
 import { createHash } from "crypto"
 
 function hashToken(raw: string): string {
@@ -119,14 +120,17 @@ export const actions: Actions = {
     const { supabase } = locals
     const form = await request.formData()
 
-    // User may submit their profile_id to scope the lookup,
-    // or we find by OTP hash alone (safe since OTP is 6 digits + 15min expiry)
-    const otp = (form.get("otp") as string)?.trim().replace(/\s/g, "")
-    const profile_id = (form.get("profile_id") as string)?.trim() || null
-
-    if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
-      return fail(400, { error: "Enter the 6-digit code from your SMS." })
+    const raw = {
+      otp: (form.get("otp") as string)?.trim().replace(/\s/g, "") ?? "",
+      profile_id: (form.get("profile_id") as string)?.trim() || null,
     }
+
+    const parsed = verifySmsSchema.safeParse(raw)
+    if (!parsed.success) {
+      return fail(400, { errors: parsed.error.flatten().fieldErrors })
+    }
+
+    const { otp, profile_id } = parsed.data
 
     const tokenHash = hashToken(otp)
 

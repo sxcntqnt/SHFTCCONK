@@ -39,6 +39,7 @@
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
 import { createHash, randomBytes } from "crypto"
+import { adminUpdateProfileSchema, adminSendVerificationSchema, adminActorIdSchema } from "$lib/security/admin.schema"
 import { AT_API_KEY, AT_USERNAME } from "$env/static/private"
 import { AT_PUBLIC_APP_URL } from "$env/static/public"
 
@@ -187,16 +188,19 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const id = (form.get("id") as string)?.trim()
-    const full_name = (form.get("full_name") as string)?.trim() || null
-    const company_name = (form.get("company_name") as string)?.trim() || null
+    const raw = {
+      id: (form.get("id") as string)?.trim() ?? "",
+      full_name: (form.get("full_name") as string)?.trim() ?? null,
+      company_name: (form.get("company_name") as string)?.trim() ?? null,
+    }
 
-    if (!id) return fail(400, { error: "Missing profile id" })
+    const parsed = adminUpdateProfileSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
 
     const { error } = await supabase
       .from("profiles")
-      .update({ full_name, company_name, updated_at: new Date().toISOString() })
-      .eq("id", id)
+      .update({ full_name: parsed.data.full_name, company_name: parsed.data.company_name, updated_at: new Date().toISOString() })
+      .eq("id", parsed.data.id)
 
     if (error) return fail(500, { error: error.message })
     throw redirect(303, "/admin/users?updated=1")
@@ -209,17 +213,18 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const actor_id = (form.get("actor_id") as string)?.trim()
-    const method = form.get("method") as "sms" | "email"
-    const dest = (form.get("destination") as string)?.trim()
+    const raw = {
+      actor_id: (form.get("actor_id") as string)?.trim() ?? "",
+      method: (form.get("method") as string) as any,
+      destination: (form.get("destination") as string)?.trim() ?? "",
+    }
 
-    if (!actor_id) return fail(400, { error: "Missing actor id" })
-    if (!method || !["sms", "email"].includes(method))
-      return fail(400, { error: "Method must be sms or email" })
-    if (!dest)
-      return fail(400, {
-        error: `Missing ${method === "sms" ? "phone number" : "email address"}`,
-      })
+    const parsed = adminSendVerificationSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
+
+    const actor_id = parsed.data.actor_id
+    const method = parsed.data.method
+    const dest = parsed.data.destination
 
     // Phone validation for SMS (Kenya numbers)
     if (
@@ -358,10 +363,12 @@ export const actions: Actions = {
     if (!(await _requireAdmin(locals)))
       return fail(403, { error: "Admin access required" })
 
-    const actor_id = (
+    const actor_id_raw = (
       (await request.formData()).get("actor_id") as string
     )?.trim()
-    if (!actor_id) return fail(400, { error: "Missing actor id" })
+    const parsed = adminActorIdSchema.safeParse({ id: actor_id_raw ?? "" })
+    if (!parsed.success) return fail(400, { error: "Missing actor id" })
+    const actor_id = parsed.data.id
 
     const { data: actor } = await supabase
       .from("actors")

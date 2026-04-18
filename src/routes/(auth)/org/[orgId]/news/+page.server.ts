@@ -1,4 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit"
+import { newsCreateSchema, newsUpdateSchema } from "$lib/security/news.schema"
+import { z } from "zod"
 import type { PageServerLoad, Actions } from "./$types"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -105,30 +107,33 @@ export const actions: Actions = {
     if (!user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const title = (form.get("title") as string)?.trim()
-    const body = (form.get("body") as string)?.trim()
-    const category = (form.get("category") as string) || "general"
-    const severity = (form.get("severity") as string) || "info"
-    const pinned = form.get("pinned") === "true"
-    const published = form.get("published") !== "false"
-    const routeIdsRaw = form.getAll("route_ids") as string[]
-    const { orgId } = params
+    const raw = {
+      title: (form.get("title") as string)?.trim() ?? "",
+      body: (form.get("body") as string)?.trim() ?? "",
+      category: (form.get("category") as string) || "general",
+      severity: (form.get("severity") as string) || "info",
+      pinned: form.get("pinned") === "true",
+      published: form.get("published") !== "false",
+      route_ids: (form.getAll("route_ids") as string[]) ?? [],
+      organization_id: params.orgId,
+      author_id: user.id,
+    }
 
-    if (!title) return fail(400, { error: "Title is required" })
-    if (!body) return fail(400, { error: "Body is required" })
+    const parsed = newsCreateSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
 
     const { error: insertErr } = await (locals.supabase as any)
       .from("org_news")
       .insert({
-        organization_id: orgId,
+        organization_id: params.orgId,
         author_id: user.id,
-        title,
-        body,
-        category,
-        severity,
-        pinned,
-        published,
-        route_ids: routeIdsRaw.length > 0 ? routeIdsRaw : [],
+        title: parsed.data.title,
+        body: parsed.data.body,
+        category: parsed.data.category,
+        severity: parsed.data.severity,
+        pinned: parsed.data.pinned,
+        published: parsed.data.published,
+        route_ids: parsed.data.route_ids.length > 0 ? parsed.data.route_ids : [],
       })
 
     if (insertErr) {
@@ -144,21 +149,23 @@ export const actions: Actions = {
     if (!user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const id = form.get("id") as string
-    const title = (form.get("title") as string)?.trim()
-    const body = (form.get("body") as string)?.trim()
-    const category = (form.get("category") as string) || "general"
-    const severity = (form.get("severity") as string) || "info"
-    const pinned = form.get("pinned") === "true"
-    const published = form.get("published") !== "false"
+    const raw = {
+      id: (form.get("id") as string) ?? "",
+      title: (form.get("title") as string)?.trim() ?? "",
+      body: (form.get("body") as string)?.trim() ?? "",
+      category: (form.get("category") as string) || "general",
+      severity: (form.get("severity") as string) || "info",
+      pinned: form.get("pinned") === "true",
+      published: form.get("published") !== "false",
+    }
 
-    if (!id) return fail(400, { error: "Missing news id" })
-    if (!title) return fail(400, { error: "Title is required" })
+    const parsed = newsUpdateSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
 
     const { error: updateErr } = await (locals.supabase as any)
       .from("org_news")
-      .update({ title, body, category, severity, pinned, published })
-      .eq("id", id)
+      .update({ title: parsed.data.title, body: parsed.data.body, category: parsed.data.category, severity: parsed.data.severity, pinned: parsed.data.pinned, published: parsed.data.published })
+      .eq("id", parsed.data.id)
 
     if (updateErr) {
       console.error("update news error", updateErr)
@@ -173,8 +180,9 @@ export const actions: Actions = {
     if (!user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const id = form.get("id") as string
-    if (!id) return fail(400, { error: "Missing news id" })
+    const id = (form.get("id") as string) ?? ""
+    const idParse = z.string().min(1).safeParse(id)
+    if (!idParse.success) return fail(400, { error: "Missing news id" })
 
     const { error: deleteErr } = await (locals.supabase as any)
       .from("org_news")
@@ -187,9 +195,10 @@ export const actions: Actions = {
 
   toggle_pin: async ({ request, locals }) => {
     const form = await request.formData()
-    const id = form.get("id") as string
+    const id = (form.get("id") as string) ?? ""
     const pinned = form.get("pinned") === "true"
-    if (!id) return fail(400, { error: "Missing id" })
+    const idParse = z.string().min(1).safeParse(id)
+    if (!idParse.success) return fail(400, { error: "Missing id" })
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")
@@ -202,9 +211,10 @@ export const actions: Actions = {
 
   toggle_publish: async ({ request, locals }) => {
     const form = await request.formData()
-    const id = form.get("id") as string
+    const id = (form.get("id") as string) ?? ""
     const published = form.get("published") === "true"
-    if (!id) return fail(400, { error: "Missing id" })
+    const idParse = z.string().min(1).safeParse(id)
+    if (!idParse.success) return fail(400, { error: "Missing id" })
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")
