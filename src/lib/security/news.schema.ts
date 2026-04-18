@@ -15,3 +15,7 @@ export const newsUpdateSchema = newsCreateSchema.extend({
 })
 
 export type NewsCreate = z.infer<typeof newsCreateSchema>
+
+export const idSchema = z.object({ id: z.string().min(1) })
+
+export type IdSchema = z.infer<typeof idSchema>

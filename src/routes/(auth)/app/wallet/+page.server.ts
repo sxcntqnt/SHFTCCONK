@@ -16,6 +16,7 @@
 //   Passenger's enrollment status shown — for identity assurance badge.
 
 import { redirect } from "@sveltejs/kit"
+import { topupSchema } from "$lib/security/wallet.schema"
 import type { Actions, PageServerLoad } from "./$types"
 import { mpesa } from "$lib/server/mpesa-provider"
 import type {
@@ -144,15 +145,14 @@ export const actions: Actions = {
 
     const supabase = locals.supabase
     const formData = await request.formData()
-    const amountKes = Number(formData.get("amount"))
-    const phone = (formData.get("phone") as string)?.trim() ?? ""
+    const raw = { amount: formData.get("amount"), phone: formData.get("phone") }
+    const parsed = topupSchema.safeParse(raw)
+    if (!parsed.success) {
+      return { error: parsed.error.flatten().formErrors.join(" ") || "Invalid input", success: false }
+    }
 
-    if (!amountKes || amountKes < 50)
-      return { error: "Minimum top-up is KES 50", success: false }
-    if (amountKes > 100_000)
-      return { error: "Maximum single top-up is KES 100,000", success: false }
-    if (!phone.match(/^\+254[17]\d{8}$/))
-      return { error: "Enter a valid Kenyan phone (+254...)", success: false }
+    const amountKes = parsed.data.amount
+    const phone = parsed.data.phone
 
     // M-PESA GO per-transaction limit check
     const { data: mpesaData } = await supabase

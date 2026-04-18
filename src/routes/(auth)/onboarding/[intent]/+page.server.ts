@@ -170,11 +170,14 @@ export const actions: Actions = {
     const intent: OnboardingIntent = rawIntent
 
     const formData = await request.formData()
-    const caseId = formData.get("ballerineCaseId") as string | null
-
-    if (!caseId) {
+    const raw = { ballerineCaseId: formData.get("ballerineCaseId") }
+    const { submitKycSchema } = await import("$lib/security/onboarding.schema")
+    const parsed = submitKycSchema.safeParse(raw)
+    if (!parsed.success) {
       throw error(400, "Missing Ballerine case ID.")
     }
+
+    const caseId = parsed.data.ballerineCaseId
 
     const { error: updateError } = await supabase
       .from("profiles")

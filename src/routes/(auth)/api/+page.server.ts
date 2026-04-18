@@ -1,6 +1,12 @@
 import { fail, redirect } from "@sveltejs/kit"
 import { sendAdminEmail, sendUserEmail } from "$lib/mailer"
 import { WebsiteBaseUrl } from "../../../config"
+import {
+  updateEmailSchema,
+  updatePasswordSchema,
+  deleteAccountSchema,
+  updateProfileSchema,
+} from "$lib/security/api.schema"
 
 export const actions = {
   toggleEmailSubscription: async ({ locals: { supabase, safeGetSession } }) => {
@@ -37,27 +43,12 @@ export const actions = {
     if (!session) {
       redirect(303, "/login")
     }
-
     const formData = await request.formData()
-    const email = formData.get("email") as string
+    const raw = { email: formData.get("email") }
+    const parsed = updateEmailSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errorMessage: parsed.error.flatten().formErrors.join(" "), errorFields: ["email"], email: raw.email })
 
-    let validationError
-    if (!email || email === "") {
-      validationError = "An email address is required"
-    }
-    // Dead simple check -- there's no standard here (which is followed),
-    // and lots of errors will be missed until we actually email to verify, so
-    // just do that
-    else if (!email.includes("@")) {
-      validationError = "A valid email address is required"
-    }
-    if (validationError) {
-      return fail(400, {
-        errorMessage: validationError,
-        errorFields: ["email"],
-        email,
-      })
-    }
+    const email = parsed.data.email
 
     // Supabase does not change the email until the user verifies both
     // if 'Secure email change' is enabled in the Supabase dashboard
@@ -82,9 +73,18 @@ export const actions = {
     }
 
     const formData = await request.formData()
-    const newPassword1 = formData.get("newPassword1") as string
-    const newPassword2 = formData.get("newPassword2") as string
-    const currentPassword = formData.get("currentPassword") as string
+    const raw = {
+      newPassword1: formData.get("newPassword1"),
+      newPassword2: formData.get("newPassword2"),
+      currentPassword: formData.get("currentPassword"),
+    }
+
+    const parsed = updatePasswordSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errorMessage: parsed.error.flatten().formErrors.join(" "), errorFields: [], newPassword1: raw.newPassword1, newPassword2: raw.newPassword2, currentPassword: raw.currentPassword })
+
+    const newPassword1 = parsed.data.newPassword1
+    const newPassword2 = parsed.data.newPassword2
+    const currentPassword = parsed.data.currentPassword
 
     // Can check if we're a "password recovery" session by checking session amr
     // let currentPassword take priority if provided (user can use either form)
@@ -186,18 +186,12 @@ export const actions = {
     if (!session || !user?.id) {
       redirect(303, "/login")
     }
-
     const formData = await request.formData()
-    const currentPassword = formData.get("currentPassword") as string
+    const raw = { currentPassword: formData.get("currentPassword") }
+    const parsed = deleteAccountSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errorMessage: parsed.error.flatten().formErrors.join(" "), errorFields: ["currentPassword"], currentPassword: raw.currentPassword })
 
-    if (!currentPassword) {
-      return fail(400, {
-        errorMessage:
-          "You must provide your current password to delete your account. If you forgot it, sign out then use 'forgot password' on the sign in page.",
-        errorFields: ["currentPassword"],
-        currentPassword,
-      })
-    }
+    const currentPassword = parsed.data.currentPassword
 
     // Check current password is correct before deleting account
     const { error: pwError } = await supabase.auth.signInWithPassword({
@@ -229,47 +223,14 @@ export const actions = {
     if (!session || !user?.id) {
       redirect(303, "/login")
     }
-
     const formData = await request.formData()
-    const fullName = formData.get("fullName") as string
-    const companyName = formData.get("companyName") as string
-    const website = formData.get("website") as string
+    const raw = { fullName: formData.get("fullName"), companyName: formData.get("companyName"), website: formData.get("website") }
+    const parsed = updateProfileSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errorMessage: parsed.error.flatten().formErrors.join(" "), errorFields: [], fullName: raw.fullName, companyName: raw.companyName, website: raw.website })
 
-    let validationError
-    const fieldMaxTextLength = 50
-    const errorFields = []
-    if (!fullName) {
-      validationError = "Name is required"
-      errorFields.push("fullName")
-    } else if (fullName.length > fieldMaxTextLength) {
-      validationError = `Name must be less than ${fieldMaxTextLength} characters`
-      errorFields.push("fullName")
-    }
-    if (!companyName) {
-      validationError =
-        "Company name is required. If this is a hobby project or personal app, please put your name."
-      errorFields.push("companyName")
-    } else if (companyName.length > fieldMaxTextLength) {
-      validationError = `Company name must be less than ${fieldMaxTextLength} characters`
-      errorFields.push("companyName")
-    }
-    if (!website) {
-      validationError =
-        "Company website is required. An app store URL is a good alternative if you don't have a website."
-      errorFields.push("website")
-    } else if (website.length > fieldMaxTextLength) {
-      validationError = `Company website must be less than ${fieldMaxTextLength} characters`
-      errorFields.push("website")
-    }
-    if (validationError) {
-      return fail(400, {
-        errorMessage: validationError,
-        errorFields,
-        fullName,
-        companyName,
-        website,
-      })
-    }
+    const fullName = parsed.data.fullName
+    const companyName = parsed.data.companyName
+    const website = parsed.data.website
 
     // To check if created or updated, check if priorProfile exists
     const { data: priorProfile, error: priorProfileError } = await supabase

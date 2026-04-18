@@ -32,6 +32,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
+import { actorRequestApproveSchema } from "$lib/security/admin.schema"
 
 const UUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/
@@ -105,14 +106,18 @@ export const actions: Actions = {
   approve: async ({ request, locals }) => {
     const { supabase, user } = locals
     const form = await request.formData()
-
-    const id = form.get("request_id") as string
-    const bindingType = (form.get("binding_type") as string) || null
-    const bindingTarget = (form.get("binding_target") as string) || null
-
-    if (!id || !UUID_RE.test(id)) {
-      return fail(400, { error: "missing_or_invalid_request_id" })
+    const raw = {
+      request_id: form.get("request_id"),
+      binding_type: form.get("binding_type"),
+      binding_target: form.get("binding_target"),
     }
+
+    const parsed = actorRequestApproveSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "missing_or_invalid_request_id" })
+    const id = parsed.data.request_id
+    const bindingType = (parsed.data.binding_type as string) || null
+    const bindingTarget = (parsed.data.binding_target as string) || null
+
     if (!user) return fail(403, { error: "not_authenticated" })
 
     // Validate binding target UUID when required
@@ -234,13 +239,12 @@ export const actions: Actions = {
   reject: async ({ request, locals }) => {
     const { supabase, user } = locals
     const form = await request.formData()
+    const raw = { request_id: form.get("request_id"), reject_reason: form.get("reject_reason") }
+    const parsed = actorRequestApproveSchema.safeParse({ request_id: raw.request_id })
+    if (!parsed.success) return fail(400, { error: "missing_or_invalid_request_id" })
+    const id = parsed.data.request_id
+    const reason = (raw.reject_reason as string) || "Rejected by admin"
 
-    const id = form.get("request_id") as string
-    const reason = (form.get("reject_reason") as string) || "Rejected by admin"
-
-    if (!id || !UUID_RE.test(id)) {
-      return fail(400, { error: "missing_or_invalid_request_id" })
-    }
     if (!user) return fail(403, { error: "not_authenticated" })
 
     const { error } = await supabase

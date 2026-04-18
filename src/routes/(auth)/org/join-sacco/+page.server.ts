@@ -28,9 +28,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+import { orgJoinSchema } from "$lib/security/app.schema"
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const { supabase, session } = locals
@@ -93,11 +91,11 @@ export const actions: Actions = {
     }
 
     const form = await request.formData()
-    const org_id = (form.get("org_id") as string)?.trim()
+    const raw = { org_id: form.get("org_id") }
+    const parsed = orgJoinSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Please select a valid organization." })
 
-    if (!org_id || !UUID_RE.test(org_id)) {
-      return fail(400, { error: "Please select a valid organization." })
-    }
+    const org_id = parsed.data.org_id
 
     const { data: org } = await supabase
       .from("organizations")

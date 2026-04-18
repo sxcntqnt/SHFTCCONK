@@ -1,26 +1,31 @@
 import type { Actions } from "./$types"
 import { fail } from "@sveltejs/kit"
+import { fuelAddSchema } from "$lib/security/wallet.schema"
 
 export const actions: Actions = {
   addFuel: async ({ request, locals }) => {
     const formData = await request.formData()
-
-    const entry = {
-      date: formData.get("date") as string,
-      vehicleId: formData.get("vehicleId") as string,
-      odometer: Number(formData.get("odometer")),
-      liters: Number(formData.get("liters")),
-      pricePerLiter: Number(formData.get("pricePerLiter")),
-      totalCost: Number(formData.get("totalCost")),
-      notes: (formData.get("notes") as string) || null,
-      // Add real user/organization context from session/auth
-      // userId: locals.user?.id,
-      // organizationId: locals.user?.organizationId,
+    const raw = {
+      date: formData.get("date"),
+      vehicleId: formData.get("vehicleId"),
+      odometer: formData.get("odometer"),
+      liters: formData.get("liters"),
+      pricePerLiter: formData.get("pricePerLiter"),
+      totalCost: formData.get("totalCost"),
+      notes: formData.get("notes"),
     }
 
-    // Basic validation
-    if (!entry.date || !entry.vehicleId || !entry.liters || entry.liters <= 0) {
-      return fail(400, { message: "Required fields missing or invalid" })
+    const parsed = fuelAddSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
+
+    const entry = {
+      date: parsed.data.date,
+      vehicleId: parsed.data.vehicleId,
+      odometer: parsed.data.odometer,
+      liters: parsed.data.liters,
+      pricePerLiter: parsed.data.pricePerLiter,
+      totalCost: parsed.data.totalCost,
+      notes: parsed.data.notes,
     }
 
     try {

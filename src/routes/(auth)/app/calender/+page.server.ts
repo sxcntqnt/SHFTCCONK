@@ -1,5 +1,7 @@
 // src/routes/commute/+page.server.ts
 import type { PageServerLoad, Actions } from "./$types"
+import { fail } from "@sveltejs/kit"
+import { calendarAddSchema } from "$lib/security/app.schema"
 
 type Activity = {
   id: string
@@ -52,20 +54,29 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
   add: async ({ request }) => {
     const formData = await request.formData()
+    const raw = {
+      date: formData.get("date"),
+      time: formData.get("time"),
+      from: formData.get("from"),
+      to: formData.get("to"),
+      mode: formData.get("mode"),
+      notes: formData.get("notes"),
+    }
+
+    const parsed = calendarAddSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
 
     const newActivity: Activity = {
       id: Date.now().toString(),
-      date: formData.get("date") as string,
-      time: formData.get("time") as string,
-      from: formData.get("from") as string,
-      to: formData.get("to") as string,
-      mode: formData.get("mode") as "Car" | "Train" | "Bike" | "Walk",
-      notes: (formData.get("notes") as string) || "",
+      date: parsed.data.date,
+      time: parsed.data.time,
+      from: parsed.data.from,
+      to: parsed.data.to,
+      mode: parsed.data.mode,
+      notes: parsed.data.notes,
     }
 
     activities = [...activities, newActivity]
-
-    // Return success so the page re-renders with updated data
     return { success: true }
   },
 }

@@ -35,6 +35,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
+import { jurisdictionCreateSchema, jurisdictionIdSchema } from "$lib/security/jurisdiction.schema"
 
 /* ============================================================
    LOAD
@@ -151,24 +152,13 @@ export const actions: Actions = {
     }
 
     const form = await request.formData()
-    const actor_id = (form.get("actor_id") as string)?.trim()
-    const level = (form.get("level") as string)?.trim() as Level
-    const scope_id = (form.get("scope_id") as string)?.trim() || null
+    const raw = { actor_id: form.get("actor_id"), level: form.get("level"), scope_id: form.get("scope_id") }
+    const parsed = jurisdictionCreateSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
 
-    // Validate
-    if (!actor_id) return fail(400, { error: "Actor is required" })
-    if (!VALID_LEVELS.includes(level))
-      return fail(400, {
-        error: `Invalid level. Must be one of: ${VALID_LEVELS.join(", ")}`,
-      })
-    if (level !== "federal" && !scope_id)
-      return fail(400, {
-        error: "Scope is required for non-federal jurisdictions",
-      })
-    if (level === "federal" && scope_id)
-      return fail(400, {
-        error: "Federal jurisdictions must not have a scope_id",
-      })
+    const actor_id = parsed.data.actor_id
+    const level = parsed.data.level
+    const scope_id = parsed.data.scope_id
 
     // Prevent duplicates — same actor + level + scope already exists
     const { data: existing } = await supabase
@@ -206,9 +196,10 @@ export const actions: Actions = {
     }
 
     const form = await request.formData()
-    const id = (form.get("id") as string)?.trim()
-
-    if (!id) return fail(400, { error: "Missing jurisdiction id" })
+    const raw = { id: form.get("id") }
+    const parsed = jurisdictionIdSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing jurisdiction id" })
+    const id = parsed.data.id
 
     const { error } = await supabase
       .from("actor_jurisdictions")

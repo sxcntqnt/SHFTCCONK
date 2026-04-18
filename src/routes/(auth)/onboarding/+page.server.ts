@@ -39,6 +39,7 @@ import {
   type SelfSelectIntent,
   intentToDashboard,
 } from "$lib/features/onboarding/intents"
+import { setIntentSchema } from "$lib/security/onboarding.schema"
 
 export const load: PageServerLoad = async ({ locals }) => {
   const { userState } = locals
@@ -66,7 +67,10 @@ export const actions: Actions = {
     if (!user) throw redirect(303, "/login")
 
     const formData = await request.formData()
-    const intent = formData.get("intent") as string
+    const raw = { intent: formData.get("intent") }
+    const parsed = setIntentSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
+    const intent = parsed.data.intent
 
     // Only passengers can self-select
     if (!SELF_SELECTABLE_INTENTS.includes(intent as SelfSelectIntent)) {

@@ -1,5 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit"
 import type { PageServerLoad, Actions } from "./$types"
+import { subscribeSchema, actorRequestSchema } from "$lib/security/app.schema"
 
 function slugify(name: string): string {
   return name
@@ -169,8 +170,18 @@ export const actions: Actions = {
     if (!session || !user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const routeIds = form.getAll("route_ids") as string[]
-    const allRoutes = form.get("all_routes") === "true"
+    const raw = {
+      route_ids: form.getAll("route_ids"),
+      all_routes: form.get("all_routes"),
+    }
+
+    const parsed = subscribeSchema.safeParse(raw)
+    if (!parsed.success) {
+      return fail(400, { errors: parsed.error.flatten().fieldErrors })
+    }
+
+    const routeIds = parsed.data.route_ids ?? []
+    const allRoutes = parsed.data.all_routes
     const { slug } = params
 
     // Resolve org
@@ -216,8 +227,16 @@ export const actions: Actions = {
     if (!session || !user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const requestedType = form.get("role") as string
-    const note = (form.get("note") as string)?.trim() || null
+    const raw = {
+      role: form.get("role"),
+      note: form.get("note"),
+    }
+
+    const parsed = actorRequestSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { errors: parsed.error.flatten().fieldErrors })
+
+    const requestedType = parsed.data.role
+    const note = parsed.data.note
     const { slug } = params
 
     if (!requestedType) return fail(400, { error: "Please select a role" })

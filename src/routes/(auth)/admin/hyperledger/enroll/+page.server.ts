@@ -7,6 +7,7 @@
 import { fail, redirect } from "@sveltejs/kit"
 import type { PageServerLoad, Actions } from "./$types"
 import { enrollUser, enrollDevice } from "../utils/enrollment"
+import { enrollUserSchema, enrollDeviceSchema } from "$lib/security/hyperledger.schema"
 import { ACTOR_TYPES } from "$lib/features/auth/contexts/context.template"
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -37,23 +38,14 @@ export const actions: Actions = {
     if (!isAdmin) return fail(403, { error: "Forbidden" })
 
     const form = await request.formData()
-    const userId = String(form.get("userId") ?? "").trim()
-    const role = String(form.get("role") ?? "").trim()
-    const orgId = String(form.get("orgId") ?? "").trim()
-    const affiliation = String(
-      form.get("affiliation") ?? "platform.users",
-    ).trim()
+    const raw = { userId: form.get("userId"), role: form.get("role"), orgId: form.get("orgId"), affiliation: form.get("affiliation") }
+    const parsed = enrollUserSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
 
-    if (!userId || !role || !orgId) {
-      return fail(400, { error: "userId, role and orgId are required." })
-    }
-
-    const validRoles = ["driver", "fleet-manager", "org-admin"]
-    if (!validRoles.includes(role)) {
-      return fail(400, {
-        error: `Invalid role. Choose: ${validRoles.join(", ")}`,
-      })
-    }
+    const userId = parsed.data.userId
+    const role = parsed.data.role
+    const orgId = parsed.data.orgId
+    const affiliation = parsed.data.affiliation
 
     try {
       const result = await enrollUser({
@@ -93,14 +85,14 @@ export const actions: Actions = {
     if (!isAdmin) return fail(403, { error: "Forbidden" })
 
     const form = await request.formData()
-    const deviceId = String(form.get("deviceId") ?? "").trim()
-    const vehicleId = String(form.get("vehicleId") ?? "").trim()
-    const orgId = String(form.get("orgId") ?? "").trim()
-    const location = String(form.get("location") ?? "unknown").trim()
+    const raw = { deviceId: form.get("deviceId"), vehicleId: form.get("vehicleId"), orgId: form.get("orgId"), location: form.get("location") }
+    const parsed = enrollDeviceSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
 
-    if (!deviceId || !orgId) {
-      return fail(400, { error: "deviceId and orgId are required." })
-    }
+    const deviceId = parsed.data.deviceId
+    const vehicleId = parsed.data.vehicleId
+    const orgId = parsed.data.orgId
+    const location = parsed.data.location
 
     try {
       const result = await enrollDevice({

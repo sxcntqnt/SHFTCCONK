@@ -17,6 +17,7 @@
 
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
+import { requestIdSchema } from "$lib/security/admin.schema"
 
 async function _requireAdmin(locals: App.Locals): Promise<boolean> {
   const { supabase, user } = locals
@@ -127,10 +128,12 @@ export const actions: Actions = {
     const { supabase } = locals
     if (!(await _requireAdmin(locals)))
       return fail(403, { error: "Admin access required" })
-    const id = ((await request.formData()).get("request_id") as string)?.trim()
-    if (!id) return fail(400, { error: "Missing request id" })
+    const form = await request.formData()
+    const raw = { request_id: form.get("request_id") }
+    const parsed = requestIdSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing request id" })
     const { error } = await supabase.rpc("approve_actor_request", {
-      request_id: id,
+      request_id: parsed.data.request_id,
       binding_type: null,
       binding_target: null,
     })
@@ -142,8 +145,10 @@ export const actions: Actions = {
     const { supabase, user } = locals
     if (!(await _requireAdmin(locals)))
       return fail(403, { error: "Admin access required" })
-    const id = ((await request.formData()).get("request_id") as string)?.trim()
-    if (!id) return fail(400, { error: "Missing request id" })
+    const form = await request.formData()
+    const raw = { request_id: form.get("request_id") }
+    const parsed = requestIdSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing request id" })
     const { error } = await supabase
       .from("actor_requests")
       .update({
@@ -151,7 +156,7 @@ export const actions: Actions = {
         processed_at: new Date().toISOString(),
         processed_by: user?.id,
       })
-      .eq("id", id)
+      .eq("id", parsed.data.request_id)
       .eq("status", "pending")
     if (error) return fail(500, { error: error.message })
     throw redirect(303, "/admin")

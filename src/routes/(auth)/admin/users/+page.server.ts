@@ -402,11 +402,10 @@ export const actions: Actions = {
     const { supabase, user } = locals
     if (!(await _requireAdmin(locals)))
       return fail(403, { error: "Admin access required" })
-
-    const actor_id = (
-      (await request.formData()).get("actor_id") as string
-    )?.trim()
-    if (!actor_id) return fail(400, { error: "Missing actor id" })
+    const rawActor = (await request.formData()).get("actor_id")
+    const parsed = adminActorIdSchema.safeParse({ id: rawActor ?? "" })
+    if (!parsed.success) return fail(400, { error: "Missing actor id" })
+    const actor_id = parsed.data.id
 
     const { data: actor } = await supabase
       .from("actors")

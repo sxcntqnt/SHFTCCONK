@@ -1,5 +1,5 @@
 import { error, fail, redirect } from "@sveltejs/kit"
-import { newsCreateSchema, newsUpdateSchema } from "$lib/security/news.schema"
+import { newsCreateSchema, newsUpdateSchema, idSchema } from "$lib/security/news.schema"
 import { z } from "zod"
 import type { PageServerLoad, Actions } from "./$types"
 
@@ -180,9 +180,11 @@ export const actions: Actions = {
     if (!user) return fail(401, { error: "Not authenticated" })
 
     const form = await request.formData()
-    const id = (form.get("id") as string) ?? ""
-    const idParse = z.string().min(1).safeParse(id)
-    if (!idParse.success) return fail(400, { error: "Missing news id" })
+    const raw = { id: form.get("id") }
+    const parsed = idSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing news id" })
+
+    const id = parsed.data.id
 
     const { error: deleteErr } = await (locals.supabase as any)
       .from("org_news")
@@ -195,10 +197,11 @@ export const actions: Actions = {
 
   toggle_pin: async ({ request, locals }) => {
     const form = await request.formData()
-    const id = (form.get("id") as string) ?? ""
+    const raw = { id: form.get("id") }
+    const parsed = idSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing id" })
+    const id = parsed.data.id
     const pinned = form.get("pinned") === "true"
-    const idParse = z.string().min(1).safeParse(id)
-    if (!idParse.success) return fail(400, { error: "Missing id" })
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")
@@ -211,10 +214,11 @@ export const actions: Actions = {
 
   toggle_publish: async ({ request, locals }) => {
     const form = await request.formData()
-    const id = (form.get("id") as string) ?? ""
+    const raw = { id: form.get("id") }
+    const parsed = idSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: "Missing id" })
+    const id = parsed.data.id
     const published = form.get("published") === "true"
-    const idParse = z.string().min(1).safeParse(id)
-    if (!idParse.success) return fail(400, { error: "Missing id" })
 
     const { error: err } = await (locals.supabase as any)
       .from("org_news")

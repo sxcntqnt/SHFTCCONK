@@ -2,6 +2,7 @@
 import type { PageServerLoad, Actions } from "./$types"
 import { redirect, fail } from "@sveltejs/kit"
 import { vehicleGroupCreateSchema } from "$lib/security/group.schema"
+import { idSchema } from "$lib/security/news.schema"
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   const { safeGetSession, supabase } = locals
@@ -68,9 +69,10 @@ export const actions: Actions = {
     if (!session) return fail(401, { message: "Unauthorised" })
 
     const form = await request.formData()
-    const id = form.get("id")?.toString()
-
-    if (!id) return fail(400, { message: "Missing group id" })
+    const raw = { id: form.get("id") }
+    const parsed = idSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { message: "Missing group id" })
+    const id = parsed.data.id
 
     const { error } = await supabase
       .from("vehicle_groups")

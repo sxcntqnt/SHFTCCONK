@@ -20,3 +20,14 @@ export const profileCreateSchema = z.object({
 })
 
 export type ProfileCreate = z.infer<typeof profileCreateSchema>
+
+export const setIntentSchema = z.object({
+  intent: z.string().min(1),
+})
+
+export const submitKycSchema = z.object({
+  ballerineCaseId: z.string().min(1),
+})
+
+export type SetIntentInput = z.infer<typeof setIntentSchema>
+export type SubmitKycInput = z.infer<typeof submitKycSchema>

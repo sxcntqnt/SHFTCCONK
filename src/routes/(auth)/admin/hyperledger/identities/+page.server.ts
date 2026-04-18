@@ -1,6 +1,7 @@
 // src/routes/admin/hyperledger/identities/+page.server.ts
 
 import { fail, redirect } from "@sveltejs/kit"
+import { revokeSchema } from "$lib/security/hyperledger.schema"
 import type { PageServerLoad, Actions } from "./$types"
 import { listIdentities, loadIdentity } from "$lib/hyperledger/vault"
 import { revokeUser } from "../utils/enrollment"
@@ -62,11 +63,12 @@ export const actions: Actions = {
     if (!isAdmin) return fail(403, { error: "Forbidden" })
 
     const form = await request.formData()
-    const userId = String(form.get("userId") ?? "").trim()
-    const reason = String(form.get("reason") ?? "privilegewithdrawn").trim()
-    const type = String(form.get("entityType") ?? "driver") as any
-
-    if (!userId) return fail(400, { error: "userId is required" })
+    const raw = { userId: form.get("userId"), reason: form.get("reason"), entityType: form.get("entityType") }
+    const parsed = revokeSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
+    const userId = parsed.data.userId
+    const reason = parsed.data.reason
+    const type = parsed.data.entityType
 
     try {
       await revokeUser(userId, reason, type)

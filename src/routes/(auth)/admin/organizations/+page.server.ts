@@ -41,6 +41,7 @@
 import type { PageServerLoad, Actions } from "./$types"
 import { fail, redirect } from "@sveltejs/kit"
 import { z } from "zod"
+import { orgAdminCreateSchema } from "$lib/security/org.schema"
 
 const VALID_STATUSES = [
   "pending_activation",
@@ -158,13 +159,12 @@ export const actions: Actions = {
       return fail(403, { error: "Admin access required" })
 
     const form = await request.formData()
-    const rawName = (form.get("name") as string)?.trim() ?? ""
-    const rawStatus = ((form.get("status") as string) || "pending_activation") as string
+    const raw = { name: form.get("name"), status: form.get("status") ?? "pending_activation" }
+    const parsed = orgAdminCreateSchema.safeParse(raw)
+    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
 
-    const parsedName = z.string().min(1).safeParse(rawName)
-    if (!parsedName.success) return fail(400, { error: "Organization name is required" })
-    const parsedStatus = z.enum(VALID_STATUSES as readonly string[]).safeParse(rawStatus as any)
-    if (!parsedStatus.success) return fail(400, { error: "Invalid status" })
+    const name = parsed.data.name
+    const status = parsed.data.status
 
     // Check for name collision
     const { data: existing } = await supabase

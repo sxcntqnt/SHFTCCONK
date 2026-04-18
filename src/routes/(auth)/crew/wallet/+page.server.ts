@@ -22,6 +22,7 @@
 //   on-chain logging but does NOT prevent M-Pesa wallet actions.
 
 import { redirect } from "@sveltejs/kit"
+import { crewWithdrawSchema } from "$lib/security/crew.schema"
 import type { Actions, PageServerLoad } from "./$types"
 import { mpesa } from "$lib/server/mpesa-provider"
 import { DEFAULT_REVENUE_CONFIG } from "$lib/server/revenue-config"
@@ -256,15 +257,14 @@ export const actions: Actions = {
     if (!actorCtx) return { error: "No active crew account.", success: false }
 
     const formData = await request.formData()
-    const amountKes = Number(formData.get("amount"))
-    const phone = (formData.get("phone") as string)?.trim() ?? ""
+    const raw = { amount: formData.get("amount"), phone: formData.get("phone") }
+    const parsed = crewWithdrawSchema.safeParse(raw)
+    if (!parsed.success) {
+      return { error: parsed.error.flatten().formErrors.join(" ") || "Invalid input", success: false }
+    }
 
-    if (!amountKes || amountKes < 10)
-      return { error: "Minimum withdrawal is KES 10", success: false }
-    if (amountKes > 150_000)
-      return { error: "Maximum withdrawal is KES 150,000", success: false }
-    if (!phone.match(/^\+254[17]\d{8}$/))
-      return { error: "Enter a valid Kenyan phone (+254...)", success: false }
+    const amountKes = parsed.data.amount
+    const phone = parsed.data.phone
 
     const orgJurisdiction = actorCtx.jurisdictions.find(
       (j) => j.level === "org" && j.scope_id != null,
