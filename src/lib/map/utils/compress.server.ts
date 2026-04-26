@@ -1,6 +1,6 @@
 // src/lib/map/utils/compress.server.ts
 import { json } from '@sveltejs/kit';
-import { promises as zlibPromises } from 'node:zlib';
+import { brotliCompress, gzip } from 'node:zlib';
 
 export { json };
 
@@ -31,8 +31,8 @@ export async function compressedJsonResponse(
   try {
     const jsonBytes = Buffer.from(JSON.stringify(data));
     const compressed = encoding === 'br'
-      ? await zlibPromises.brotliCompress(jsonBytes)
-      : await zlibPromises.gzip(jsonBytes);
+      ? await brotliCompress(jsonBytes)
+      : await gzip(jsonBytes);
 
     return new Response(compressed, {
       headers: {

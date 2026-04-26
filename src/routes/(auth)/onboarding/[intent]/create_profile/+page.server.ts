@@ -20,8 +20,8 @@ import {
   saveProfile,
   _hasFullProfile,
   type Organization,
-  profileCreateSchema,
 } from "$lib/features/profile/profile.service"
+import { profileCreateSchema } from "$lib/security/onboarding.schema" 
 import { intentToDashboard } from "$lib/features/onboarding/intents"
 export type { Organization }
 
