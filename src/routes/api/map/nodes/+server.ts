@@ -1,7 +1,7 @@
 // src/routes/api/map/nodes/+server.ts
 import { error } from '@sveltejs/kit';
-import { getMapService } from '$lib/map';
-import { parseBounds, compressedJsonResponse } from '$lib/map';
+import { getMapService, parseBounds } from '$lib/map';
+import { compressedJsonResponse } from '$lib/map/index.server';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, request }) => {
