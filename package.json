@@ -62,6 +62,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.18.3",
     "@duckdb/duckdb-wasm": "1.33.1-dev20.0",
     "@duckdb/node-api": "1.5.2-r.1",
     "@duckdb/node-bindings": "1.5.0-r.1",
