@@ -522,15 +522,15 @@ export class MapService {
 // ============================================
 let mapServiceInstance: MapService | null = null;
 
+
 export async function createMapService(config: MapServiceConfig): Promise<MapService> {
   const duckdb = new DuckDBService(config.duckdb);
   const sse = (await import('./SseStreamer.service')).sseStreamManager;
 
   mapServiceInstance = new MapService(duckdb, sse, config);
-  await mapServiceInstance.start();
-
   return mapServiceInstance;
 }
+
 
 export function getMapService(): MapService | null {
   return mapServiceInstance;

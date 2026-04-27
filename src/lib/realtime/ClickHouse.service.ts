@@ -3,7 +3,7 @@
 // Enterprise-grade ClickHouse connection management
 // ============================================
 
-import { createClient, ClickHouseClient, ClickHouseSettings, DataFormat, ResultSet, QueryParams } from '@clickhouse/client';
+import { createClient, ClickHouseClient, ClickHouseSettings, ResultSet, QueryParams } from '@clickhouse/client';
 
 // ============================================
 // Configuration Types

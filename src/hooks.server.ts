@@ -21,6 +21,8 @@
 //   auth pipeline:  supabaseHandle → authGuardHandle → userStateHandle
 //   map pipeline:   locationHandle → mapServiceHandle → requestContext → BootstrapManifestService
 
+
+import { building } from '$app/environment';
 import * as Sentry from "@sentry/sveltekit"
 import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
 import { sequence } from "@sveltejs/kit/hooks"
@@ -40,6 +42,8 @@ import type { App } from "../app"
 
 import { createMapService, getMapService } from '$lib/map'
 import { buildMapServiceConfig } from '$lib/map/services/config'
+
+
 
 /* ============================================================
    TYPES & HELPERS
@@ -155,27 +159,33 @@ const locationHandle: Handle = async ({ event, resolve }) => {
    startup error (e.g. DuckDB file locked during deploy).
 ============================================================ */
 
+
 let mapServiceReady = false
 let mapServiceInitPromise: Promise<void> | null = null
 
 const mapServiceHandle: Handle = async ({ event, resolve }) => {
-  if (!mapServiceReady) {
+  if (!building && !mapServiceReady) {
     if (!mapServiceInitPromise) {
-      mapServiceInitPromise = createMapService(buildMapServiceConfig())
-        .then(() => {
-          mapServiceReady = true
-        })
-        .catch((err) => {
-          // Reset so the next request retries after a transient failure
-          mapServiceInitPromise = null
-          throw err
-        })
+      mapServiceInitPromise = (async () => {
+        let service = getMapService()
+
+        if (!service) {
+          service = await createMapService(buildMapServiceConfig())
+        }
+
+        await service.start()
+        mapServiceReady = true
+      })().catch((err) => {
+        mapServiceInitPromise = null
+        throw err
+      })
     }
+
     await mapServiceInitPromise
   }
+
   return resolve(event)
 }
-
 /* ============================================================
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
