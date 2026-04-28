@@ -1,0 +1,79 @@
+name: Dependency & Secret Audit
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  audit:
+    name: Run dependency and secret audits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run gitleaks secret scan
+        uses: zricethezav/gitleaks-action@v2
+        with:
+          args: '--report-path=gitleaks-report.json --redact'
+
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+      - name: Install jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run pnpm audit and fail on high/critical
+        run: |
+          pnpm audit --json > pnpm-audit.json || true
+          echo "pnpm audit saved to pnpm-audit.json"
+          if command -v jq >/dev/null 2>&1; then
+            critical=$(jq '.metadata.vulnerabilities.critical // 0' pnpm-audit.json)
+            high=$(jq '.metadata.vulnerabilities.high // 0' pnpm-audit.json)
+            echo "vulnerabilities: critical=$critical high=$high"
+            if [ "$critical" -gt 0 ] || [ "$high" -gt 0 ]; then
+              echo "Failing job due to critical/high vulnerabilities"
+              cat pnpm-audit.json
+              exit 1
+            fi
+          else
+            echo "jq not available; skipping severity check (recommend adding jq to runner)"
+          fi
+
+      - name: Upload pnpm audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-audit
+          path: pnpm-audit.json
+
+      - name: Run CodeRabbit (optional)
+        env:
+          CODE_RABBIT_API_KEY: ${{ secrets.CODE_RABBIT_API_KEY }}
+        run: bash .github/scripts/run-code-rabbit.sh
+
+      - name: Upload CodeRabbit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-rabbit-report
+          path: code-rabbit-report.json

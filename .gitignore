@@ -13,4 +13,5 @@ vite.config.ts.timestamp-*
 .env.sentry-build-plugin
 src/routes/sentry-example-page/
 .claude
+.kilo
 Notes/
