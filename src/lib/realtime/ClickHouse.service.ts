@@ -1,6 +1,8 @@
 // ============================================
-// ClickHouse Client Configuration
-// Enterprise-grade ClickHouse connection management
+// ClickHouse Client – Enterprise Production Service
+// State‑machine‑driven lifecycle, single‑flight reconnect,
+// safe streaming, injection‑hardened identifiers,
+// concurrency‑safe design.
 // ============================================
 
 import clickhousePkg from '@clickhouse/client';
@@ -10,12 +12,13 @@ const { createClient } = clickhousePkg;
 import type {
   ClickHouseClient,
   ClickHouseSettings,
-  ResultSet,
-  QueryParams
+  QueryParams,
 } from '@clickhouse/client';
 
+import { Readable } from 'stream';
+
 // ============================================
-// Configuration Types
+// Configuration
 // ============================================
 
 export interface ClickHouseConfig {
@@ -28,27 +31,18 @@ export interface ClickHouseConfig {
   maxOpenConnections?: number;
   connectionTimeout?: number;
   requestTimeout?: number;
+  queryTimeout?: number;
   compression?: boolean;
   retryAttempts?: number;
   retryDelay?: number;
 }
 
 export interface QueryOptions {
-  format?: DataFormat;
+  format?: string;
   clickhouseSettings?: Partial<ClickHouseSettings>;
   abortSignal?: AbortSignal;
+  timeout?: number;
 }
-
-export interface ConnectionPoolMetrics {
-  activeConnections: number;
-  idleConnections: number;
-  totalConnections: number;
-  queueSize: number;
-}
-
-// ============================================
-// Default Configuration
-// ============================================
 
 const defaultConfig: ClickHouseConfig = {
   host: process.env.CLICKHOUSE_HOST || 'localhost',
@@ -60,13 +54,14 @@ const defaultConfig: ClickHouseConfig = {
   maxOpenConnections: parseInt(process.env.CLICKHOUSE_POOL_SIZE || '10'),
   connectionTimeout: parseInt(process.env.CLICKHOUSE_CONNECTION_TIMEOUT || '30000'),
   requestTimeout: parseInt(process.env.CLICKHOUSE_REQUEST_TIMEOUT || '60000'),
+  queryTimeout: parseInt(process.env.CLICKHOUSE_QUERY_TIMEOUT || '5000'),
   compression: process.env.CLICKHOUSE_COMPRESSION === 'true',
   retryAttempts: parseInt(process.env.CLICKHOUSE_RETRY_ATTEMPTS || '3'),
   retryDelay: parseInt(process.env.CLICKHOUSE_RETRY_DELAY || '1000'),
 };
 
 // ============================================
-// Query Result Wrapper
+// Query result wrapper
 // ============================================
 
 export class ClickHouseResult<T = any> {
@@ -78,7 +73,7 @@ export class ClickHouseResult<T = any> {
       rowsRead: number;
       bytesRead: number;
     },
-    public queryId: string
+    public queryId: string,
   ) {}
 
   toJSON() {
@@ -91,7 +86,7 @@ export class ClickHouseResult<T = any> {
   }
 
   first(): T | null {
-    return this.data[0] || null;
+    return this.data[0] ?? null;
   }
 
   map<U>(fn: (item: T) => U): U[] {
@@ -100,587 +95,684 @@ export class ClickHouseResult<T = any> {
 }
 
 // ============================================
-// Main ClickHouse Service
+// Connection state machine
+// ============================================
+
+enum ConnectionState {
+  DISCONNECTED = 'DISCONNECTED',
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  RECONNECTING = 'RECONNECTING',
+}
+
+/**
+ * Deterministic, observable state machine.
+ * All waiters are always attached to the *current* connection attempt.
+ */
+class ConnectionFsm {
+  private _state: ConnectionState = ConnectionState.DISCONNECTED;
+  private waitPromise: Promise<void> | null = null;
+  private resolveWait: (() => void) | null = null;
+  private rejectWait: ((err: Error) => void) | null = null;
+
+  get state(): ConnectionState {
+    return this._state;
+  }
+
+  isConnected(): boolean {
+    return this._state === ConnectionState.CONNECTED;
+  }
+
+  transition(newState: ConnectionState): void {
+    const allowed = this.getAllowedTransitions();
+    if (!allowed.includes(newState)) {
+      throw new Error(`Invalid state transition from ${this._state} to ${newState}`);
+    }
+    this._state = newState;
+
+    // If we enter DISCONNECTED, reject any waiting callers
+    if (newState === ConnectionState.DISCONNECTED) {
+      this.rejectWaiters(new Error('Disconnected'));
+    }
+  }
+
+  private getAllowedTransitions(): ConnectionState[] {
+    switch (this._state) {
+      case ConnectionState.DISCONNECTED:
+        return [ConnectionState.CONNECTING];
+      case ConnectionState.CONNECTING:
+        return [ConnectionState.CONNECTED, ConnectionState.DISCONNECTED];
+      case ConnectionState.CONNECTED:
+        return [ConnectionState.DISCONNECTED, ConnectionState.RECONNECTING];
+      case ConnectionState.RECONNECTING:
+        return [ConnectionState.CONNECTING, ConnectionState.DISCONNECTED];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Returns a promise that resolves when CONNECTED, rejects on DISCONNECTED.
+   * Always tied to the most recent transition into CONNECTING.
+   */
+  waitForConnection(timeoutMs: number): Promise<void> {
+    if (this._state === ConnectionState.CONNECTED) return Promise.resolve();
+
+    if (!this.waitPromise) {
+      this.waitPromise = new Promise<void>((resolve, reject) => {
+        this.resolveWait = resolve;
+        this.rejectWait = reject;
+      });
+    }
+
+    const timeout = new Promise<void>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Timed out waiting for ClickHouse connection')),
+        timeoutMs,
+      ),
+    );
+
+    return Promise.race([this.waitPromise, timeout]);
+  }
+
+  /**
+   * Called when entering CONNECTED. Resolves all waiters.
+   */
+  notifyConnected(): void {
+    this.resolveWait?.();
+    this.waitPromise = null;
+    this.resolveWait = null;
+    this.rejectWait = null;
+  }
+
+  /**
+   * Called when entering CONNECTING. Discard old waiters and prepare a new promise.
+   */
+  notifyConnecting(): void {
+    this.rejectWaiters(new Error('New connection attempt started'));
+    this.waitPromise = null;
+    this.resolveWait = null;
+    this.rejectWait = null;
+  }
+
+  private rejectWaiters(err: Error): void {
+    this.rejectWait?.(err);
+    this.waitPromise = null;
+    this.resolveWait = null;
+    this.rejectWait = null;
+  }
+}
+
+// ============================================
+// Main ClickHouse service
 // ============================================
 
 export class ClickHouseService {
   private client: ClickHouseClient | null = null;
   private config: ClickHouseConfig;
-  private isConnected: boolean = false;
-  private connectionMetrics: {
-    queriesExecuted: number;
-    totalQueries: number;
-    failedQueries: number;
-    totalQueryTime: number;
-    lastQueryTime: Date | null;
+  private fsm = new ConnectionFsm();
+  private reconnectPromise: Promise<void> | null = null; // single-flight reconnect
+
+  private metrics = {
+    queriesExecuted: 0,
+    totalQueries: 0,
+    failedQueries: 0,
+    totalQueryTime: 0,
+    lastQueryTime: null as Date | null,
   };
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private queryQueue: Array<{
-    query: string;
-    params?: QueryParams;
-    resolve: (value: any) => void;
-    reject: (reason: any) => void;
-  }> = [];
 
   constructor(config: Partial<ClickHouseConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
-    this.connectionMetrics = {
-      queriesExecuted: 0,
-      totalQueries: 0,
-      failedQueries: 0,
-      totalQueryTime: 0,
-      lastQueryTime: null,
-    };
   }
 
   // ============================================
-  // Connection Management
+  // Public lifecycle
   // ============================================
 
   async connect(): Promise<void> {
-    if (this.isConnected && this.client) {
-      console.log('[ClickHouse] Already connected');
-      return;
-    }
+    if (this.fsm.isConnected()) return;
+
+    this.fsm.transition(ConnectionState.CONNECTING);
+    this.fsm.notifyConnecting();
+
+    console.log(
+      '[ClickHouse] Connecting...',
+      `${this.config.protocol}://${this.config.host}:${this.config.port}`,
+    );
+
+    this.client = createClient({
+      url: `${this.config.protocol}://${this.config.host}:${this.config.port}`,
+      username: this.config.username,
+      password: this.config.password,
+      database: this.config.database,
+      application: 'map_service',
+      compression: {
+        response: this.config.compression,
+        request: this.config.compression,
+      },
+      clickhouse_settings: {
+        max_execution_time: 60,
+        max_memory_usage: 10000000000,
+        allow_experimental_object_type: 1,
+      },
+      request_timeout: this.config.requestTimeout,
+      connections: {
+        max_open: this.config.maxOpenConnections,
+      },
+    });
 
     try {
-      console.log('[ClickHouse] Connecting to:', `${this.config.protocol}://${this.config.host}:${this.config.port}`);
-      
-      this.client = createClient({
-        url: `${this.config.protocol}://${this.config.host}:${this.config.port}`,
-        username: this.config.username,
-        password: this.config.password,
-        database: this.config.database,
-        application: 'map_service',
-        compression: {
-          response: this.config.compression,
-          request: this.config.compression,
-        },
-        clickhouse_settings: {
-          max_execution_time: 60,
-          max_memory_usage: 10000000000, // 10GB
-          allow_experimental_object_type: 1,
-        },
-        request_timeout: this.config.requestTimeout,
-        connections: {
-          max_open: this.config.maxOpenConnections,
-        },
-      });
+      const alive = await this.ping();
+      if (!alive) throw new Error('Ping failed');
 
-      // Test connection with a simple query
-      await this.ping();
-      
-      this.isConnected = true;
+      this.fsm.transition(ConnectionState.CONNECTED);
+      this.fsm.notifyConnected();
       console.log('[ClickHouse] Connected successfully');
-      
-      // Process queued queries
-      await this.processQueryQueue();
-      
-    } catch (error) {
-      console.error('[ClickHouse] Connection failed:', error);
-      throw new Error(`ClickHouse connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (err) {
+      this.client = null;
+      this.fsm.transition(ConnectionState.DISCONNECTED);
+      throw err;
     }
   }
 
   async disconnect(): Promise<void> {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-
     if (this.client) {
       try {
         await this.client.close();
-        console.log('[ClickHouse] Disconnected');
-      } catch (error) {
-        console.error('[ClickHouse] Error during disconnect:', error);
+      } catch (err) {
+        console.error('[ClickHouse] Disconnect error:', err);
       } finally {
         this.client = null;
-        this.isConnected = false;
       }
     }
+    // FSM will automatically reject any waiters
+    this.fsm.transition(ConnectionState.DISCONNECTED);
   }
 
-  async reconnect(): Promise<void> {
-    console.log('[ClickHouse] Attempting reconnect...');
-    await this.disconnect();
-    await this.connect();
-  }
-
-  async ping(): Promise<boolean> {
-    try {
-      const result = await this.execute('SELECT 1 as ping');
-      return result.data.length > 0 && result.data[0].ping === 1;
-    } catch (error) {
-      console.error('[ClickHouse] Ping failed:', error);
-      return false;
-    }
-  }
-
-  async healthCheck(): Promise<{
-    healthy: boolean;
-    connected: boolean;
-    activeConnections: number;
-    queryLatency?: number;
-  }> {
-    const startTime = Date.now();
-    
-    try {
-      const pingResult = await this.ping();
-      const latency = Date.now() - startTime;
-      
-      return {
-        healthy: pingResult,
-        connected: this.isConnected,
-        activeConnections: this.getConnectionPoolSize(),
-        queryLatency: latency,
-      };
-    } catch (error) {
-      return {
-        healthy: false,
-        connected: this.isConnected,
-        activeConnections: 0,
-      };
-    }
-  }
-
-  private getConnectionPoolSize(): number {
-    // This is a simplified metric - actual pool metrics depend on the client
-    return this.isConnected ? 1 : 0;
-  }
-
-  getConnectionMetrics() {
-    return {
-      ...this.connectionMetrics,
-      averageQueryTime: this.connectionMetrics.totalQueries > 0
-        ? this.connectionMetrics.totalQueryTime / this.connectionMetrics.totalQueries
-        : 0,
-      successRate: this.connectionMetrics.totalQueries > 0
-        ? ((this.connectionMetrics.totalQueries - this.connectionMetrics.failedQueries) / this.connectionMetrics.totalQueries) * 100
-        : 100,
-    };
+  /**
+   * Wait until the service is ready (CONNECTED) up to timeoutMs.
+   * Automatically used by execute / insert / streamQuery.
+   */
+  async waitUntilReady(timeoutMs = 10000): Promise<void> {
+    if (this.fsm.isConnected()) return;
+    await this.fsm.waitForConnection(timeoutMs);
   }
 
   // ============================================
-  // Query Execution
+  // Single‑flight reconnect
+  // ============================================
+
+  private async reconnect(): Promise<void> {
+    if (this.reconnectPromise) {
+      return this.reconnectPromise;
+    }
+
+    this.fsm.transition(ConnectionState.RECONNECTING);
+    this.reconnectPromise = (async () => {
+      let backoff = 2000;
+      while (true) {
+        try {
+          await this.connect(); // transitions CONNECTING → CONNECTED
+          console.log('[ClickHouse] Reconnected');
+          return;
+        } catch (err) {
+          console.warn('[ClickHouse] Reconnect attempt failed, retrying...');
+          const jitter = Math.random() * 500;
+          await new Promise((r) => setTimeout(r, backoff + jitter));
+          backoff = Math.min(backoff * 2, 30000);
+        }
+      }
+    })();
+
+    try {
+      await this.reconnectPromise;
+    } finally {
+      this.reconnectPromise = null;
+    }
+  }
+
+  // ============================================
+  // Query execution
   // ============================================
 
   async execute<T = any>(
     query: string,
     params?: Record<string, any>,
-    options?: QueryOptions
+    options?: QueryOptions,
   ): Promise<ClickHouseResult<T>> {
-    if (!this.isConnected || !this.client) {
-      return this.queueQuery<T>(query, params, options);
+    await this.waitUntilReady();
+
+    const client = this.client!; // safe – guarded by FSM
+    const start = Date.now();
+    const queryId = this.generateQueryId();
+    const timeoutMs = options?.timeout ?? this.config.queryTimeout ?? 5000;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (options?.abortSignal) {
+      options.abortSignal.addEventListener('abort', () => controller.abort(), { once: true });
     }
 
-    const startTime = Date.now();
-    const queryId = this.generateQueryId();
-    
     try {
-      console.log(`[ClickHouse] Executing query ${queryId}:`, query.substring(0, 200));
-      
-      // Build query parameters
-      let finalQuery = query;
-      if (params) {
-        finalQuery = this.interpolateParams(query, params);
-      }
-
-      const resultSet = await this.client.query({
-        query: finalQuery,
-        format: options?.format || DataFormat.JSONEachRow,
+      const rs = await client.query({
+        query,
+        ...(params ? { query_params: params } : {}),
+        format: options?.format || 'JSONEachRow',
         clickhouse_settings: {
           query_id: queryId,
           ...options?.clickhouseSettings,
         },
-        abort_signal: options?.abortSignal,
+        abort_signal: controller.signal,
       });
 
-      const data = await resultSet.json<T>();
-      const statistics = await resultSet.statistics;
-      
-      const elapsed = Date.now() - startTime;
-      
+      clearTimeout(timeoutId);
+
+      const data = await this.withTimeout(rs.json<T>(), timeoutMs);
+      const stats = await rs.statistics;
+
+      const elapsed = Date.now() - start;
       this.updateMetrics(true, elapsed);
-      
-      console.log(`[ClickHouse] Query ${queryId} completed in ${elapsed}ms, rows: ${data.length}`);
-      
-      return new ClickHouseResult<T>(
+
+      return new ClickHouseResult(
         data,
         data.length,
         {
           elapsed,
-          rowsRead: statistics?.rows_read || 0,
-          bytesRead: statistics?.bytes_read || 0,
+          rowsRead: stats?.rows_read || 0,
+          bytesRead: stats?.bytes_read || 0,
         },
-        queryId
+        queryId,
       );
-      
     } catch (error) {
-      const elapsed = Date.now() - startTime;
-      this.updateMetrics(false, elapsed);
-      
-      console.error(`[ClickHouse] Query ${queryId} failed:`, error);
-      
+      clearTimeout(timeoutId);
+      this.updateMetrics(false, Date.now() - start);
+
       if (this.shouldReconnect(error)) {
-        await this.reconnect();
+        this.reconnect().catch(() => {});
       }
-      
-      throw new Error(`ClickHouse query failed: ${error instanceof Error ? error.message : String(error)}`);
+
+      throw error;
     }
   }
 
   async query<T = any>(
     query: string,
     params?: Record<string, any>,
-    options?: QueryOptions
+    options?: QueryOptions,
   ): Promise<T[]> {
-    const result = await this.execute<T>(query, params, options);
-    return result.data;
+    return (await this.execute<T>(query, params, options)).data;
   }
 
   async queryOne<T = any>(
     query: string,
     params?: Record<string, any>,
-    options?: QueryOptions
+    options?: QueryOptions,
   ): Promise<T | null> {
-    const result = await this.execute<T>(query, params, options);
-    return result.first();
+    return (await this.execute<T>(query, params, options)).first();
   }
+
+  // ============================================
+  // Safe insert (retried)
+  // ============================================
 
   async insert(
     table: string,
     data: Record<string, any> | Record<string, any>[],
-    options?: { format?: DataFormat }
+    options?: { format?: string },
   ): Promise<void> {
     const rows = Array.isArray(data) ? data : [data];
-    
-    if (rows.length === 0) {
-      return;
-    }
+    if (rows.length === 0) return;
 
-    const format = options?.format || DataFormat.JSONEachRow;
-    
-    await this.execute(
-      `INSERT INTO ${table} FORMAT ${format}`,
-      undefined,
-      { format }
+    await this.waitUntilReady();
+
+    await this.withRetry(
+      async () => {
+        await this.client!.insert({
+          table,
+          values: rows,
+          format: options?.format || 'JSONEachRow',
+        });
+      },
+      2,
     );
-    
-    // Note: The actual insertion requires a stream interface
-    // For now, we'll use a simpler approach
-    for (const row of rows) {
-      const columns = Object.keys(row).join(', ');
-      const values = Object.values(row).map(v => this.escapeValue(v)).join(', ');
-      await this.execute(`INSERT INTO ${table} (${columns}) VALUES (${values})`);
-    }
   }
 
   async batchInsert(
     table: string,
     data: Record<string, any>[],
-    batchSize: number = 1000
+    batchSize = 1000,
   ): Promise<{ inserted: number; failed: number }> {
     let inserted = 0;
     let failed = 0;
-    
     for (let i = 0; i < data.length; i += batchSize) {
       const batch = data.slice(i, i + batchSize);
       try {
         await this.insert(table, batch);
         inserted += batch.length;
       } catch (error) {
-        console.error(`Batch insert failed for rows ${i}-${i + batch.length}:`, error);
+        console.error(`Batch insert failed for rows ${i}–${i + batch.length}:`, error);
         failed += batch.length;
       }
     }
-    
     return { inserted, failed };
   }
 
   // ============================================
-  // Schema Management
+  // True streaming
+  // ============================================
+
+  async *streamQuery<T = any>(
+    query: string,
+    params?: Record<string, any>,
+    options?: QueryOptions,
+  ): AsyncGenerator<T[], void, undefined> {
+    await this.waitUntilReady();
+
+    const client = this.client!;
+    const timeoutMs = options?.timeout ?? this.config.queryTimeout ?? 30000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (options?.abortSignal) {
+      options.abortSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+
+    try {
+      const rs = await client.query({
+        query,
+        ...(params ? { query_params: params } : {}),
+        format: options?.format || 'JSONEachRow',
+        clickhouse_settings: {
+          ...options?.clickhouseSettings,
+        },
+        abort_signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const rawStream = rs.stream();
+      const rowIterator = normalizeStream(rawStream);
+      const CHUNK_SIZE = 1000;
+      let buffer: T[] = [];
+      for await (const row of rowIterator) {
+        if (!row || typeof row !== 'object') continue;
+        buffer.push(row as T);
+        if (buffer.length >= CHUNK_SIZE) {
+          yield buffer;
+          buffer = [];
+        }
+      }
+      if (buffer.length) yield buffer;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  // ============================================
+  // Schema management (validated identifiers)
   // ============================================
 
   async tableExists(tableName: string): Promise<boolean> {
-    const result = await this.execute(`
-      SELECT COUNT(*) as count
-      FROM system.tables
-      WHERE database = '${this.config.database}'
-        AND name = '${tableName}'
-    `);
-    
-    return result.first()?.count > 0;
+    const result = await this.execute(
+      `SELECT 1 FROM system.tables WHERE database = {database: String} AND name = {table: String}`,
+      { database: this.config.database, table: tableName },
+    );
+    return result.rows > 0;
   }
 
   async getTableSchema(tableName: string): Promise<any[]> {
-    const result = await this.execute(`
-      SELECT 
-        name,
-        type,
-        default_type,
-        default_expression,
-        comment
-      FROM system.columns
-      WHERE database = '${this.config.database}'
-        AND table = '${tableName}'
-      ORDER BY position
-    `);
-    
+    const result = await this.execute(
+      `SELECT name, type, default_type, default_expression, comment
+       FROM system.columns
+       WHERE database = {database: String} AND table = {table: String}
+       ORDER BY position`,
+      { database: this.config.database, table: tableName },
+    );
     return result.data;
   }
 
   async getTableCount(tableName: string): Promise<number> {
-    const result = await this.queryOne<{ count: number }>(
-      `SELECT COUNT(*) as count FROM ${tableName}`
+    this.validateIdentifier(tableName);
+    const safe = `\`${tableName}\``;
+    const row = await this.queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${safe}`,
     );
-    return result?.count || 0;
+    return row?.count ?? 0;
   }
 
   async createDatabaseIfNotExists(databaseName: string): Promise<void> {
-    await this.execute(`CREATE DATABASE IF NOT EXISTS ${databaseName}`);
-  }
-
-  // ============================================
-  // Performance Optimization
-  // ============================================
-
-  async analyzeQuery(query: string): Promise<{
-    queryId: string;
-    estimatedRows: number;
-    estimatedDuration: number;
-  }> {
-    const result = await this.execute(`EXPLAIN ESTIMATE ${query}`);
-    const estimate = result.first();
-    
-    return {
-      queryId: this.generateQueryId(),
-      estimatedRows: estimate?.rows || 0,
-      estimatedDuration: estimate?.duration || 0,
-    };
+    this.validateIdentifier(databaseName);
+    await this.execute(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\``);
   }
 
   async optimizeTable(tableName: string): Promise<void> {
-    await this.execute(`OPTIMIZE TABLE ${tableName} FINAL`);
+    this.validateIdentifier(tableName);
+    await this.execute(`OPTIMIZE TABLE \`${tableName}\` FINAL`);
   }
 
   async getTablePartitions(tableName: string): Promise<any[]> {
-    const result = await this.execute(`
-      SELECT 
-        partition,
-        name,
-        rows,
-        bytes_on_disk,
-        modification_time
-      FROM system.parts
-      WHERE database = '${this.config.database}'
-        AND table = '${tableName}'
-        AND active = 1
-      ORDER BY partition
-    `);
-    
+    const result = await this.execute(
+      `SELECT partition, name, rows, bytes_on_disk, modification_time
+       FROM system.parts
+       WHERE database = {database: String} AND table = {table: String} AND active = 1
+       ORDER BY partition`,
+      { database: this.config.database, table: tableName },
+    );
     return result.data;
   }
 
-  // ============================================
-  // Materialized Views
-  // ============================================
-
-  async refreshMaterializedView(viewName: string): Promise<void> {
-    await this.execute(`ALTER TABLE ${viewName} UPDATE`);
+  async recreateMaterializedView(viewName: string, createScript: string): Promise<void> {
+    this.validateIdentifier(viewName);
+    await this.execute(`DROP TABLE IF EXISTS \`${viewName}\``);
+    await this.execute(createScript);
   }
 
   async getMaterializedViewStatus(viewName: string): Promise<any> {
-    const result = await this.queryOne(`
-      SELECT 
-        name,
-        total_rows,
-        total_bytes,
-        modification_time
-      FROM system.tables
-      WHERE database = '${this.config.database}'
-        AND name = '${viewName}'
-        AND engine = 'MaterializedView'
-    `);
-    
-    return result;
+    const result = await this.queryOne(
+      `SELECT name, total_rows, total_bytes, modification_time
+       FROM system.tables
+       WHERE database = {database: String} AND name = {view: String} AND engine = 'MaterializedView'`,
+      { database: this.config.database, view: viewName },
+    );
+    return result ?? { exists: false };
   }
 
   // ============================================
-  // Private Helper Methods
+  // Health & metrics
   // ============================================
+
+  async healthCheck() {
+    const start = Date.now();
+    const ok = await this.ping();
+    return {
+      healthy: ok,
+      connected: this.fsm.isConnected(),
+      activeConnections: this.fsm.isConnected() ? 1 : 0,
+      queryLatency: ok ? Date.now() - start : undefined,
+    };
+  }
+
+  getMetrics() {
+    return {
+      ...this.metrics,
+      averageQueryTime:
+        this.metrics.totalQueries > 0
+          ? this.metrics.totalQueryTime / this.metrics.totalQueries
+          : 0,
+      successRate:
+        this.metrics.totalQueries > 0
+          ? ((this.metrics.totalQueries - this.metrics.failedQueries) /
+              this.metrics.totalQueries) *
+            100
+          : 100,
+    };
+  }
+
+  // ============================================
+  // Private helpers
+  // ============================================
+
+  private async ping(): Promise<boolean> {
+    if (!this.client) return false;
+    try {
+      const rs = await this.client.query({
+        query: 'SELECT 1',
+        format: 'JSONEachRow',
+      });
+      const data = await rs.json<{ 1: number }>();
+      return data.length > 0;
+    } catch {
+      return false;
+    }
+  }
 
   private generateQueryId(): string {
-    return `query_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    return `q_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
   }
 
-  private interpolateParams(query: string, params: Record<string, any>): string {
-    let finalQuery = query;
-    for (const [key, value] of Object.entries(params)) {
-      const escapedValue = typeof value === 'string' ? `'${value.replace(/'/g, "''")}'` : value;
-      finalQuery = finalQuery.replace(new RegExp(`{${key}}`, 'g'), escapedValue);
-      finalQuery = finalQuery.replace(new RegExp(`:${key}`, 'g'), escapedValue);
+  private validateIdentifier(name: string): void {
+    if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+      throw new Error(`Invalid ClickHouse identifier: "${name}"`);
     }
-    return finalQuery;
-  }
-
-  private escapeValue(value: any): string {
-    if (value === null || value === undefined) {
-      return 'NULL';
-    }
-    if (typeof value === 'string') {
-      return `'${value.replace(/'/g, "''")}'`;
-    }
-    if (typeof value === 'boolean') {
-      return value ? '1' : '0';
-    }
-    if (value instanceof Date) {
-      return `'${value.toISOString().slice(0, 19).replace('T', ' ')}'`;
-    }
-    if (typeof value === 'object') {
-      return `'${JSON.stringify(value)}'`;
-    }
-    return String(value);
   }
 
   private shouldReconnect(error: any): boolean {
-    // Check if error is connection-related
-    const errorMessage = error?.message?.toLowerCase() || '';
-    const reconnectTriggers = [
+    if (error?.code) {
+      return ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(error.code);
+    }
+    const msg = error?.message?.toLowerCase() || '';
+    const triggers = [
       'connection refused',
       'connection timeout',
       'socket hang up',
-      'econnrefused',
-      'econnreset',
-      'etimedout',
     ];
-    
-    return reconnectTriggers.some(trigger => errorMessage.includes(trigger));
+    return triggers.some((t) => msg.includes(t));
   }
 
   private updateMetrics(success: boolean, queryTime: number): void {
-    this.connectionMetrics.totalQueries++;
-    this.connectionMetrics.totalQueryTime += queryTime;
-    this.connectionMetrics.lastQueryTime = new Date();
-    
+    this.metrics.totalQueries++;
+    this.metrics.totalQueryTime += queryTime;
+    this.metrics.lastQueryTime = new Date();
     if (success) {
-      this.connectionMetrics.queriesExecuted++;
+      this.metrics.queriesExecuted++;
     } else {
-      this.connectionMetrics.failedQueries++;
+      this.metrics.failedQueries++;
     }
   }
 
-  private queueQuery<T>(
-    query: string,
-    params?: Record<string, any>,
-    options?: QueryOptions
-  ): Promise<ClickHouseResult<T>> {
-    return new Promise((resolve, reject) => {
-      this.queryQueue.push({
-        query,
-        params,
-        resolve: (result: any) => resolve(result),
-        reject,
-      });
-      
-      console.log(`[ClickHouse] Query queued. Queue size: ${this.queryQueue.length}`);
-    });
+  private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms),
+      ),
+    ]);
   }
 
-  private async processQueryQueue(): Promise<void> {
-    while (this.queryQueue.length > 0 && this.isConnected) {
-      const queuedQuery = this.queryQueue.shift();
-      if (queuedQuery) {
-        try {
-          const result = await this.execute(queuedQuery.query, queuedQuery.params);
-          queuedQuery.resolve(result);
-        } catch (error) {
-          queuedQuery.reject(error);
-        }
-      }
-    }
-  }
-
-  // ============================================
-  // Streaming Support
-  // ============================================
-
-  async createStream<T = any>(
-    query: string,
-    chunkSize: number = 1000,
-    onChunk?: (chunk: T[]) => void
-  ): Promise<void> {
-    const result = await this.execute<T>(query);
-    
-    for (let i = 0; i < result.data.length; i += chunkSize) {
-      const chunk = result.data.slice(i, i + chunkSize);
-      if (onChunk) {
-        onChunk(chunk);
-      }
-    }
-  }
-
-  // ============================================
-  // Transactions (ClickHouse doesn't support traditional transactions)
-  // But we can simulate with idempotent operations
-  // ============================================
-
-  async withIdempotent<T>(
-    operation: () => Promise<T>,
-    operationId: string,
-    maxRetries: number = 3
-  ): Promise<T> {
-    let lastError: Error | null = null;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+  private async withRetry<T>(fn: () => Promise<T>, retries: number): Promise<T> {
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await operation();
+        return await fn();
       } catch (error) {
         lastError = error as Error;
-        console.warn(`Operation ${operationId} failed (attempt ${attempt + 1}/${maxRetries}):`, error);
-        
-        if (attempt < maxRetries - 1) {
-          await this.delay(this.config.retryDelay! * Math.pow(2, attempt));
+        if (attempt < retries) {
+          const jitter = Math.random() * 200;
+          await new Promise((r) =>
+            setTimeout(r, 500 * Math.pow(2, attempt) + jitter),
+          );
         }
       }
     }
-    
-    throw new Error(`Operation ${operationId} failed after ${maxRetries} attempts: ${lastError?.message}`);
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    throw lastError;
   }
 }
 
 // ============================================
-// Singleton Instance
+// Stream normalisation – safe for Node & Web streams
+// ============================================
+
+function normalizeStream(stream: any): AsyncIterable<any> {
+  // Web ReadableStream
+  if (stream && typeof stream.getReader === 'function') {
+    const reader = stream.getReader();
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            const { done, value } = await reader.read();
+            if (done) return { done: true, value: undefined };
+            return { done: false, value };
+          },
+          async return() {
+            reader.releaseLock();
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  }
+
+  // Node.js Readable
+  if (stream instanceof Readable) {
+    return {
+      async *[Symbol.asyncIterator]() {
+        for await (const chunk of stream) {
+          yield chunk;
+        }
+      },
+    };
+  }
+
+  throw new Error('Unsupported stream type from ClickHouse client');
+}
+
+// ============================================
+// Singleton lifecycle (exponential backoff + jitter)
 // ============================================
 
 let clickhouseInstance: ClickHouseService | null = null;
 
-export function getClickHouseInstance(config?: Partial<ClickHouseConfig>): ClickHouseService {
+export function getClickHouseInstance(
+  config?: Partial<ClickHouseConfig>,
+): ClickHouseService {
   if (!clickhouseInstance) {
     clickhouseInstance = new ClickHouseService(config);
   }
   return clickhouseInstance;
 }
 
-export async function initClickHouse(config?: Partial<ClickHouseConfig>): Promise<ClickHouseService> {
-  const instance = getClickHouseInstance(config);
-  await instance.connect();
-  return instance;
+export async function destroyClickHouseInstance(): Promise<void> {
+  if (clickhouseInstance) {
+    await clickhouseInstance.disconnect();
+    clickhouseInstance = null;
+  }
 }
 
-// ============================================
-// Default Export
-// ============================================
+export function initClickHouse(config?: Partial<ClickHouseConfig>): void {
+  const instance = getClickHouseInstance(config);
+  (async () => {
+    let delay = 2000;
+    while (true) {
+      try {
+        await instance.connect();
+        console.log('[ClickHouse] Initialisation successful');
+        break;
+      } catch (err) {
+        console.error('[ClickHouse] Init failed, retrying...', err);
+        const jitter = Math.random() * 500;
+        await new Promise((r) => setTimeout(r, delay + jitter));
+        delay = Math.min(delay * 2, 30000);
+      }
+    }
+  })();
+}
 
+// Default export (lazy singleton)
 const clickhouse = getClickHouseInstance();
 export default clickhouse;
 
 // ============================================
-// Table Creation Scripts
+// Table creation scripts (complete SQL)
 // ============================================
 
 export const createTablesScripts = {
@@ -730,7 +822,6 @@ export const createTablesScripts = {
     ORDER BY (updated_at, corridor_id)
   `,
 
-  // Materialized view for real-time aggregations
   traffic_aggregations_5min: `
     CREATE MATERIALIZED VIEW IF NOT EXISTS traffic_aggregations_5min
     ENGINE = SummingMergeTree()
@@ -748,9 +839,10 @@ export const createTablesScripts = {
   `,
 };
 
-export async function initializeClickHouseTables(clickhouseService: ClickHouseService): Promise<void> {
+export async function initializeClickHouseTables(
+  clickhouseService: ClickHouseService,
+): Promise<void> {
   console.log('[ClickHouse] Initializing tables and materialized views...');
-  
   for (const [name, script] of Object.entries(createTablesScripts)) {
     try {
       await clickhouseService.execute(script);
@@ -760,6 +852,5 @@ export async function initializeClickHouseTables(clickhouseService: ClickHouseSe
       throw error;
     }
   }
-  
   console.log('[ClickHouse] Schema initialization complete');
 }
