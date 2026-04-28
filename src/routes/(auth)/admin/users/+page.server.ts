@@ -41,7 +41,7 @@ import { fail, redirect } from "@sveltejs/kit"
 import { createHash, randomBytes } from "crypto"
 import { adminUpdateProfileSchema, adminSendVerificationSchema, adminActorIdSchema } from "$lib/security/admin.schema"
 import { AT_API_KEY, AT_USERNAME } from "$env/static/private"
-import { AT_PUBLIC_APP_URL } from "$env/static/public"
+import { PUBLIC_AT_APP_URL } from "$env/static/public"
 
 /* ============================================================
    LOAD

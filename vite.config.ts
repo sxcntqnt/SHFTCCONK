@@ -77,11 +77,11 @@ export default defineConfig({
   },
 
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       // Mirror ssr.external so production build stays consistent
       external: nativeAddons,
       output: {
-        manualChunks: {
+        advancedChunks: {
           three: ["three", "@threlte/core", "@threlte/extras"],
           charts: ["layerchart"],
         },

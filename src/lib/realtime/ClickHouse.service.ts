@@ -48,7 +48,7 @@ const defaultConfig: ClickHouseConfig = {
   host: process.env.CLICKHOUSE_HOST || 'localhost',
   port: parseInt(process.env.CLICKHOUSE_PORT || '8123'),
   username: process.env.CLICKHOUSE_USER || 'default',
-  password: process.env.CLICKHOUSE_PASSWORD || '',
+  password: process.env.CLICKHOUSE_PASSWORD || 'mzibiting',
   database: process.env.CLICKHOUSE_DATABASE || 'default',
   protocol: (process.env.CLICKHOUSE_PROTOCOL as 'http' | 'https') || 'http',
   maxOpenConnections: parseInt(process.env.CLICKHOUSE_POOL_SIZE || '10'),
