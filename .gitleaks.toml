@@ -1,0 +1,44 @@
+# gitleaks configuration tuned for this repo
+# See https://github.com/zricethezav/gitleaks for rule syntax
+
+[rules]
+
+  [[rules.rule]]
+  description = "AWS Access Key ID"
+  regex = '''AKIA[0-9A-Z]{16}'''
+  tags = ["key", "aws"]
+
+  [[rules.rule]]
+  description = "AWS Secret Access Key"
+  regex = '''(?i)aws(.{0,20})?(secret|access)?(.{0,20})?['\"][0-9a-zA-Z/+]{40}['\"]'''
+  tags = ["key", "aws"]
+
+  [[rules.rule]]
+  description = "Generic API token (hex or long base64)"
+  regex = '''(?i)(api[_-]?key|token|secret)[\s:=]{1,6}['\"][0-9a-zA-Z\-_.+/]{20,}['\"]'''
+  tags = ["token"]
+
+  [[rules.rule]]
+  description = "Private RSA key block"
+  regex = '''-----BEGIN RSA PRIVATE KEY-----''' 
+  tags = ["key", "private"]
+
+  [[rules.rule]]
+  description = "OpenSSH private key"
+  regex = '''-----BEGIN OPENSSH PRIVATE KEY-----'''
+  tags = ["key", "private"]
+
+  [[rules.rule]]
+  description = "Generic password assignment"
+  regex = '''(?i)(password|passwd|pwd)[\s:=]{1,6}['\"][^'\"]{8,}['\"]'''
+  tags = ["password"]
+
+# Allowlist to reduce false positives (files/paths to ignore)
+[allowlist]
+  [[allowlist.path]]
+  path = "pnpm-lock.yaml"
+  description = "lockfile may contain token-like strings"
+
+  [[allowlist.path]]
+  path = "build/**"
+  description = "built artifacts"

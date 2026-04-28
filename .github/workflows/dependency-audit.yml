@@ -14,10 +14,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run gitleaks secret scan
+      - name: Run gitleaks secret scan (with config)
         uses: zricethezav/gitleaks-action@v2
         with:
-          args: '--report-path=gitleaks-report.json --redact'
+          args: '--report-path=gitleaks-report.json --redact --config .gitleaks.toml'
 
       - name: Upload gitleaks report
         if: always()
@@ -77,3 +77,25 @@ jobs:
         with:
           name: code-rabbit-report
           path: code-rabbit-report.json
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript, typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
