@@ -16,7 +16,7 @@ import type {
 } from '@clickhouse/client';
 
 import { Readable } from 'stream';
-import { env } from './clientenv';
+import {  env } from './clientenv';
 
 // ============================================
 // Configuration
@@ -45,24 +45,27 @@ export interface QueryOptions {
   timeout?: number;
 }
 
-const defaultConfig: ClickHouseConfig = {
-  host: env.CLICKHOUSE_HOST,
-  port: env.CLICKHOUSE_PORT,
-  username: env.CLICKHOUSE_USER,
-  password: env.CLICKHOUSE_PASSWORD,
-  database: env.CLICKHOUSE_DATABASE,
-  protocol: env.CLICKHOUSE_PROTOCOL,
+function getDefaultConfig(): ClickHouseConfig {
+  return {
+    host: env.CLICKHOUSE_HOST,
+    port: env.CLICKHOUSE_PORT,
+    username: env.CLICKHOUSE_USER,
+    password: env.CLICKHOUSE_PASSWORD,
+    database: env.CLICKHOUSE_DATABASE,
+    protocol: env.CLICKHOUSE_PROTOCOL,
 
-  maxOpenConnections: env.CLICKHOUSE_POOL_SIZE,
-  connectionTimeout: env.CLICKHOUSE_CONNECTION_TIMEOUT,
-  requestTimeout: env.CLICKHOUSE_REQUEST_TIMEOUT,
-  queryTimeout: env.CLICKHOUSE_QUERY_TIMEOUT,
+    maxOpenConnections: env.CLICKHOUSE_POOL_SIZE,
+    connectionTimeout: env.CLICKHOUSE_CONNECTION_TIMEOUT,
+    requestTimeout: env.CLICKHOUSE_REQUEST_TIMEOUT,
+    queryTimeout: env.CLICKHOUSE_QUERY_TIMEOUT,
 
-  compression: env.CLICKHOUSE_COMPRESSION,
-  retryAttempts: env.CLICKHOUSE_RETRY_ATTEMPTS,
-  retryDelay: env.CLICKHOUSE_RETRY_DELAY,
-};
+    compression: env.CLICKHOUSE_COMPRESSION,
+    retryAttempts: env.CLICKHOUSE_RETRY_ATTEMPTS,
+    retryDelay: env.CLICKHOUSE_RETRY_DELAY,
+  };
+}
 
+console.log(process.env.CLICKHOUSE_USER);
 // ============================================
 // Query result wrapper
 // ============================================
@@ -225,8 +228,9 @@ export class ClickHouseService {
   };
 
   constructor(config: Partial<ClickHouseConfig> = {}) {
-    this.config = { ...defaultConfig, ...config };
+    this.config = { ...getDefaultConfig(), ...config };
   }
+
 
   // ============================================
   // Public lifecycle

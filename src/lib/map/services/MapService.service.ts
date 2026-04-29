@@ -159,17 +159,20 @@ export class MapService {
       console.log('[MapService] Initializing ClickHouse...');
       
       // Initialize ClickHouse connection
-      await initClickHouse({
-        host: process.env.CLICKHOUSE_HOST || 'localhost',
-        port: parseInt(process.env.CLICKHOUSE_PORT || '8123'),
-        username: process.env.CLICKHOUSE_USER || 'default',
-        password: process.env.CLICKHOUSE_PASSWORD || '',
-        database: process.env.CLICKHOUSE_DATABASE || 'traffic_db',
-        protocol: (process.env.CLICKHOUSE_PROTOCOL as 'http' | 'https') || 'http',
+
+      const clickhouse = getClickHouseInstance({
+          host: process.env.CLICKHOUSE_HOST || 'localhost',
+          port: parseInt(process.env.CLICKHOUSE_PORT || '8123'),
+          username: process.env.CLICKHOUSE_USER || 'default',
+          password: process.env.CLICKHOUSE_PASSWORD || '',
+          database: process.env.CLICKHOUSE_DATABASE || 'traffic_db',
+          protocol: (process.env.CLICKHOUSE_PROTOCOL as 'http' | 'https') || 'http',
       });
+
+      await clickhouse.connect();
       
       // Initialize required tables
-      await initializeClickHouseTables();
+      await initializeClickHouseTables(clickhouse);
       
       this.clickhouseInitialized = true;
       console.log('[MapService] ClickHouse initialized successfully');

@@ -1,5 +1,11 @@
-//configenv.ts
-import { env } from '$env/static/private';``
+// configenv.ts
+
+// ❗ Load .env into process.env (safe even if already loaded elsewhere)
+import 'dotenv/config';
+
+// --------------------------------------------
+// Validation helpers (UNCHANGED)
+// --------------------------------------------
 
 function getEnv(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
@@ -25,6 +31,10 @@ function getBool(name: string, fallback = false): boolean {
   return value === 'true';
 }
 
+// --------------------------------------------
+// Config export (fixed)
+// --------------------------------------------
+
 export const env = {
   CLICKHOUSE_HOST: getEnv('CLICKHOUSE_HOST', 'localhost'),
   CLICKHOUSE_PORT: getNumber('CLICKHOUSE_PORT', 8123),
@@ -42,3 +52,4 @@ export const env = {
   CLICKHOUSE_RETRY_ATTEMPTS: getNumber('CLICKHOUSE_RETRY_ATTEMPTS', 3),
   CLICKHOUSE_RETRY_DELAY: getNumber('CLICKHOUSE_RETRY_DELAY', 1000),
 };
+
