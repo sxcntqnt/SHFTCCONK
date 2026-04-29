@@ -16,6 +16,7 @@ import type {
 } from '@clickhouse/client';
 
 import { Readable } from 'stream';
+import { env } from './clientenv';
 
 // ============================================
 // Configuration
@@ -45,19 +46,21 @@ export interface QueryOptions {
 }
 
 const defaultConfig: ClickHouseConfig = {
-  host: process.env.CLICKHOUSE_HOST || 'localhost',
-  port: parseInt(process.env.CLICKHOUSE_PORT || '8123'),
-  username: process.env.CLICKHOUSE_USER || 'default',
-  password: process.env.CLICKHOUSE_PASSWORD || 'mzibiting',
-  database: process.env.CLICKHOUSE_DATABASE || 'default',
-  protocol: (process.env.CLICKHOUSE_PROTOCOL as 'http' | 'https') || 'http',
-  maxOpenConnections: parseInt(process.env.CLICKHOUSE_POOL_SIZE || '10'),
-  connectionTimeout: parseInt(process.env.CLICKHOUSE_CONNECTION_TIMEOUT || '30000'),
-  requestTimeout: parseInt(process.env.CLICKHOUSE_REQUEST_TIMEOUT || '60000'),
-  queryTimeout: parseInt(process.env.CLICKHOUSE_QUERY_TIMEOUT || '5000'),
-  compression: process.env.CLICKHOUSE_COMPRESSION === 'true',
-  retryAttempts: parseInt(process.env.CLICKHOUSE_RETRY_ATTEMPTS || '3'),
-  retryDelay: parseInt(process.env.CLICKHOUSE_RETRY_DELAY || '1000'),
+  host: env.CLICKHOUSE_HOST,
+  port: env.CLICKHOUSE_PORT,
+  username: env.CLICKHOUSE_USER,
+  password: env.CLICKHOUSE_PASSWORD,
+  database: env.CLICKHOUSE_DATABASE,
+  protocol: env.CLICKHOUSE_PROTOCOL,
+
+  maxOpenConnections: env.CLICKHOUSE_POOL_SIZE,
+  connectionTimeout: env.CLICKHOUSE_CONNECTION_TIMEOUT,
+  requestTimeout: env.CLICKHOUSE_REQUEST_TIMEOUT,
+  queryTimeout: env.CLICKHOUSE_QUERY_TIMEOUT,
+
+  compression: env.CLICKHOUSE_COMPRESSION,
+  retryAttempts: env.CLICKHOUSE_RETRY_ATTEMPTS,
+  retryDelay: env.CLICKHOUSE_RETRY_DELAY,
 };
 
 // ============================================
