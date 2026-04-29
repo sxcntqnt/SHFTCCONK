@@ -242,7 +242,7 @@ export class MapService {
     this.ensureClickHouseInitialized();
     
     // Real-time traffic node data from ClickHouse
-    let nodes = await clickHouseMapService.getTrafficNodes(bounds);
+    let nodes = await getClickHouseInstance.getTrafficNodes(bounds);
     
     // Apply filters if provided
     if (options?.minSaturation) {
