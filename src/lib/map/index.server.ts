@@ -41,7 +41,7 @@ export {
 
 // ── Config builder ────────────────────────────────────────────────────────────
 // Reads $env/dynamic/private — forbidden in browser bundles.
-export { buildMapServiceConfig } from './services/config'
+export { buildMapServiceConfig } from './services/Config.server'
 
 // ── Route handler utilities ───────────────────────────────────────────────────
 // Pure functions, but used exclusively in +server.ts route handlers

@@ -96,4 +96,4 @@ export {
 } from './stores/MapStore'
 
 // ── Config builder ────────────────────────────────────────────────────────────
-export { buildMapServiceConfig } from './services/config'
+export { buildMapServiceConfig } from '$lib/map/services/Config.client'

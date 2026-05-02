@@ -41,7 +41,7 @@ import { activateXContext } from "$lib/features/auth/contexts/context.template"
 import type { App } from "../app"
 
 import { createMapService, getMapService } from '$lib/map'
-import { buildMapServiceConfig } from '$lib/map/services/config'
+import { buildMapServiceConfig } from '$lib/map/services/Config.client'
 
 
 
