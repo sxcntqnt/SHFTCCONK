@@ -3,15 +3,37 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 export * from './types/MapTypes';
 
+// ── DuckDB (WASM Core + Queries) ─────────────────────────────────────────────
+export { DuckDBWasmCore } from './services/DuckDBWasmCore';
+
+// Query layer (pure functions)
+export {
+  getNodesInBounds,
+  getNodeById,
+  getCorridorsInBounds,
+  getH3CellsInBounds,
+  getNodesAsGeoJSON,
+  getFullMapAsGeoJSON,
+} from './services/MapQueries';
+
 // ── Services ──────────────────────────────────────────────────────────────────
-export { DuckDBService }                          from './services/DuckDB.service';
-export { SSEStreamManager, sseStreamManager }     from './services/SseStreamer.service';
-export { MapService, createMapService, getMapService } from './services/MapService.service';
+export {
+  SSEStreamManager,
+  sseStreamManager,
+} from './services/SseStreamer.service';
+
+export {
+  MapService,
+  createMapService,
+  getMapService,
+} from './services/MapService.service';
+
 export {
   BootstrapManifestService,
   bootstrapManifestService,
   zoomToH3Resolution,
 } from './services/bootstrap-manifest.service';
+
 export type {
   RequestContext,
   CityBootstrapManifest,
@@ -22,4 +44,7 @@ export type {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 export * from './utils/distance';
-export { parseBounds, saturationToColor } from './utils/apiHelpers';  // ← single source
+export {
+  parseBounds,
+  saturationToColor,
+} from './utils/apiHelpers';
