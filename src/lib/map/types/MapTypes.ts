@@ -85,6 +85,11 @@ export interface DuckDBLayerConfig {
 // ============================================
 // Core Coordinate & Geometry Types
 // ============================================
+// in MapTypes.ts
+export interface MapServiceConfig {
+  upstream: { baseUrl: string; timeout: number }
+  hypnotiz?: { url?: string; regionId?: string }   // ← add this
+}
 
 export interface CityBootstrapManifestMessage {
   type: "BOOTSTRAP_MANIFEST";

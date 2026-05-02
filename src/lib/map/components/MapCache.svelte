@@ -68,6 +68,14 @@
         const worker = new Worker(workerUrl)
         const logger = new duckdb.ConsoleLogger()
 
+        // In your map component
+        controller
+          .on("update", (response) => renderVehicles(response.items))
+          .on("anomaly", (item) => highlightAnomaly(item))
+          .on("backpressure", (active) => setClusterMode(active))
+
+        await controller.subscribe(clientContext)
+
         db = new duckdb.AsyncDuckDB(logger, worker)
         await db.instantiate(bundle.mainModule, bundle.pthreadWorker)
 

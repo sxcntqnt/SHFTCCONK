@@ -41,7 +41,10 @@ import { activateXContext } from "$lib/features/auth/contexts/context.template"
 import type { App } from "../app"
 
 import { createMapService, getMapService } from '$lib/map'
-import { buildMapServiceConfig } from '$lib/map/services/Config.client'
+import { buildMapServiceConfig } from '$lib/map/services/Config.server'
+import { initVehicleTrafficController } from '$lib/realtime/vehicleTrafficController'
+
+
 
 
 
@@ -186,6 +189,10 @@ const mapServiceHandle: Handle = async ({ event, resolve }) => {
 
   return resolve(event)
 }
+const controller = initVehicleTrafficController({
+  hypnotiz: { url: env.HYPNOTIZ_URL, regionId: 'nairobi-east' },
+  localScoreThreshold: 0.4,
+})
 /* ============================================================
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
