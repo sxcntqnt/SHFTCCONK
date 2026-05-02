@@ -2,6 +2,7 @@
 // DuckDB WASM Core (Client-side)
 // Lean execution engine for browser
 // ============================================
+import { browser } from '$app/environment'
 
 import * as duckdb from '@duckdb/duckdb-wasm'
 import type { H3Seed, StorageHints } from './bootstrap-manifest.service'
@@ -22,27 +23,37 @@ export class DuckDBWasmCore {
   // ============================================
   // Boot
   // ============================================
-  async init() {
-    if (this.ready) return
 
-    const bundles = duckdb.getJsDelivrBundles()
-    const bundle = await duckdb.selectBundle(bundles)
+async init() {
+  if (!browser) {
+    throw new Error('[DuckDB WASM] Cannot initialize on server')
+  }
 
-    const worker = new Worker(bundle.mainWorker!, { type: 'module' })
-    this.db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker)
-    await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker)
+  if (this.ready) return
 
-    if (this.config.useOPFS) {
-      await this.db.open({ path: `opfs://${this.config.dbName}` })
-    }
+  const bundles = duckdb.getJsDelivrBundles()
+  const bundle = await duckdb.selectBundle(bundles)
 
-    this.conn = await this.db.connect()
+  const worker = new Worker(bundle.mainWorker!, { type: 'module' })
 
-    if (this.config.dbUrl) {
-      await this.loadSnapshot(this.config.dbUrl)
-    }
+  this.db = new duckdb.AsyncDuckDB(
+    new duckdb.ConsoleLogger(),
+    worker
+  )
 
-    this.ready = true
+  await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker)
+
+  if (this.config.useOPFS) {
+    await this.db.open({ path: `opfs://${this.config.dbName}` })
+  }
+
+  this.conn = await this.db.connect()
+
+  if (this.config.dbUrl) {
+    await this.loadSnapshot(this.config.dbUrl)
+  }
+
+  this.ready = true
     console.log('[DuckDB WASM] Ready')
   }
 

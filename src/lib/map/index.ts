@@ -12,7 +12,7 @@
 //     src/service-worker.ts                  (SW scope)
 
 // ── Service singleton helpers ─────────────────────────────────────────────────
-export { createMapService, getMapService, MapService } from './services/map.service'
+export { createMapService, getMapService, MapService } from './services/MapService.service'
 
 // ── Bootstrap manifest ────────────────────────────────────────────────────────
 export {
@@ -70,7 +70,7 @@ export {
   NAIROBI_BOUNDS,
   NAIROBI_H3_RESOLUTION,
   MAJOR_TERMINUS_LOCATIONS,
-} from './utils/geo'
+} from './utils/distance'
 
 // ── Map stores (Svelte — browser only, but safe to reference server-side) ─────
 // These are Svelte writable stores. Importing them server-side won't break
