@@ -24,6 +24,7 @@
 // that the SW could not match. Now uses self.location.origin.
 
 import { openDB } from "idb"
+import type { CityBootstrapManifest } from "$lib/map/types/MapTypes"
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -150,11 +151,7 @@ interface QuadTile {
   estimatedSizeMB: number
 }
 
-interface CityBootstrapManifest {
-  cityId: string
-  tileKeys: QuadTile[]
-  h3Seeds: { resolution: number; cells: string[] }
-}
+
 
 async function handleBootstrapManifest(
   manifest: CityBootstrapManifest,

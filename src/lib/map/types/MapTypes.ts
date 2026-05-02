@@ -86,6 +86,11 @@ export interface DuckDBLayerConfig {
 // Core Coordinate & Geometry Types
 // ============================================
 
+export interface CityBootstrapManifestMessage {
+  type: "BOOTSTRAP_MANIFEST";
+  manifest: CityBootstrapManifest;
+}
+
 export interface Coordinates {
   lat: number
   lng: number

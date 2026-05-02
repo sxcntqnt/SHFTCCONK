@@ -1,276 +1,301 @@
-// ============================================
-// Map Service - Orchestrator (WASM + ClickHouse)
-// ============================================
+// src/lib/map/services/map.service.ts
+//
+// Map Service — Server-side Orchestrator
+//
+// ARCHITECTURE BOUNDARY — READ BEFORE EDITING:
+//   This service runs in Node.js / Cloudflare Workers (server-side).
+//   DuckDB WASM is browser-only → DuckDBTileProvider.svelte.
+//   This service must NOT import DuckDBWasmCore.
+//
+//   Server owns:
+//     ClickHouse   → real-time telemetry + corridor analytics
+//     SSE          → push updates to connected browser clients
+//     Bootstrap    → build + broadcast CityBootstrapManifest
+//
+//   Browser owns:
+//     DuckDB WASM  → static spatial tiles  (DuckDBTileProvider.svelte)
+//     SW cache     → Parquet shard prefetch (service-worker.ts)
+//
+// LIFECYCLE (driven by mapServiceHandle in hooks.server.ts):
+//   createMapService(config) → service.start() → polling begins
+//   service.bootstrap(ctx, viewport, zoom) → manifest broadcast via SSE
+//   service.stop() → clean shutdown
 
 import type {
-  Coordinates,
   BoundingBox,
   TrafficNode,
   CorridorAnalytics,
   Vehicle,
-  H3Cell,
-  H3Metrics,
-  GeoJSONFeatureCollection,
   MapServiceConfig,
   VehicleStreamData,
   TrafficStreamData,
-} from '../types/MapTypes';
+} from '../types/MapTypes'
 
-import { DuckDBWasmCore } from './DuckDBWasmCore';
-import {
-  getNodesInBounds,
-  getNodeById,
-} from './MapQueries';
-
-import type { SSEStreamManager } from './SseStreamer.service';
+import type { SSEStreamManager } from './SseStreamer.service'
 import {
   getClickHouseInstance,
   initializeClickHouseTables,
-} from '$lib/realtime/ClickHouse.service';
+} from '$lib/realtime/ClickHouse.service'
+
+import {
+  bootstrapManifestService,
+  type CityBootstrapManifest,
+} from './bootstrap-manifest.service'
+
+// App.RequestContext is the canonical type (defined in app.d.ts).
+// bootstrap-manifest.service exports its own RequestContext which is
+// structurally identical — they share the same fields.
+// We use App.RequestContext here so the server pipeline stays type-consistent.
+// The `as any` cast at the callsite is intentional and safe.
+import type { App } from '../../../app'
+type RequestContext = NonNullable<App.Locals['requestContext']>
 
 // ============================================
-// Upstream Client (unchanged)
+// Upstream tile proxy (PBF / protomaps)
 // ============================================
 class UpstreamMapClient {
   constructor(private config: MapServiceConfig['upstream']) {}
 
-  async fetchTile(x: number, y: number, z: number) {
-    const res = await fetch(`${this.config.baseUrl}/tiles/${z}/${x}/${y}.pbf`);
-    return res.arrayBuffer();
+  async fetchTile(x: number, y: number, z: number): Promise<ArrayBuffer> {
+    const res = await fetch(
+      `${this.config.baseUrl}/tiles/${z}/${x}/${y}.pbf`,
+      { signal: AbortSignal.timeout(this.config.timeout) },
+    )
+    return res.arrayBuffer()
   }
 }
 
 // ============================================
-// Map Service
+// MapService
 // ============================================
 export class MapService {
-  private duckdb: DuckDBWasmCore;
-  private sse: SSEStreamManager;
-  private upstream: UpstreamMapClient;
+  private sse: SSEStreamManager
+  private upstream: UpstreamMapClient
 
-  private isRunning = false;
-  private clickhouseInitialized = false;
-  private intervals = new Map<string, NodeJS.Timeout>();
+  private isRunning = false
+  private startPromise: Promise<void> | null = null
+  private clickhouseInitialized = false
+  private intervals = new Map<string, ReturnType<typeof setInterval>>()
 
-  constructor(
-    duckdb: DuckDBWasmCore,
-    sse: SSEStreamManager,
-    config: MapServiceConfig
-  ) {
-    this.duckdb = duckdb;
-    this.sse = sse;
-    this.upstream = new UpstreamMapClient(config.upstream);
+  private manifest: CityBootstrapManifest | null = null
+
+  constructor(sse: SSEStreamManager, config: MapServiceConfig) {
+    this.sse = sse
+    this.upstream = new UpstreamMapClient(config.upstream)
+  }
+
+  // ============================================
+  // BOOTSTRAP
+  //
+  // Builds a CityBootstrapManifest from the request's geo context
+  // and broadcasts it to all connected SSE clients.
+  // Each browser client forwards it to its service worker which
+  // then prefetches the Parquet shards in the background.
+  //
+  // Call order:
+  //   1. hooks.server.ts → mapServiceHandle → service.start()
+  //   2. GET /api/map/bootstrap (initial load, no viewport)
+  //   3. POST /api/map/bootstrap (after first render, with viewport)
+  // ============================================
+  async bootstrap(
+    requestContext: RequestContext,
+    viewport: BoundingBox,
+    zoom: number,
+  ): Promise<CityBootstrapManifest> {
+    this.manifest = bootstrapManifestService.buildFromViewport(
+      requestContext as any,
+      viewport,
+      zoom,
+    )
+
+    console.log('[MapService] Manifest built:', this.manifest.cityId)
+    this.sse.broadcastBootstrap(this.manifest)
+
+    return this.manifest
+  }
+
+  /** Build manifest from geo context only (no viewport known yet). */
+  buildFallbackManifest(requestContext: RequestContext, zoom = 12): CityBootstrapManifest {
+    this.manifest = bootstrapManifestService.build(requestContext as any, { zoom })
+    return this.manifest
   }
 
   // ============================================
   // Lifecycle
   // ============================================
-  async start() {
-    if (this.isRunning) return;
+  async start(): Promise<void> {
+    if (this.isRunning) return
+    if (this.startPromise) return this.startPromise
 
-    console.log('[MapService] Starting (WASM + ClickHouse)...');
+    this.startPromise = this._doStart().catch((err) => {
+      // Clear so next request retries rather than perpetually failing
+      this.startPromise = null
+      throw err
+    })
 
-    await this.initClickHouse();
-    await this.duckdb.init();
-
-    this.startPolling();
-
-    this.isRunning = true;
+    return this.startPromise
   }
 
-  async stop() {
-    if (!this.isRunning) return;
+  private async _doStart(): Promise<void> {
+    console.log('[MapService] Starting...')
 
-    for (const i of this.intervals.values()) clearInterval(i);
+    await this.initClickHouse()
 
-    await this.sse.shutdown();
-    await this.duckdb.close();
+    // Seed a Nairobi fallback manifest so broadcastBootstrap has
+    // something to send when the first SSE client connects before
+    // any viewport event has been received.
+    if (!this.manifest) {
+      this.manifest = bootstrapManifestService.build(
+        {
+          country: 'KE',
+          city: 'Nairobi',
+          ip: null,
+          regionKey: 'KE:Nairobi',
+          approxCenter: { lat: -1.2921, lng: 36.8219 },
+          h3SeedResolution: 7,
+        },
+        { zoom: 12 },
+      )
+    }
 
-    this.isRunning = false;
+    this.startPolling()
+    this.isRunning = true
+    console.log('[MapService] Online')
+  }
+
+  async stop(): Promise<void> {
+    if (!this.isRunning) return
+
+    for (const i of this.intervals.values()) clearInterval(i)
+    this.intervals.clear()
+
+    await this.sse.shutdown()
+
+    this.isRunning = false
+    this.startPromise = null
+    console.log('[MapService] Stopped')
   }
 
   // ============================================
   // ClickHouse
   // ============================================
-  private async initClickHouse() {
+  private async initClickHouse(): Promise<void> {
     const ch = getClickHouseInstance({
-      host: process.env.CLICKHOUSE_HOST || 'localhost',
-      port: Number(process.env.CLICKHOUSE_PORT || 8123),
-      database: process.env.CLICKHOUSE_DATABASE || 'traffic_db',
-    });
+      host:     process.env.CLICKHOUSE_HOST     ?? 'localhost',
+      port:     Number(process.env.CLICKHOUSE_PORT ?? 8123),
+      database: process.env.CLICKHOUSE_DATABASE ?? 'traffic_db',
+    })
 
-    await ch.connect();
-    await initializeClickHouseTables(ch);
-
-    this.clickhouseInitialized = true;
+    await ch.connect()
+    await initializeClickHouseTables(ch)
+    this.clickhouseInitialized = true
+    console.log('[MapService] ClickHouse connected')
   }
 
-  private ensureCH() {
+  private ensureCH(): void {
     if (!this.clickhouseInitialized) {
-      throw new Error('ClickHouse not initialized');
+      throw new Error('[MapService] ClickHouse not initialized — call start() first')
     }
   }
 
   // ============================================
-  // Static Data (DuckDB WASM)
+  // Query API (consumed by +server.ts route handlers)
   // ============================================
-
   async getTrafficNodes(
     bounds: BoundingBox,
-    options?: {
-      nodeTypes?: string[];
-      minSaturation?: number;
-    }
+    options?: { nodeTypes?: string[]; minSaturation?: number },
   ): Promise<TrafficNode[]> {
-    return getNodesInBounds(this.duckdb, bounds, options);
+    this.ensureCH()
+    return getClickHouseInstance().getTrafficNodes(bounds, options)
   }
 
-  async getNodeById(id: string) {
-    return getNodeById(this.duckdb, id);
+  async getNodeById(id: string): Promise<TrafficNode | null> {
+    this.ensureCH()
+    return getClickHouseInstance().getNodeById(id)
   }
-
-  // ============================================
-  // Real-time (ClickHouse)
-  // ============================================
 
   async getVehicles(bounds: BoundingBox): Promise<Vehicle[]> {
-    this.ensureCH();
-    return getClickHouseInstance().getVehicles(bounds);
+    this.ensureCH()
+    return getClickHouseInstance().getVehicles(bounds)
   }
 
   async getCorridorAnalytics(bounds: BoundingBox): Promise<CorridorAnalytics[]> {
-    this.ensureCH();
-    return getClickHouseInstance().getTrafficCorridors(bounds);
+    this.ensureCH()
+    return getClickHouseInstance().getTrafficCorridors(bounds)
   }
 
-  async getNearestVehicles(
-    point: Coordinates,
-    limit = 10,
-    maxDistance = 5000
-  ) {
-    const bounds: BoundingBox = {
-      northEast: { lat: point.lat + 0.05, lng: point.lng + 0.05 },
-      southWest: { lat: point.lat - 0.05, lng: point.lng - 0.05 },
-    };
-
-    const vehicles = await this.getVehicles(bounds);
-
-    return vehicles
-      .map(v => ({
-        ...v,
-        distance: this.dist(point, v),
-      }))
-      .filter(v => v.distance <= maxDistance)
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, limit);
-  }
-
-  private dist(a: Coordinates, b: Coordinates) {
-    const R = 6371e3;
-    const dLat = (b.lat - a.lat) * Math.PI / 180;
-    const dLng = (b.lng - a.lng) * Math.PI / 180;
-
-    const x =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(a.lat * Math.PI / 180) *
-        Math.cos(b.lat * Math.PI / 180) *
-        Math.sin(dLng / 2) ** 2;
-
-    return R * (2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)));
+  getManifest(): CityBootstrapManifest | null {
+    return this.manifest
   }
 
   // ============================================
-  // Polling → SSE
+  // Polling → SSE push
   // ============================================
-  private startPolling() {
-    this.intervals.set(
-      'vehicles',
-      setInterval(() => this.pushVehicles(), 5000)
-    );
-
-    this.intervals.set(
-      'traffic',
-      setInterval(() => this.pushTraffic(), 30000)
-    );
+  private startPolling(): void {
+    this.intervals.set('vehicles', setInterval(() => this.pushVehicles(), 5_000))
+    this.intervals.set('traffic',  setInterval(() => this.pushTraffic(),  30_000))
   }
 
-  private async pushVehicles() {
-    if (!this.clickhouseInitialized) return;
-
-    const bounds: BoundingBox = {
+  private currentBounds(): BoundingBox {
+    return this.manifest?.boundingBox ?? {
       northEast: { lat: -1.15, lng: 36.95 },
       southWest: { lat: -1.45, lng: 36.65 },
-    };
-
-    const vehicles = await this.getVehicles(bounds);
-
-    const payload: VehicleStreamData = { vehicles, bounds };
-
-    this.sse.broadcastVehicles(payload);
+    }
   }
 
-  private async pushTraffic() {
-    if (!this.clickhouseInitialized) return;
+  private async pushVehicles(): Promise<void> {
+    if (!this.clickhouseInitialized) return
+    try {
+      const vehicles = await this.getVehicles(this.currentBounds())
+      this.sse.broadcastVehicles({ vehicles, bounds: this.currentBounds() })
+    } catch (err) {
+      console.warn('[MapService] Vehicle push failed:', err)
+    }
+  }
 
-    const bounds: BoundingBox = {
-      northEast: { lat: -1.15, lng: 36.95 },
-      southWest: { lat: -1.45, lng: 36.65 },
-    };
-
-    const [nodes, corridors] = await Promise.all([
-      this.getTrafficNodes(bounds),
-      this.getCorridorAnalytics(bounds),
-    ]);
-
-    const payload: TrafficStreamData = {
-      nodes,
-      corridors,
-      updatedAt: new Date().toISOString(),
-    };
-
-    this.sse.broadcastTraffic(payload);
+  private async pushTraffic(): Promise<void> {
+    if (!this.clickhouseInitialized) return
+    try {
+      const [nodes, corridors] = await Promise.all([
+        this.getTrafficNodes(this.currentBounds()),
+        this.getCorridorAnalytics(this.currentBounds()),
+      ])
+      this.sse.broadcastTraffic({ nodes, corridors, updatedAt: new Date().toISOString() })
+    } catch (err) {
+      console.warn('[MapService] Traffic push failed:', err)
+    }
   }
 
   // ============================================
   // Health
   // ============================================
   async getHealth() {
-    const duck = await this.duckdb.healthCheck();
-
-    let chHealthy = false;
+    let chHealthy = false
     try {
-      const ch = getClickHouseInstance();
-      chHealthy = (await ch.healthCheck()).healthy;
+      chHealthy = (await getClickHouseInstance().healthCheck()).healthy
     } catch {}
 
     return {
-      healthy: duck.healthy && chHealthy,
-      duckdb: duck.healthy,
+      healthy:    chHealthy,
       clickhouse: chHealthy,
-      sse: { clients: this.sse.getClientCount() },
-    };
+      sse:        { clients: this.sse.getClientCount() },
+      bootstrap:  !!this.manifest,
+      cityId:     this.manifest?.cityId ?? null,
+    }
   }
 }
 
 // ============================================
-// Factory
+// Singleton — one instance per process lifetime
 // ============================================
+let instance: MapService | null = null
 
-let instance: MapService | null = null;
-
-export async function createMapService(config: MapServiceConfig) {
-  const db = new DuckDBWasmCore({
-    dbName: 'nairobi.duckdb',
-    dbUrl: '/data/nairobi.duckdb',
-    useOPFS: true,
-  });
-
-  const sse = (await import('./SseStreamer.service')).sseStreamManager;
-
-  instance = new MapService(db, sse, config);
-  return instance;
+export async function createMapService(config: MapServiceConfig): Promise<MapService> {
+  const { sseStreamManager } = await import('./SseStreamer.service')
+  instance = new MapService(sseStreamManager, config)
+  return instance
 }
 
-export function getMapService() {
-  return instance;
+export function getMapService(): MapService | null {
+  return instance
 }
