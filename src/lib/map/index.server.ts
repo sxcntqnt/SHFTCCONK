@@ -29,7 +29,7 @@ export {
   MapService,
   createMapService,
   getMapService,
-} from './services/map.service'
+} from './services/MapService.service'
 
 // ── SSE stream manager ────────────────────────────────────────────────────────
 // Holds ReadableStreamDefaultController references — server-only.
