@@ -43,7 +43,6 @@ import type { App } from "../app"
 
 import { createMapService, getMapService } from '$lib/map'
 import { buildMapServiceConfig } from '$lib/map/services/Config.server'
-import { initVehicleTrafficController } from '$lib/realtime/vehicleTrafficController'
 
 
 
@@ -168,37 +167,7 @@ const locationHandle: Handle = async ({ event, resolve }) => {
 let mapServiceReady = false
 let mapServiceInitPromise: Promise<void> | null = null
 
-function ensureTrafficController() {
-  if (building || trafficControllerInitialized) return
-
-  if (!env.HYPNOTIZ_URL) {
-    console.warn(
-      '[traffic-controller] HYPNOTIZ_URL missing — controller disabled'
-    )
-    return
-  }
-
-  initVehicleTrafficController({
-    hypnotiz: {
-      url: env.HYPNOTIZ_URL,
-      regionId: 'nairobi-east',
-    },
-    localScoreThreshold: 0.4,
-  })
-
-  trafficControllerInitialized = true
-
-  console.info(
-    '[traffic-controller] initialized for region:',
-    'nairobi-east'
-  )
-}
-
 const mapServiceHandle: Handle = async ({ event, resolve }) => {
-  if (!building) {
-    ensureTrafficController()
-  }
-
   if (!building && !mapServiceReady) {
     if (!mapServiceInitPromise) {
       mapServiceInitPromise = (async () => {
@@ -227,6 +196,8 @@ const mapServiceHandle: Handle = async ({ event, resolve }) => {
 
   return resolve(event)
 }
+
+
 /* ============================================================
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
