@@ -26,6 +26,7 @@ import { building } from '$app/environment';
 import * as Sentry from "@sentry/sveltekit"
 import { redirect, type Handle, type HandleServerError } from "@sveltejs/kit"
 import { sequence } from "@sveltejs/kit/hooks"
+import { env } from '$env/dynamic/private'
 import {
   PUBLIC_SUPABASE_URL,
   PUBLIC_SUPABASE_ANON_KEY,
@@ -66,6 +67,8 @@ const isPublicPath = (pathname: string): boolean =>
 
 const isOnboardingPath = (pathname: string): boolean =>
   pathname.startsWith(ONBOARDING_PREFIX)
+
+let trafficControllerInitialized = false
 
 /* ============================================================
    LOCATION HANDLE — GEO SEED (REQUEST LAYER, NOT AUTH)
@@ -162,11 +165,40 @@ const locationHandle: Handle = async ({ event, resolve }) => {
    startup error (e.g. DuckDB file locked during deploy).
 ============================================================ */
 
-
 let mapServiceReady = false
 let mapServiceInitPromise: Promise<void> | null = null
 
+function ensureTrafficController() {
+  if (building || trafficControllerInitialized) return
+
+  if (!env.HYPNOTIZ_URL) {
+    console.warn(
+      '[traffic-controller] HYPNOTIZ_URL missing — controller disabled'
+    )
+    return
+  }
+
+  initVehicleTrafficController({
+    hypnotiz: {
+      url: env.HYPNOTIZ_URL,
+      regionId: 'nairobi-east',
+    },
+    localScoreThreshold: 0.4,
+  })
+
+  trafficControllerInitialized = true
+
+  console.info(
+    '[traffic-controller] initialized for region:',
+    'nairobi-east'
+  )
+}
+
 const mapServiceHandle: Handle = async ({ event, resolve }) => {
+  if (!building) {
+    ensureTrafficController()
+  }
+
   if (!building && !mapServiceReady) {
     if (!mapServiceInitPromise) {
       mapServiceInitPromise = (async () => {
@@ -177,9 +209,15 @@ const mapServiceHandle: Handle = async ({ event, resolve }) => {
         }
 
         await service.start()
+
         mapServiceReady = true
+
+        console.info('[map-service] started successfully')
       })().catch((err) => {
         mapServiceInitPromise = null
+
+        console.error('[map-service] startup failed:', err)
+
         throw err
       })
     }
@@ -189,10 +227,6 @@ const mapServiceHandle: Handle = async ({ event, resolve }) => {
 
   return resolve(event)
 }
-const controller = initVehicleTrafficController({
-  hypnotiz: { url: env.HYPNOTIZ_URL, regionId: 'nairobi-east' },
-  localScoreThreshold: 0.4,
-})
 /* ============================================================
    SUPABASE CLIENT + SAFE SESSION HELPER
 ============================================================ */
