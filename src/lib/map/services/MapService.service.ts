@@ -53,7 +53,7 @@ import {
   type ControllerConfig,
   type TrafficNode as ControllerTrafficNode,
   type TrafficEdge,
-} from '$lib/realtime/vehicleTrafficController'
+} from '$lib/realtime/vehicleTrafficController.server'
 
 import type { AttentionItem, BoundingBox as ControllerBoundingBox, ClientContext } from '../realtime/hypntyz'
 

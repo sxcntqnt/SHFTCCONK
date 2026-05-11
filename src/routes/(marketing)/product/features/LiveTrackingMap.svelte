@@ -1,39 +1,42 @@
-<script lang="ts">
-  // LiveTracking.svelte
-  // Real-time vehicle tracking visualization using SSE from SvelteKit API
-  import { onMount, onDestroy } from "svelte"
-  import type { RequestContext } from "$lib/map"
+<!--
+  LiveTracking.svelte
 
-  // ── Types ────────────────────────────────────────────────────────────────
+  Real-time vehicle tracking using VehicleTrafficClient (browser SSE).
+  
+  Key changes from original:
+  - Pulse driven by CSS @keyframes, NOT requestAnimationFrame + $state(tick)
+    → zero JS per frame, composited on GPU, no Svelte diff at 60fps
+  - EventSource replaced by VehicleTrafficClient (shared reconnect logic)
+  - reconnectAttempts removed — client handles backoff internally
+  - Each vehicle gets a stable CSS animation-delay from its id hash
+-->
+
+<script lang="ts">
+  import { onMount, onDestroy } from "svelte"
+  import { VehicleTrafficClient } from "$lib/realtime/vehicleTrafficClient"
+  import type { RequestContext } from "$lib/map"
+  import type { AttentionItem } from "$lib/map/hypntyz"
+
+  // ── Types ──────────────────────────────────────────────────────────────────
+
   interface SvgVehicle {
     id: string
     x: number
     y: number
     color: string
-    pulse: number
-    label?: string
+    /** Stable 0–1 offset derived from id; drives CSS animation-delay, never changes */
+    phaseOffset: number
+    label: string
+    isPartner: boolean
   }
 
-  interface SSEVehicle {
-    id: string
-    saccoId: string
-    saccoName: string
-    plateNumber: string
-    currentPosition: { lat: number; lng: number }
-    heading: number
-    speed: number
-    status: string
-    lastUpdated: string
-  }
+  // ── Props ──────────────────────────────────────────────────────────────────
 
-  // ── Props ────────────────────────────────────────────────────────────────
   interface Props {
     requestContext?: RequestContext | null
     width?: number
     height?: number
-    /** SSE endpoint — defaults to the new SvelteKit route */
-    sseUrl?: string
-    /** Highlight these sacco IDs in brand orange */
+    hypnotizUrl?: string
     partnerSaccoIds?: string[]
   }
 
@@ -41,11 +44,12 @@
     requestContext = null,
     width = 600,
     height = 380,
-    sseUrl = "/api/map/stream",
+    hypnotizUrl = "http://localhost:8080",
     partnerSaccoIds = [],
   }: Props = $props()
 
-  // ── City bounding box for coordinate projection ───────────────────────────
+  // ── City bounding boxes ────────────────────────────────────────────────────
+
   const CITY_BOUNDS: Record<
     string,
     { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } }
@@ -64,23 +68,33 @@
     return CITY_BOUNDS[requestContext.city] ?? DEFAULT_BOUNDS
   }
 
-  // Project real lat/lng to SVG coordinates (x,y)
-  function projectToSvg(lat: number, lng: number, bounds = getCityBounds()) {
-    const { sw, ne } = bounds
-    const x = ((lng - sw.lng) / (ne.lng - sw.lng)) * width
-    const y = ((ne.lat - lat) / (ne.lat - sw.lat)) * height // Y inverted (north = top)
-    return { x, y }
+  function projectToSvg(lat: number, lng: number) {
+    const { sw, ne } = getCityBounds()
+    return {
+      x: ((lng - sw.lng) / (ne.lng - sw.lng)) * width,
+      y: ((ne.lat - lat) / (ne.lat - sw.lat)) * height, // Y inverted: north = top
+    }
   }
 
-  function isPartner(saccoId: string): boolean {
-    return partnerSaccoIds.includes(saccoId)
+  /**
+   * Derive a stable 0–1 phase offset from a vehicle id string.
+   * This replaces the per-frame Math.sin(tick + v.pulse) calls.
+   * Result is constant for a given id — animation-delay does the rest.
+   */
+  function idToPhase(id: string): number {
+    let h = 0
+    for (let i = 0; i < id.length; i++) {
+      h = (h * 31 + id.charCodeAt(i)) >>> 0
+    }
+    return (h % 1000) / 1000
   }
 
-  function vehicleColor(v: SSEVehicle): string {
-    return isPartner(v.saccoId) ? "#f26522" : "#00b09b"
+  function vehicleColor(isPartner: boolean): string {
+    return isPartner ? "#f26522" : "#00b09b"
   }
 
-  // ── SSE State ────────────────────────────────────────────────────────────
+  // ── SSE State ──────────────────────────────────────────────────────────────
+
   type ConnectionStatus =
     | "connecting"
     | "connected"
@@ -88,143 +102,104 @@
     | "offline"
 
   let status = $state<ConnectionStatus>("connecting")
-  let svgVehicles = $state<SvgVehicle[]>([])
-  let clientId = $state<string | null>(null)
-  let eventSource: EventSource | null = null
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  let reconnectAttempts = 0
+  let vehicles = $state<SvgVehicle[]>([])
+  let client: VehicleTrafficClient | null = null
 
-  const MAX_RECONNECTS = 8
-  const BASE_DELAY_MS = 1800
+  // ── VehicleTrafficClient wiring ────────────────────────────────────────────
 
-  function buildSSEUrl(): string {
-    const params = new URLSearchParams()
-    if (clientId) params.set("clientId", clientId)
+  onMount(async () => {
+    client = new VehicleTrafficClient({ url: hypnotizUrl })
 
-    const bounds = getCityBounds()
-    params.set(
-      "bounds",
-      `${bounds.sw.lat},${bounds.sw.lng},${bounds.ne.lat},${bounds.ne.lng}`,
-    )
+    const unsub = client.on((event) => {
+      switch (event.type) {
+        case "connected":
+          status = "connected"
+          subscribeCurrentViewport()
+          break
 
-    return `${sseUrl}?${params.toString()}`
-  }
+        case "disconnected":
+          status = "offline"
+          vehicles = []
+          break
 
-  function connect() {
-    if (eventSource) {
-      eventSource.close()
-      eventSource = null
-    }
+        case "error":
+          // Client handles reconnect internally; we just reflect degraded UI
+          if (status === "connected") status = "reconnecting"
+          break
 
-    status = reconnectAttempts === 0 ? "connecting" : "reconnecting"
+        case "backpressure":
+          // Optional: show degraded state
+          break
 
-    eventSource = new EventSource(buildSSEUrl())
-
-    eventSource.onopen = () => {
-      status = "connected"
-      reconnectAttempts = 0
-    }
-
-    eventSource.onerror = () => {
-      status = "reconnecting"
-      eventSource?.close()
-      eventSource = null
-
-      if (reconnectAttempts >= MAX_RECONNECTS) {
-        status = "offline"
-        return
-      }
-
-      const delay = BASE_DELAY_MS * Math.pow(1.6, reconnectAttempts)
-      reconnectTimer = setTimeout(() => {
-        reconnectAttempts++
-        connect()
-      }, delay)
-    }
-
-    // SSE Event Listeners
-    eventSource.addEventListener("vehicle_update", (e: MessageEvent) => {
-      try {
-        const payload = JSON.parse(e.data)
-        const raw: SSEVehicle[] = payload?.data?.vehicles ?? []
-
-        const bounds = getCityBounds()
-
-        svgVehicles = raw
-          .filter((v) => v.status === "active")
-          .map((v, i) => {
-            const { x, y } = projectToSvg(
-              v.currentPosition.lat,
-              v.currentPosition.lng,
-              bounds,
-            )
-            return {
-              id: v.id,
-              x,
-              y,
-              color: vehicleColor(v),
-              pulse: (i * 0.7) % (Math.PI * 2),
-              label: v.saccoName || v.plateNumber,
-            }
-          })
-          .filter((v) => v.x >= 0 && v.x <= width && v.y >= 0 && v.y <= height)
-      } catch (err) {
-        console.warn("Failed to parse vehicle_update event", err)
+        case "update":
+          // event.payload is SirtebasinResponse { ts, items: AttentionItem[] }
+          vehicles = toSvgVehicles(event.payload.items)
+          break
       }
     })
 
-    eventSource.addEventListener("heartbeat", () => {
-      // Connection is alive
-    })
-
-    eventSource.addEventListener("connected", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data)
-        clientId = data.data?.clientId ?? null
-      } catch {}
-    })
-  }
-
-  function disconnect() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
+    try {
+      await client.connect()
+    } catch {
+      status = "offline"
     }
-    eventSource?.close()
-    eventSource = null
-    status = "offline"
-    svgVehicles = []
-  }
 
-  // Lifecycle
-  onMount(() => {
-    connect()
+    // Return unsub so Svelte can call it if the effect ever re-runs
+    // (In practice onMount runs once; we handle cleanup in onDestroy)
+    return unsub
   })
 
   onDestroy(() => {
-    disconnect()
+    client?.destroy()
+    client = null
   })
 
-  // ── Pulse Animation ───────────────────────────────────────────────────────
-  let tick = $state(0)
-  let rafId: number | null = null
-
-  $effect(() => {
-    function loop() {
-      tick = (tick + 1) % 120
-      rafId = requestAnimationFrame(loop)
+  function subscribeCurrentViewport() {
+    if (!client) return
+    const { sw, ne } = getCityBounds()
+    const center = {
+      lat: (sw.lat + ne.lat) / 2,
+      lng: (sw.lng + ne.lng) / 2,
     }
-    rafId = requestAnimationFrame(loop)
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  })
+    client
+      .subscribe({
+        viewport: {
+          minLat: sw.lat,
+          maxLat: ne.lat,
+          minLng: sw.lng,
+          maxLng: ne.lng,
+        },
+        center,
+        zoom: 12,
+        budget: { total: 300, reserved: { anomalies: 20, clusters: 30 } },
+        policy: { includeAnomalies: true, includeHighSpeed: true },
+      })
+      .catch(() => {}) // subscribe is best-effort
+  }
 
-  const pulseScale = (base: number) =>
-    1 + Math.sin((tick / 120) * Math.PI * 2 + base) * 0.35
+  // ── Coordinate mapping ─────────────────────────────────────────────────────
 
-  // ── UI Helpers ───────────────────────────────────────────────────────────
-  const cityName = requestContext?.city ?? "Nairobi"
+  function toSvgVehicles(items: AttentionItem[]): SvgVehicle[] {
+    return items
+      .filter((item) => item.kind === "vehicle")
+      .map((item) => {
+        const { x, y } = projectToSvg(item.lat, item.lng)
+        const isPartner = partnerSaccoIds.includes((item as any).saccoId ?? "")
+        return {
+          id: item.id,
+          x,
+          y,
+          color: vehicleColor(isPartner),
+          phaseOffset: idToPhase(item.id),
+          label:
+            (item as any).saccoName ?? (item as any).plateNumber ?? item.id,
+          isPartner,
+        }
+      })
+      .filter((v) => v.x >= 0 && v.x <= width && v.y >= 0 && v.y <= height)
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
 
   const STATUS_COLOR: Record<ConnectionStatus, string> = {
     connected: "#00b09b",
@@ -235,12 +210,15 @@
 
   const STATUS_LABEL: Record<ConnectionStatus, string> = {
     connected: "LIVE",
-    connecting: "Connecting...",
-    reconnecting: "Reconnecting...",
+    connecting: "Connecting…",
+    reconnecting: "Reconnecting…",
     offline: "Offline",
   }
 
-  // ── Decorative Elements ───────────────────────────────────────────────────
+  const cityName = $derived(requestContext?.city ?? "Nairobi")
+
+  // ── Decorative hex grid ────────────────────────────────────────────────────
+
   const HEX_R = 22
   const H = HEX_R * Math.sqrt(3)
   const cols = Math.ceil(width / (HEX_R * 1.5)) + 2
@@ -253,20 +231,13 @@
     }).join(" ")
   }
 
-  interface HexCell {
-    cx: number
-    cy: number
-    key: string
-  }
-
-  const hexGrid: HexCell[] = []
-  for (let col = -1; col < cols; col++) {
-    for (let row = -1; row < rows; row++) {
-      const cx = col * HEX_R * 1.5
-      const cy = row * H + (col % 2 === 0 ? 0 : H / 2)
-      hexGrid.push({ cx, cy, key: `${col}-${row}` })
-    }
-  }
+  const hexGrid = Array.from({ length: cols }, (_, col) =>
+    Array.from({ length: rows }, (_, row) => ({
+      cx: col * HEX_R * 1.5,
+      cy: row * H + (col % 2 === 0 ? 0 : H / 2),
+      key: `${col}-${row}`,
+    })),
+  ).flat()
 
   const roads = [
     "M 60 190 Q 200 160 400 180 Q 500 185 580 170",
@@ -323,55 +294,48 @@
       />
     {/each}
 
-    <!-- Live Vehicles -->
-    {#each svgVehicles as v (v.id)}
-      {@const ps = pulseScale(v.pulse)}
-      <!-- Outer pulse ring -->
-      <circle
-        cx={v.x}
-        cy={v.y}
-        r={(9 + v.pulse) * ps}
-        fill="none"
-        stroke={v.color}
-        stroke-width="1"
-        opacity={0.18 / ps}
-      />
-      <!-- Inner pulse ring -->
-      <circle
-        cx={v.x}
-        cy={v.y}
-        r={(5 + v.pulse * 0.5) * (1 + (1 - ps) * 0.3)}
-        fill="none"
-        stroke={v.color}
-        stroke-width="0.8"
-        opacity="0.30"
-      />
-      <!-- Vehicle body -->
-      <rect
-        x={v.x - 7}
-        y={v.y - 4.5}
-        width="14"
-        height="9"
-        rx="2.5"
-        fill={v.color}
-        filter="url(#vglow)"
-        opacity="0.92"
-      />
-      <!-- Windscreen reflection -->
-      <rect
-        x={v.x - 4}
-        y={v.y - 3}
-        width="4"
-        height="2.5"
-        rx="1"
-        fill="rgba(255,255,255,0.30)"
-      />
-      <!-- Route dot -->
-      <circle cx={v.x + 4} cy={v.y - 1} r="1.5" fill="rgba(0,0,0,0.4)" />
+    <!-- Live Vehicles ─────────────────────────────────────────────────────
+         Pulse is entirely CSS-driven.
+         animation-delay offsets each vehicle by its stable phaseOffset
+         so they don't all throb in sync, without any JS per frame.
+    ───────────────────────────────────────────────────────────────────── -->
+    {#each vehicles as v (v.id)}
+      <g
+        class="vehicle"
+        style="--color:{v.color}; --delay:{-(v.phaseOffset * 2).toFixed(3)}s"
+        transform="translate({v.x},{v.y})"
+      >
+        <!-- Outer pulse ring — CSS animates r and opacity via stroke-width trick -->
+        <circle class="pulse-outer" cx="0" cy="0" r="12" />
+        <!-- Inner pulse ring -->
+        <circle class="pulse-inner" cx="0" cy="0" r="6" />
+        <!-- Vehicle body -->
+        <rect
+          x="-7"
+          y="-4.5"
+          width="14"
+          height="9"
+          rx="2.5"
+          fill="var(--color)"
+          filter="url(#vglow)"
+          opacity="0.92"
+        />
+        <!-- Windscreen glint -->
+        <rect
+          x="-4"
+          y="-3"
+          width="4"
+          height="2.5"
+          rx="1"
+          fill="rgba(255,255,255,0.30)"
+        />
+        <!-- Route dot -->
+        <circle cx="4" cy="-1" r="1.5" fill="rgba(0,0,0,0.40)" />
+      </g>
     {/each}
 
     <!-- Empty state -->
-    {#if svgVehicles.length === 0 && status === "connected"}
+    {#if vehicles.length === 0 && status === "connected"}
       <text
         x={width / 2}
         y={height / 2}
@@ -386,7 +350,14 @@
     {/if}
 
     <!-- Vignette -->
-    <rect {width} {height} fill="url(#mapvign)" pointer-events="none" />
+    <rect
+      x="0"
+      y="0"
+      {width}
+      {height}
+      fill="url(#mapvign)"
+      pointer-events="none"
+    />
   </svg>
 
   <!-- Corner labels -->
@@ -407,33 +378,34 @@
     </div>
   </div>
 
-  <!-- Connection Status -->
+  <!-- Connection status pill -->
   <div
     class="live-pill"
-    style="color:{STATUS_COLOR[status]}; background:{STATUS_COLOR[
-      status
-    ]}18; border-color:{STATUS_COLOR[status]}38"
+    style="
+      color: {STATUS_COLOR[status]};
+      background: {STATUS_COLOR[status]}18;
+      border-color: {STATUS_COLOR[status]}38;
+    "
   >
     <span
       class="live-dot"
-      style="background:{STATUS_COLOR[status]}; animation:{status ===
-      'connected'
-        ? 'ldot 1.5s ease infinite'
-        : 'none'}"
+      class:pulsing={status === "connected"}
+      style="background:{STATUS_COLOR[status]}"
     ></span>
     {STATUS_LABEL[status]}{status === "connected"
-      ? ` · ${svgVehicles.length}`
+      ? ` · ${vehicles.length}`
       : ""}
   </div>
 </div>
 
 <style>
+  /* ── Layout ───────────────────────────────────────────────────────────── */
+
   .map {
     position: relative;
     width: 100%;
     height: 100%;
     background: #080b0e;
-    border-radius: 0;
     overflow: hidden;
   }
 
@@ -442,6 +414,70 @@
     height: 100%;
     display: block;
   }
+
+  /* ── Vehicle pulse — CSS only, no JS per frame ────────────────────────
+     Each vehicle group carries --color and --delay custom properties.
+     The rings animate transform + opacity via @keyframes.
+     animation-delay is negative so the animation starts mid-cycle,
+     giving each vehicle a different phase from mount.
+  ───────────────────────────────────────────────────────────────────── */
+
+  .vehicle {
+    /* pointer-events: none so they don't block map interactions */
+    pointer-events: none;
+  }
+
+  .pulse-outer {
+    fill: none;
+    stroke: var(--color);
+    stroke-width: 1;
+    opacity: 0;
+    transform-origin: 0 0;
+    transform-box: fill-box;
+    animation: pulse-outer 2s ease-out var(--delay, 0s) infinite;
+  }
+
+  .pulse-inner {
+    fill: none;
+    stroke: var(--color);
+    stroke-width: 0.8;
+    opacity: 0;
+    transform-origin: 0 0;
+    transform-box: fill-box;
+    animation: pulse-inner 2s ease-out calc(var(--delay, 0s) + 0.3s) infinite;
+  }
+
+  @keyframes pulse-outer {
+    0% {
+      opacity: 0.5;
+      transform: scale(0.6);
+    }
+    70% {
+      opacity: 0.08;
+      transform: scale(1.8);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(2.2);
+    }
+  }
+
+  @keyframes pulse-inner {
+    0% {
+      opacity: 0.35;
+      transform: scale(0.7);
+    }
+    60% {
+      opacity: 0.12;
+      transform: scale(1.4);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.6);
+    }
+  }
+
+  /* ── Corner labels ────────────────────────────────────────────────────── */
 
   .corner {
     position: absolute;
@@ -453,7 +489,6 @@
     padding: 4px;
     pointer-events: none;
   }
-
   .nw {
     top: 10px;
     left: 12px;
@@ -470,6 +505,8 @@
     bottom: 10px;
     right: 12px;
   }
+
+  /* ── Legend ───────────────────────────────────────────────────────────── */
 
   .legend {
     position: absolute;
@@ -492,7 +529,10 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
+    flex-shrink: 0;
   }
+
+  /* ── Live pill ────────────────────────────────────────────────────────── */
 
   .live-pill {
     position: absolute;
@@ -512,6 +552,11 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .live-dot.pulsing {
+    animation: ldot 1.5s ease infinite;
   }
 
   @keyframes ldot {
