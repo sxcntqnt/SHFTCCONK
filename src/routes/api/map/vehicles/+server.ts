@@ -1,6 +1,6 @@
 // src/routes/api/map/vehicles/+server.ts
 import { error } from '@sveltejs/kit';
-import { getMapService, distanceBetween, formatDistance} from '$lib/map';
+import { getMapService, distanceBetween, formatDistance} from '$lib/map/index.server';
 import {compressedJsonResponse, parseBounds } from '$lib/map/index.server';
 import type { RequestHandler } from './$types';
 

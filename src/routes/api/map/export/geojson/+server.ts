@@ -1,6 +1,6 @@
 // src/routes/api/map/export/geojson/+server.ts
 import { error } from '@sveltejs/kit';
-import { getMapService } from '$lib/map';
+import { getMapService } from '$lib/map/index.server';
 import { compressedJsonResponse, parseBounds } from '$lib/map/index.server';
 import type { RequestHandler } from './$types';
 

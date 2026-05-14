@@ -1,6 +1,6 @@
 // src/routes/api/map/nodes/[id]/+server.ts
 import { json, error } from '@sveltejs/kit';
-import { getMapService } from '$lib/map';
+import { getMapService } from '$lib/map/index.server';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {

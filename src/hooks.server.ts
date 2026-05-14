@@ -41,7 +41,7 @@ import { resolveUserState } from "$lib/features/auth/services/userState.server"
 import { activateXContext } from "$lib/features/auth/contexts/context.template"
 import type { App } from "../app"
 
-import { createMapService, getMapService } from '$lib/map'
+import { createMapService, getMapService } from '$lib/map/index.server'
 import { buildMapServiceConfig } from '$lib/map/services/Config.server'
 
 
