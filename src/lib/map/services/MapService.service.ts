@@ -297,8 +297,8 @@ export class MapService {
     this._wireControllerEvents()
 
     // Connect to Hypnotiz and subscribe with the regional context.
-    await this.controller.connect()
     await this.controller.subscribe(buildRegionalContext(this.manifest))
+    await this.controller.connect()
 
     // Traffic node / edge data arrives via periodic HTTP queries (lower freq).
     this._startTrafficPoll()

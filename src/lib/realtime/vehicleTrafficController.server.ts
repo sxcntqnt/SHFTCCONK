@@ -17,7 +17,7 @@
  *   - Parquet / DuckDB        → browser only
  */
 
-import { SirtebasinBrainV3 } from '$lib/realtime/hypntyz'
+import { SirtebasinBrainV3 } from '$lib/map/hypntyz'
 import type {
   AttentionItem,
   BoundingBox,
@@ -25,7 +25,7 @@ import type {
   SirtebasinResponse,
   VehicleEvent,
   VehicleState,
-} from '$lib/realtime/hypntyz'
+} from '$lib/map/hypntyz'
 
 // ============================================================================
 // ConnectionState
@@ -70,7 +70,7 @@ export interface ControllerConfig {
 function resolveConfig(partial: Partial<ControllerConfig>): Required<ControllerConfig> {
   return {
     hypnotiz: {
-      url:                  'http://localhost:8901',
+      url:                  'http://localhost:8080',
       regionId:             'default',
       maxVehiclesPerClient: 500,
       connectionTimeoutMs:  10_000,
@@ -259,6 +259,14 @@ export class VehicleTrafficController {
   async connect(): Promise<void> {
     if (this._state === ConnectionState.CONNECTED ||
         this._state === ConnectionState.CONNECTING) return
+
+    // BUG FIX: Hypnotiz requires POST /subscribe BEFORE GET /stream.
+    // The streamHub.GetClient() check in Go will 404 if the client
+    // hasn't registered first. Subscribe here if we already have a context
+    // (reconnect path); first-time callers call subscribe() → connect() explicitly.
+    if (this.currentContext) {
+      await this._postSubscription(this.currentContext)
+    }
 
     this.transition(ConnectionState.CONNECTING)
     this.abortCtrl = new AbortController()
@@ -536,10 +544,11 @@ export class VehicleTrafficController {
     this.reconnectTimer = setTimeout(async () => {
       if (this._state === ConnectionState.DISCONNECTED) { this.reconnecting = false; return }
       try {
-        await this.connect()
+        // subscribe before connect — same order as initial startup
         if (this.currentContext) {
           await this._postSubscription(this.currentContext).catch(() => {})
         }
+        await this.connect()
         this._metrics.reconnectCount++
       } catch {
         this._scheduleReconnect()
@@ -559,17 +568,26 @@ export class VehicleTrafficController {
   // ==========================================================================
 
   private async _postSubscription(ctx: ClientContext): Promise<void> {
-    if (this._state === ConnectionState.DISCONNECTED) return
+    // No state guard here — this is intentionally called BEFORE connect()
+    // so state is still DISCONNECTED on first use. The HTTP request itself
+    // will fail fast if Hypnotiz is unreachable.
     await this._fetch(`/subscribe?client_id=${this.cfg.clientId}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         viewport: {
-          min_lat: ctx.viewport.minLat, max_lat: ctx.viewport.maxLat,
-          min_lon: ctx.viewport.minLng, max_lon: ctx.viewport.maxLng,
+          min_lat: ctx.viewport.minLat,
+          max_lat: ctx.viewport.maxLat,
+          min_lon: ctx.viewport.minLng,
+          max_lon: ctx.viewport.maxLng,
         },
-        focus:       ctx.center,
-        preferences: { anomaly_priority: ctx.policy.includeAnomalies, include_clusters: true },
+        // BUG FIX: Go expects flat focus_lat/focus_lon, not a nested focus object
+        focus_lat: ctx.center.lat,
+        focus_lon: ctx.center.lng,
+        preferences: {
+          anomaly_priority: ctx.policy.includeAnomalies,
+          include_clusters: true,
+        },
         max_results: ctx.budget.total,
         region_id:   this.cfg.hypnotiz.regionId,
       }),
