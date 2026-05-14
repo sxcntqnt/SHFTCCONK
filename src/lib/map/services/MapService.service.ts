@@ -198,7 +198,7 @@ export class MapService {
     this.upstream = new UpstreamMapClient(config.upstream)
     this.controller = new VehicleTrafficController({
       hypnotiz: {
-        url: config.hypnotiz?.url ?? process.env.HYPNOTIZ_URL ?? 'http://localhost:8080',
+        url: config.hypnotiz?.url ?? process.env.HYPNOTIZ_URL ?? 'http://localhost:8901',
         regionId: config.hypnotiz?.regionId ?? process.env.HYPNOTIZ_REGION ?? 'default',
         maxVehiclesPerClient: 5_000,
         enableBackpressure: true,

@@ -70,7 +70,7 @@ export interface ControllerConfig {
 function resolveConfig(partial: Partial<ControllerConfig>): Required<ControllerConfig> {
   return {
     hypnotiz: {
-      url:                  'http://localhost:8080',
+      url:                  'http://localhost:8901',
       regionId:             'default',
       maxVehiclesPerClient: 500,
       connectionTimeoutMs:  10_000,
