@@ -44,7 +44,7 @@
     requestContext = null,
     width = 600,
     height = 380,
-    hypnotizUrl = "http://localhost:8080",
+    hypnotizUrl = "https://hypnotiz.sxcntcnqunts.org",
     partnerSaccoIds = [],
   }: Props = $props()
 
