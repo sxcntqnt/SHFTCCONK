@@ -13,9 +13,9 @@
 
 <script lang="ts">
   import { onMount, onDestroy } from "svelte"
-  import { VehicleTrafficClient } from "$lib/realtime/vehicleTrafficClient"
+  import { VehicleTrafficClient } from "$lib/realtime/vehicleTrafficController.client"
   import type { RequestContext } from "$lib/map"
-  import type { AttentionItem } from "$lib/map/hypntyz"
+  import type { AttentionItem } from "$lib/realtime/hypntyz"
 
   // ── Types ──────────────────────────────────────────────────────────────────
 

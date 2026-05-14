@@ -1,29 +1,51 @@
 /**
- * VehicleTrafficController  (SERVER-SIDE ONLY)
+ * vehicleTrafficController.server.ts
  *
- * No EventSource. No SSE. No browser globals.
- * Safe to import in hooks.server.ts, +page.server.ts, +server.ts.
+ * Server-side controller. Connects to Hypnotiz using fetch()-based SSE
+ * (no browser EventSource — compatible with Node.js 18+ and Cloudflare Workers).
  *
- * Responsibilities:
- *   - SirtebasinBrainV3 local scoring / select()
+ * Owns:
+ *   - SSE connection to Hypnotiz (fetch + ReadableStream)
+ *   - ConnectionState FSM
+ *   - Typed event emitter (update / anomaly / backpressure / state:change / error)
+ *   - SirtebasinBrainV3 local scoring (selectLocal)
  *   - HTTP queries to Hypnotiz (vehicles, traffic nodes/edges, aggregations)
- *   - Health checks
- *   - Metrics
+ *   - Metrics + healthCheck
  *
- * NOT responsible for:
- *   - Opening an SSE connection   → VehicleTrafficClient (browser)
- *   - Maintaining live state      → brain is fed by client-side ingest
- *   - Reconnect loops             → browser handles that
+ * Does NOT own:
+ *   - SSE to browser clients  → SseStreamer.service.ts
+ *   - Parquet / DuckDB        → browser only
  */
 
-import { SirtebasinBrainV3 } from './hypntyz'
+import { SirtebasinBrainV3 } from '$lib/realtime/hypntyz'
 import type {
   AttentionItem,
   BoundingBox,
   ClientContext,
   SirtebasinResponse,
+  VehicleEvent,
   VehicleState,
-} from './hypntyz'
+} from '$lib/realtime/hypntyz'
+
+// ============================================================================
+// ConnectionState
+// ============================================================================
+
+export enum ConnectionState {
+  DISCONNECTED  = 'DISCONNECTED',
+  CONNECTING    = 'CONNECTING',
+  CONNECTED     = 'CONNECTED',
+  RECONNECTING  = 'RECONNECTING',
+  DEGRADED      = 'DEGRADED',
+}
+
+const ALLOWED: Record<ConnectionState, ConnectionState[]> = {
+  [ConnectionState.DISCONNECTED]:  [ConnectionState.CONNECTING],
+  [ConnectionState.CONNECTING]:    [ConnectionState.CONNECTED, ConnectionState.DISCONNECTED],
+  [ConnectionState.CONNECTED]:     [ConnectionState.DISCONNECTED, ConnectionState.RECONNECTING, ConnectionState.DEGRADED],
+  [ConnectionState.RECONNECTING]:  [ConnectionState.CONNECTING, ConnectionState.DISCONNECTED],
+  [ConnectionState.DEGRADED]:      [ConnectionState.CONNECTED, ConnectionState.DISCONNECTED, ConnectionState.RECONNECTING],
+}
 
 // ============================================================================
 // Config
@@ -33,7 +55,10 @@ export interface HypnotizConfig {
   url: string
   regionId?: string
   maxVehiclesPerClient?: number
-  requestTimeoutMs?: number
+  connectionTimeoutMs?: number
+  reconnectDelayMs?: number
+  maxReconnectDelayMs?: number
+  enableBackpressure?: boolean
 }
 
 export interface ControllerConfig {
@@ -42,22 +67,25 @@ export interface ControllerConfig {
   clientId?: string
 }
 
-function resolveConfig(partial: Partial<ControllerConfig>): ControllerConfig {
+function resolveConfig(partial: Partial<ControllerConfig>): Required<ControllerConfig> {
   return {
     hypnotiz: {
-      url:                  partial.hypnotiz?.url ?? 'http://localhost:8080',
-      regionId:             partial.hypnotiz?.regionId ?? 'default',
-      maxVehiclesPerClient: partial.hypnotiz?.maxVehiclesPerClient ?? 500,
-      requestTimeoutMs:     partial.hypnotiz?.requestTimeoutMs ?? 8_000,
+      url:                  'http://localhost:8080',
+      regionId:             'default',
+      maxVehiclesPerClient: 500,
+      connectionTimeoutMs:  10_000,
+      reconnectDelayMs:     2_000,
+      maxReconnectDelayMs:  30_000,
+      enableBackpressure:   true,
       ...partial.hypnotiz,
     },
     localScoreThreshold: partial.localScoreThreshold ?? 0.35,
-    clientId:            partial.clientId ?? generateClientId(),
+    clientId:            partial.clientId            ?? generateClientId(),
   }
 }
 
 // ============================================================================
-// Types re-exported (convenience)
+// Types (re-exported for MapService)
 // ============================================================================
 
 export type { AttentionItem, BoundingBox, ClientContext, SirtebasinResponse, VehicleState }
@@ -92,80 +120,312 @@ export interface TrafficAggregation {
 }
 
 export interface ControllerMetrics {
-  totalQueriesExecuted: number
-  averageQueryLatencyMs: number
+  totalMessagesReceived: number
+  totalItemsRendered: number
+  totalItemsDropped: number
+  averageItemsPerTick: number
+  lastTickAt: Date | null
+  connectionUptime: number
+  reconnectCount: number
+  backpressureEvents: number
   brainSelectCount: number
   averageBrainLatencyMs: number
 }
 
 export interface HealthStatus {
   healthy: boolean
+  connected: boolean
   hypnotizReachable: boolean
+  currentState: ConnectionState
   metrics: ControllerMetrics
-  hypnotizHealth?: { status: string; region?: string; activeClients?: number }
+  hypnotizHealth?: {
+    status: string
+    region?: string
+    activeClients?: number
+    vehicleCount?: number
+  }
 }
 
 // ============================================================================
-// VehicleTrafficController — server-side pure HTTP + brain
+// Event map
+// ============================================================================
+
+type ControllerEventMap = {
+  'update':       SirtebasinResponse
+  'anomaly':      AttentionItem
+  'backpressure': boolean
+  'state:change': ConnectionState
+  'error':        Error
+  'disconnect':   void
+}
+
+type Handler<T> = (payload: T) => void
+
+// ============================================================================
+// Typed event emitter
+// ============================================================================
+
+class TypedEmitter {
+  private map = new Map<string, Set<Handler<any>>>()
+
+  on<K extends keyof ControllerEventMap>(ev: K, fn: Handler<ControllerEventMap[K]>): void {
+    if (!this.map.has(ev)) this.map.set(ev, new Set())
+    this.map.get(ev)!.add(fn)
+  }
+
+  off<K extends keyof ControllerEventMap>(ev: K, fn: Handler<ControllerEventMap[K]>): void {
+    this.map.get(ev)?.delete(fn)
+  }
+
+  emit<K extends keyof ControllerEventMap>(ev: K, payload: ControllerEventMap[K]): void {
+    this.map.get(ev)?.forEach(fn => {
+      try { fn(payload) } catch (err) {
+        console.error(`[VehicleTrafficController] Handler error on "${ev}":`, err)
+      }
+    })
+  }
+
+  clear(): void { this.map.clear() }
+}
+
+// ============================================================================
+// Hypnotiz SSE payload
+// ============================================================================
+
+interface HypnotizStreamEvent {
+  client_id: string
+  timestamp: number
+  items?: AttentionItem[]
+  vehicles?: AttentionItem[]   // backwards-compat alias
+  backpressure?: boolean
+  mode?: 'realtime' | 'cluster' | 'degraded'
+}
+
+// ============================================================================
+// VehicleTrafficController
 // ============================================================================
 
 export class VehicleTrafficController {
-  private readonly config: ControllerConfig
+  private readonly cfg: Required<ControllerConfig>
   private readonly brain: SirtebasinBrainV3
+  private readonly emitter = new TypedEmitter()
 
-  private metrics: ControllerMetrics = {
-    totalQueriesExecuted: 0,
-    averageQueryLatencyMs: 0,
-    brainSelectCount: 0,
-    averageBrainLatencyMs: 0,
+  private _state: ConnectionState = ConnectionState.DISCONNECTED
+  private abortCtrl: AbortController | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnecting = false
+
+  private currentContext: ClientContext | null = null
+
+  // Metrics
+  private connectedAt: number | null = null
+  private _metrics = {
+    totalMessagesReceived: 0,
+    totalItemsRendered:    0,
+    totalItemsDropped:     0,
+    averageItemsPerTick:   0,
+    lastTickAt:            null as Date | null,
+    reconnectCount:        0,
+    backpressureEvents:    0,
+    brainSelectCount:      0,
   }
-  private queryLatencies:  number[] = []
-  private brainLatencies:  number[] = []
+  private brainLatencies: number[] = []
 
   constructor(config: Partial<ControllerConfig> = {}) {
-    this.config = resolveConfig(config)
-    this.brain  = new SirtebasinBrainV3()
+    this.cfg          = resolveConfig(config)
+    this.brain        = new SirtebasinBrainV3()
   }
 
   // ==========================================================================
-  // Brain — local scoring (called server-side for SSR snapshots, or by
-  //         SvelteKit load functions to seed the initial render)
+  // State
   // ==========================================================================
 
-  /**
-   * Run the brain's attention filter against a client context.
-   * Stateless from the caller's perspective — feed it items first via ingestItems().
-   */
-  select(context: ClientContext): SirtebasinResponse {
-    const t0 = performance.now()
-    const result = this.brain.select(context)
-    this._recordBrainLatency(performance.now() - t0)
-    this.metrics.brainSelectCount++
-    return result
-  }
+  get state(): ConnectionState { return this._state }
+  get clientId(): string       { return this.cfg.clientId }
 
-  /**
-   * Feed the brain a batch of items (e.g. from an HTTP query result) so
-   * select() has state to work with.
-   */
-  ingestItems(items: AttentionItem[]): void {
-    const vehicleEvents = items
-      .filter(i => i.kind === 'vehicle')
-      .map(i => ({
-        id:      i.id,
-        lat:     i.lat,
-        lng:     i.lng,
-        speed:   i.speed ?? 0,
-        heading: i.heading ?? 0,
-        ts:      Date.now(),
-      }))
-    if (vehicleEvents.length > 0) {
-      this.brain.ingest(vehicleEvents)
+  private transition(next: ConnectionState): void {
+    if (!ALLOWED[this._state].includes(next)) {
+      console.warn(`[VehicleTrafficController] Ignoring ${this._state} → ${next}`)
+      return
     }
+    this._state = next
+    this.emitter.emit('state:change', next)
+  }
+
+  // ==========================================================================
+  // Lifecycle — fetch()-based SSE reader
+  // ==========================================================================
+
+  async connect(): Promise<void> {
+    if (this._state === ConnectionState.CONNECTED ||
+        this._state === ConnectionState.CONNECTING) return
+
+    this.transition(ConnectionState.CONNECTING)
+    this.abortCtrl = new AbortController()
+
+    const url = `${this.cfg.hypnotiz.url}/stream` +
+      `?client_id=${this.cfg.clientId}&region_id=${this.cfg.hypnotiz.regionId}`
+
+    let response: Response
+    try {
+      response = await fetch(url, {
+        signal: AbortSignal.any([
+          this.abortCtrl.signal,
+          AbortSignal.timeout(this.cfg.hypnotiz.connectionTimeoutMs!),
+        ]),
+        headers: {
+          'Accept':        'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'X-Client-ID':   this.cfg.clientId,
+          'X-Region-ID':   this.cfg.hypnotiz.regionId!,
+        },
+      })
+    } catch (err) {
+      this.transition(ConnectionState.DISCONNECTED)
+      throw err
+    }
+
+    if (!response.ok || !response.body) {
+      this.transition(ConnectionState.DISCONNECTED)
+      throw new Error(`Hypnotiz SSE HTTP ${response.status}`)
+    }
+
+    this.transition(ConnectionState.CONNECTED)
+    this.connectedAt = Date.now()
+
+    // Read stream in the background — errors trigger reconnect
+    this._consumeStream(response.body).catch(err => {
+      if (this._state === ConnectionState.DISCONNECTED) return
+      this.emitter.emit('error', err instanceof Error ? err : new Error(String(err)))
+      this._scheduleReconnect()
+    })
+  }
+
+  async subscribe(context: ClientContext): Promise<void> {
+    this.currentContext = context
+    await this._postSubscription(context)
+  }
+
+  async disconnect(): Promise<void> {
+    this._clearReconnect()
+    this.abortCtrl?.abort()
+    this.abortCtrl  = null
+    this.connectedAt = null
+
+    if (this._state !== ConnectionState.DISCONNECTED) {
+      this.transition(ConnectionState.DISCONNECTED)
+    }
+
+    this.emitter.emit('disconnect', undefined as any)
+    this.emitter.clear()
+  }
+
+  // ==========================================================================
+  // Stream reader
+  // ==========================================================================
+
+  private async _consumeStream(body: ReadableStream<Uint8Array>): Promise<void> {
+    const reader  = body.getReader()
+    const decoder = new TextDecoder()
+    let   buf     = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buf += decoder.decode(value, { stream: true })
+
+        const blocks = buf.split('\n\n')
+        buf = blocks.pop() ?? ''
+
+        for (const block of blocks) {
+          const dataLine = block.split('\n').find(l => l.startsWith('data:'))
+          if (!dataLine) continue
+          const raw = dataLine.slice(5).trim()
+          if (raw) this._handleEvent(raw)
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+
+  // ==========================================================================
+  // Event handling
+  // ==========================================================================
+
+  private _handleEvent(raw: string): void {
+    let event: HypnotizStreamEvent
+    try { event = JSON.parse(raw) } catch { return }
+
+    this._metrics.totalMessagesReceived++
+    this._metrics.lastTickAt = new Date()
+
+    const items: AttentionItem[] = event.items ?? event.vehicles ?? []
+
+    if (event.backpressure) {
+      this._metrics.backpressureEvents++
+      this.emitter.emit('backpressure', true)
+      if (this._state === ConnectionState.CONNECTED) this.transition(ConnectionState.DEGRADED)
+    } else if (this._state === ConnectionState.DEGRADED) {
+      this.transition(ConnectionState.CONNECTED)
+      this.emitter.emit('backpressure', false)
+    }
+
+    if (items.length === 0) return
+
+    const vehicleEvents = this._toVehicleEvents(items)
+    if (vehicleEvents.length > 0) this.brain.ingest(vehicleEvents)
+
+    const filtered = this._brainFilter(items)
+    const dropped  = items.length - filtered.length
+
+    this._metrics.totalItemsRendered += filtered.length
+    this._metrics.totalItemsDropped  += dropped
+    this._metrics.averageItemsPerTick =
+      this._metrics.totalItemsRendered / this._metrics.totalMessagesReceived
+
+    for (const item of filtered) {
+      if (item.score > 0.85 && item.kind !== 'cluster') {
+        this.emitter.emit('anomaly', item)
+      }
+    }
+
+    this.emitter.emit('update', { ts: event.timestamp, items: filtered })
+  }
+
+  // ==========================================================================
+  // Brain
+  // ==========================================================================
+
+  selectLocal(context?: ClientContext): SirtebasinResponse {
+    const ctx = context ?? this.currentContext
+    if (!ctx) return { ts: Date.now(), items: [] }
+
+    const t0 = performance.now()
+    const result = this.brain.select(ctx)
+    rollingPush(this.brainLatencies, performance.now() - t0)
+    this._metrics.brainSelectCount++
+    return result
   }
 
   getVehicleState(vehicleId: string): VehicleState | undefined {
     return this.brain.getVehicleState(vehicleId)
+  }
+
+  private _brainFilter(items: AttentionItem[]): AttentionItem[] {
+    if (!this.currentContext) {
+      return items.filter(i => i.score >= this.cfg.localScoreThreshold)
+    }
+    const t0 = performance.now()
+    const result = this.brain.select(this.currentContext)
+    rollingPush(this.brainLatencies, performance.now() - t0)
+
+    const approved = new Set(result.items.map(i => i.id))
+    return items.filter(i =>
+      i.score >= this.cfg.localScoreThreshold || approved.has(i.id)
+    )
   }
 
   // ==========================================================================
@@ -174,45 +434,36 @@ export class VehicleTrafficController {
 
   async queryVehicles(
     viewport: BoundingBox,
-    options?: {
-      maxResults?: number
-      includeAnomalies?: boolean
-      vehicleTypes?: string[]
-    }
+    options?: { maxResults?: number; includeAnomalies?: boolean; vehicleTypes?: string[] },
   ): Promise<AttentionItem[]> {
     const params = new URLSearchParams({
-      min_lat:          String(viewport.minLat),
-      max_lat:          String(viewport.maxLat),
-      min_lon:          String(viewport.minLng),
-      max_lon:          String(viewport.maxLng),
-      max_results:      String(options?.maxResults ?? this.config.hypnotiz.maxVehiclesPerClient!),
+      min_lat:           String(viewport.minLat),
+      max_lat:           String(viewport.maxLat),
+      min_lon:           String(viewport.minLng),
+      max_lon:           String(viewport.maxLng),
+      max_results:       String(options?.maxResults ?? this.cfg.hypnotiz.maxVehiclesPerClient),
       include_anomalies: String(options?.includeAnomalies ?? true),
     })
-    if (options?.vehicleTypes?.length) {
-      params.set('vehicle_types', options.vehicleTypes.join(','))
-    }
+    if (options?.vehicleTypes?.length) params.set('vehicle_types', options.vehicleTypes.join(','))
     const data = await this._fetch<{ items: AttentionItem[] }>(`/api/vehicles?${params}`)
     return data.items ?? []
   }
 
   async queryTrafficNodes(viewport: BoundingBox): Promise<TrafficNode[]> {
     const data = await this._fetch<{ nodes: TrafficNode[] }>(
-      `/api/traffic/nodes?${this._viewportParams(viewport)}`
+      `/api/traffic/nodes?${this._vpParams(viewport)}`
     )
     return data.nodes ?? []
   }
 
   async queryTrafficEdges(viewport: BoundingBox): Promise<TrafficEdge[]> {
     const data = await this._fetch<{ edges: TrafficEdge[] }>(
-      `/api/traffic/edges?${this._viewportParams(viewport)}`
+      `/api/traffic/edges?${this._vpParams(viewport)}`
     )
     return data.edges ?? []
   }
 
-  async queryTrafficAggregations(
-    nodeId: string,
-    windowMinutes = 60
-  ): Promise<TrafficAggregation[]> {
+  async queryTrafficAggregations(nodeId: string, windowMinutes = 60): Promise<TrafficAggregation[]> {
     const data = await this._fetch<{ aggregations: TrafficAggregation[] }>(
       `/api/traffic/aggregations?node_id=${encodeURIComponent(nodeId)}&window=${windowMinutes}`
     )
@@ -220,7 +471,21 @@ export class VehicleTrafficController {
   }
 
   // ==========================================================================
-  // Health & Observability
+  // Event subscription
+  // ==========================================================================
+
+  on<K extends keyof ControllerEventMap>(ev: K, fn: Handler<ControllerEventMap[K]>): this {
+    this.emitter.on(ev, fn)
+    return this
+  }
+
+  off<K extends keyof ControllerEventMap>(ev: K, fn: Handler<ControllerEventMap[K]>): this {
+    this.emitter.off(ev, fn)
+    return this
+  }
+
+  // ==========================================================================
+  // Health & Metrics
   // ==========================================================================
 
   async healthCheck(): Promise<HealthStatus> {
@@ -229,11 +494,13 @@ export class VehicleTrafficController {
     try {
       hypnotizHealth    = await this._fetch('/health')
       hypnotizReachable = hypnotizHealth?.status === 'ok'
-    } catch { /* unreachable */ }
+    } catch { /* unreachable — don't throw */ }
 
     return {
-      healthy:          hypnotizReachable,
+      healthy:          this._state === ConnectionState.CONNECTED && hypnotizReachable,
+      connected:        this._state !== ConnectionState.DISCONNECTED,
       hypnotizReachable,
+      currentState:     this._state,
       metrics:          this.getMetrics(),
       hypnotizHealth,
     }
@@ -241,70 +508,112 @@ export class VehicleTrafficController {
 
   getMetrics(): ControllerMetrics {
     return {
-      ...this.metrics,
-      averageQueryLatencyMs: avg(this.queryLatencies),
+      ...this._metrics,
+      connectionUptime:     this.connectedAt ? Date.now() - this.connectedAt : 0,
       averageBrainLatencyMs: avg(this.brainLatencies),
     }
   }
 
-  get clientId(): string { return this.config.clientId! }
+  // ==========================================================================
+  // Reconnect
+  // ==========================================================================
+
+  private _scheduleReconnect(): void {
+    if (this.reconnecting || this._state === ConnectionState.DISCONNECTED) return
+    this.reconnecting = true
+
+    if (this._state !== ConnectionState.RECONNECTING) {
+      this.transition(ConnectionState.RECONNECTING)
+    }
+
+    const delay = this._metrics.reconnectCount === 0
+      ? this.cfg.hypnotiz.reconnectDelayMs!
+      : Math.min(
+          this.cfg.hypnotiz.reconnectDelayMs! * Math.pow(2, this._metrics.reconnectCount),
+          this.cfg.hypnotiz.maxReconnectDelayMs!,
+        )
+
+    this.reconnectTimer = setTimeout(async () => {
+      if (this._state === ConnectionState.DISCONNECTED) { this.reconnecting = false; return }
+      try {
+        await this.connect()
+        if (this.currentContext) {
+          await this._postSubscription(this.currentContext).catch(() => {})
+        }
+        this._metrics.reconnectCount++
+      } catch {
+        this._scheduleReconnect()
+      } finally {
+        this.reconnecting = false
+      }
+    }, delay + Math.random() * 500)
+  }
+
+  private _clearReconnect(): void {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
+    this.reconnecting = false
+  }
 
   // ==========================================================================
-  // HTTP helper
+  // HTTP helpers
   // ==========================================================================
+
+  private async _postSubscription(ctx: ClientContext): Promise<void> {
+    if (this._state === ConnectionState.DISCONNECTED) return
+    await this._fetch(`/subscribe?client_id=${this.cfg.clientId}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        viewport: {
+          min_lat: ctx.viewport.minLat, max_lat: ctx.viewport.maxLat,
+          min_lon: ctx.viewport.minLng, max_lon: ctx.viewport.maxLng,
+        },
+        focus:       ctx.center,
+        preferences: { anomaly_priority: ctx.policy.includeAnomalies, include_clusters: true },
+        max_results: ctx.budget.total,
+        region_id:   this.cfg.hypnotiz.regionId,
+      }),
+    })
+  }
 
   private async _fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const url = `${this.config.hypnotiz.url}${path}`
-    const t0  = performance.now()
-
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(this.config.hypnotiz.requestTimeoutMs!),
+    const res = await fetch(`${this.cfg.hypnotiz.url}${path}`, {
+      signal: AbortSignal.timeout(8_000),
       ...init,
       headers: {
-        'X-Client-ID':  this.config.clientId!,
-        'X-Region-ID':  this.config.hypnotiz.regionId!,
+        'X-Client-ID':  this.cfg.clientId,
+        'X-Region-ID':  this.cfg.hypnotiz.regionId!,
         ...init?.headers,
       },
     })
-
-    this._recordQueryLatency(performance.now() - t0)
-    this.metrics.totalQueriesExecuted++
-
-    if (!response.ok) {
-      throw new Error(`Hypnotiz ${response.status}: ${await response.text()}`)
-    }
-    return response.json() as Promise<T>
+    if (!res.ok) throw new Error(`Hypnotiz ${res.status}: ${await res.text()}`)
+    return res.json() as Promise<T>
   }
 
-  private _viewportParams(v: BoundingBox): URLSearchParams {
+  private _vpParams(v: BoundingBox): URLSearchParams {
     return new URLSearchParams({
-      min_lat: String(v.minLat),
-      max_lat: String(v.maxLat),
-      min_lon: String(v.minLng),
-      max_lon: String(v.maxLng),
+      min_lat: String(v.minLat), max_lat: String(v.maxLat),
+      min_lon: String(v.minLng), max_lon: String(v.maxLng),
     })
   }
 
-  private _recordQueryLatency(ms: number): void {
-    rollingPush(this.queryLatencies, ms)
-  }
-  private _recordBrainLatency(ms: number): void {
-    rollingPush(this.brainLatencies, ms)
+  private _toVehicleEvents(items: AttentionItem[]): VehicleEvent[] {
+    return items
+      .filter(i => i.kind === 'vehicle')
+      .map(i => ({ id: i.id, lat: i.lat, lng: i.lng, speed: i.speed ?? 0, heading: i.heading ?? 0, ts: Date.now() }))
   }
 }
 
 // ============================================================================
-// Singleton (server-side)
+// Singleton
 // ============================================================================
 
 let _instance: VehicleTrafficController | null = null
 
 export function getVehicleTrafficController(
-  config?: Partial<ControllerConfig>
+  config?: Partial<ControllerConfig>,
 ): VehicleTrafficController {
-  if (!_instance) {
-    _instance = new VehicleTrafficController(config)
-  }
+  if (!_instance) _instance = new VehicleTrafficController(config)
   return _instance
 }
 
@@ -313,7 +622,7 @@ export function getVehicleTrafficController(
 // ============================================================================
 
 function generateClientId(): string {
-  return `vc_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
+  return `map-svc-${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
 }
 
 function avg(arr: number[]): number {

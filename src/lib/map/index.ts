@@ -12,7 +12,6 @@
 //     src/service-worker.ts                  (SW scope)
 
 // ── Service singleton helpers ─────────────────────────────────────────────────
-export { createMapService, getMapService, MapService } from './services/MapService.service'
 
 // ── Bootstrap manifest ────────────────────────────────────────────────────────
 export {
