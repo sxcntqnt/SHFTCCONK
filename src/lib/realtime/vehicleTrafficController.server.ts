@@ -17,7 +17,7 @@
  *   - Parquet / DuckDB        → browser only
  */
 
-import { SirtebasinBrainV3 } from '$lib/map/hypntyz'
+import { SirtebasinBrainV3 } from '$lib/realtime/hypntyz'
 import type {
   AttentionItem,
   BoundingBox,
