@@ -1,4 +1,4 @@
-// src/lib/map/services/map.service.ts
+// src/lib/map/services/MapService.service.ts
 //
 // Map Service — Server-side Orchestrator (v2)
 //
@@ -28,11 +28,13 @@
 //
 // DATA FLOW:
 //   Hypnotiz (Go)
-//     → VehicleTrafficController.on('update')   [vehicles, clusters]
-//         → sse.broadcastVehicles()             [→ browser clients]
-//     → VehicleTrafficController.on('traffic:*') [nodes, edges — HTTP poll]
-//         → sse.broadcastTraffic()              [→ browser clients]
-//     → bootstrap()                             [manifest → SW prefetch]
+//     → VehicleTrafficController.on('update')    [vehicles, clusters — 20Hz SSE]
+//         → sse.broadcastVehicles()              [→ browser clients]
+//     → VehicleTrafficController.on('anomaly')   [high-score vehicles]
+//         → sse.broadcastAnomaly()               [→ browser clients]
+//     → VehicleTrafficController.on('traffic:*') [nodes, edges — HTTP poll 30s]
+//         → sse.broadcastTraffic()               [→ browser clients]
+//     → bootstrap()                              [manifest → SW prefetch]
 //         → sse.broadcastBootstrap()
 
 import type {
@@ -50,12 +52,15 @@ import type { SSEStreamManager } from './SseStreamer.service'
 import {
   VehicleTrafficController,
   ConnectionState,
-  type ControllerConfig,
   type TrafficNode as ControllerTrafficNode,
   type TrafficEdge,
 } from '$lib/realtime/vehicleTrafficController.server'
 
-import type { AttentionItem, BoundingBox as ControllerBoundingBox, ClientContext } from '../realtime/hypntyz'
+import type {
+  AttentionItem,
+  BoundingBox as ControllerBoundingBox,
+  ClientContext,
+} from '$lib/realtime/hypntyz'
 
 import {
   bootstrapManifestService,
@@ -79,22 +84,15 @@ function toControllerBounds(bounds: MapBoundingBox): ControllerBoundingBox {
   }
 }
 
-function toMapBounds(bounds: ControllerBoundingBox): MapBoundingBox {
-  return {
-    northEast: { lat: bounds.maxLat, lng: bounds.maxLng },
-    southWest: { lat: bounds.minLat, lng: bounds.minLng },
-  }
-}
-
 /** AttentionItem (vehicle kind) → MapTypes Vehicle */
 function adaptToVehicle(item: AttentionItem): Vehicle {
   return {
-    id: item.id,
-    lat: item.lat,
-    lng: item.lng,
-    heading: item.heading ?? 0,
-    speed: item.speed ?? 0,
-    route_id: '',
+    id:         item.id,
+    lat:        item.lat,
+    lng:        item.lng,
+    heading:    item.heading   ?? 0,
+    speed:      item.speed     ?? 0,
+    route_id:   '',
     updated_at: new Date().toISOString(),
   }
 }
@@ -102,14 +100,14 @@ function adaptToVehicle(item: AttentionItem): Vehicle {
 /** ControllerTrafficNode → MapTypes TrafficNode */
 function adaptTrafficNode(n: ControllerTrafficNode): TrafficNode {
   return {
-    id: n.id,
-    lat: n.lat,
-    lng: n.lng,
-    type: n.type,
-    saturation: n.saturation,
+    id:                   n.id,
+    lat:                  n.lat,
+    lng:                  n.lng,
+    type:                 n.type,
+    saturation:           n.saturation,
     passenger_throughput: n.passengerThroughput,
-    average_dwell_time: n.averageDwellTime,
-    updated_at: n.updatedAt,
+    average_dwell_time:   n.averageDwellTime,
+    updated_at:           n.updatedAt,
   }
 }
 
@@ -117,11 +115,11 @@ function adaptTrafficNode(n: ControllerTrafficNode): TrafficNode {
 function adaptEdgeToCorridor(e: TrafficEdge): CorridorAnalytics {
   return {
     corridor_id: e.corridorId,
-    lat: e.lat,
-    lng: e.lng,
-    speed: e.speed,
-    congestion: e.congestion,
-    updated_at: e.updatedAt,
+    lat:         e.lat,
+    lng:         e.lng,
+    speed:       e.speed,
+    congestion:  e.congestion,
+    updated_at:  e.updatedAt,
   }
 }
 
@@ -144,12 +142,12 @@ function buildRegionalContext(manifest: CityBootstrapManifest): ClientContext {
   return {
     viewport: bounds,
     center,
-    zoom: 11,   // city level — Hypnotiz resolves H3 res accordingly
+    zoom: 11,       // city level — Hypnotiz resolves H3 res accordingly
     budget: {
-      total: 5_000,          // server sees more than any single client
+      total: 5_000, // server sees more than any single client
       reserved: {
-        anomalies: 500,      // always get all anomalies server-side
-        clusters: 200,
+        anomalies: 500,
+        clusters:  200,
       },
     },
     policy: {
@@ -160,7 +158,7 @@ function buildRegionalContext(manifest: CityBootstrapManifest): ClientContext {
 }
 
 // ============================================================================
-// Upstream tile proxy (PBF / protomaps) — unchanged
+// Upstream tile proxy (PBF / protomaps)
 // ============================================================================
 
 class UpstreamMapClient {
@@ -180,51 +178,51 @@ class UpstreamMapClient {
 // ============================================================================
 
 export class MapService {
-  private sse: SSEStreamManager
-  private upstream: UpstreamMapClient
+  private sse:        SSEStreamManager
+  private upstream:   UpstreamMapClient
   private controller: VehicleTrafficController
 
-  private isRunning = false
+  private isRunning    = false
   private startPromise: Promise<void> | null = null
+  private manifest:    CityBootstrapManifest | null = null
 
-  private manifest: CityBootstrapManifest | null = null
-
-  // Traffic poll timer (vehicles are event-driven; traffic is lower-frequency HTTP)
+  // Traffic poll — vehicles are event-driven, traffic is lower-frequency HTTP
   private trafficPollTimer: ReturnType<typeof setInterval> | null = null
   private readonly TRAFFIC_POLL_MS = 30_000
 
   constructor(sse: SSEStreamManager, config: MapServiceConfig) {
-    this.sse = sse
+    this.sse      = sse
     this.upstream = new UpstreamMapClient(config.upstream)
+
     this.controller = new VehicleTrafficController({
       hypnotiz: {
-        url: config.hypnotiz?.url ?? process.env.HYPNOTIZ_URL ?? 'http://localhost:8901',
-        regionId: config.hypnotiz?.regionId ?? process.env.HYPNOTIZ_REGION ?? 'default',
+        url:                  config.hypnotiz?.url      ?? process.env.HYPNOTIZ_URL    ?? 'http://localhost:8901',
+        regionId:             config.hypnotiz?.regionId ?? process.env.HYPNOTIZ_REGION ?? 'default',
         maxVehiclesPerClient: 5_000,
-        enableBackpressure: true,
+        enableBackpressure:   true,
       },
-      // Server-side: threshold is lower because we broadcast everything to clients
-      // and let the browser brain do per-user filtering.
+      // Lower threshold server-side — broadcast everything and let the browser
+      // brain do per-user attention filtering.
       localScoreThreshold: 0.2,
       clientId: `map-service-${process.env.REGION_ID ?? 'default'}`,
     })
   }
 
   // ==========================================================================
-  // BOOTSTRAP
+  // Bootstrap
   //
   // Builds a CityBootstrapManifest from the request's geo context and
   // broadcasts it to SSE clients. Each browser client forwards to its
-  // service worker which then prefetches Parquet shards in the background.
+  // service worker which prefetches Parquet shards in the background.
   //
-  // Also updates the controller's regional subscription — new manifest
-  // means new city bounds → new viewport for Hypnotiz.
+  // Also updates the controller's regional subscription when the city changes.
   //
   // Call order:
   //   1. hooks.server.ts → mapServiceHandle → service.start()
-  //   2. GET /api/map/bootstrap (initial load, no viewport)
-  //   3. POST /api/map/bootstrap (after first render, with viewport)
+  //   2. GET  /api/map/bootstrap  (initial load, no viewport)
+  //   3. POST /api/map/bootstrap  (after first render, with viewport)
   // ==========================================================================
+
   async bootstrap(
     requestContext: RequestContext,
     viewport: MapBoundingBox,
@@ -239,8 +237,7 @@ export class MapService {
     console.log('[MapService] Manifest built:', this.manifest.cityId)
     this.sse.broadcastBootstrap(this.manifest)
 
-    // Update controller subscription to match new city context.
-    // Fire-and-forget — controller queues the update internally.
+    // Re-subscribe controller with new city bounds — fire-and-forget
     if (this.controller.state !== ConnectionState.DISCONNECTED) {
       const ctx = buildRegionalContext(this.manifest)
       this.controller.subscribe(ctx).catch(err =>
@@ -265,7 +262,7 @@ export class MapService {
     if (this.isRunning) return
     if (this.startPromise) return this.startPromise
 
-    this.startPromise = this._doStart().catch((err) => {
+    this.startPromise = this._doStart().catch(err => {
       this.startPromise = null
       throw err
     })
@@ -276,16 +273,16 @@ export class MapService {
   private async _doStart(): Promise<void> {
     console.log('[MapService] Starting...')
 
-    // Seed fallback manifest immediately (Nairobi) so the SSE broadcast
-    // has something to send before the first viewport event arrives.
+    // Seed a fallback manifest (Nairobi) immediately so SSE has something
+    // to broadcast before the first viewport event arrives from the client.
     if (!this.manifest) {
       this.manifest = bootstrapManifestService.build(
         {
-          country: 'KE',
-          city: 'Nairobi',
-          ip: null,
-          regionKey: 'KE:Nairobi',
-          approxCenter: { lat: -1.2921, lng: 36.8219 },
+          country:          'KE',
+          city:             'Nairobi',
+          ip:               null,
+          regionKey:        'KE:Nairobi',
+          approxCenter:     { lat: -1.2921, lng: 36.8219 },
           h3SeedResolution: 7,
         },
         { zoom: 12 },
@@ -293,45 +290,50 @@ export class MapService {
     }
 
     // Wire controller events → SSE broadcasts BEFORE connecting so we
-    // don't miss the first tick.
+    // never miss the first tick.
     this._wireControllerEvents()
 
-    // Connect to Hypnotiz and subscribe with the regional context.
+    // IMPORTANT: subscribe BEFORE connect.
+    // Hypnotiz's streamHub.GetClient() returns 404 if the client hasn't
+    // registered via POST /subscribe first. The controller enforces this
+    // order internally on reconnects; we mirror it here for the initial start.
+    console.log('[MapService] Subscribing controller...')
     await this.controller.subscribe(buildRegionalContext(this.manifest))
+
+    console.log('[MapService] Connecting controller...')
     await this.controller.connect()
 
-    // Traffic node / edge data arrives via periodic HTTP queries (lower freq).
+    console.log('[MapService] Stream established — listening to Hypnotiz')
+
+    // Traffic nodes/edges arrive via periodic HTTP queries (30s).
+    // Vehicles are event-driven at Hypnotiz's tick rate (20Hz).
     this._startTrafficPoll()
 
     this.isRunning = true
-    console.log('[MapService] Online — listening to Hypnotiz')
+    console.log('[MapService] Online')
   }
 
   async stop(): Promise<void> {
     if (!this.isRunning) return
 
     this._stopTrafficPoll()
-
-    // Disconnect controller (closes SSE to Hypnotiz, removes all listeners)
     await this.controller.disconnect()
-
     await this.sse.shutdown()
 
-    this.isRunning = false
+    this.isRunning    = false
     this.startPromise = null
     console.log('[MapService] Stopped')
   }
 
   // ==========================================================================
   // Controller → SSE wiring
-  //
-  // The controller is the single source of real-time truth.
-  // Each event maps to an SSE broadcast. No polling for vehicles.
   // ==========================================================================
 
   private _wireControllerEvents(): void {
-    // Vehicle + cluster updates (20Hz from Hypnotiz, brain-filtered by controller)
+    // Vehicle + cluster updates (20Hz from Hypnotiz, brain-filtered)
     this.controller.on('update', (response) => {
+      console.log('[MapService] Tick items:', response.items.length)
+
       const vehicles = response.items
         .filter(item => item.kind === 'vehicle')
         .map(adaptToVehicle)
@@ -344,26 +346,25 @@ export class MapService {
       } satisfies VehicleStreamData)
     })
 
-    // Anomalies get a dedicated broadcast so the browser can render
-    // highlights immediately, without waiting for the next full update.
+    // Anomalies — dedicated broadcast so the browser reacts immediately
+    // without waiting for the next full vehicle_update tick.
     this.controller.on('anomaly', (item) => {
       this.sse.broadcastAnomaly({
-        vehicleId: item.id,
-        lat: item.lat,
-        lng: item.lng,
-        score: item.score,
-        speed: item.speed ?? 0,
+        vehicleId:  item.id,
+        lat:        item.lat,
+        lng:        item.lng,
+        score:      item.score,
+        speed:      item.speed ?? 0,
         detectedAt: new Date().toISOString(),
       })
     })
 
-    // Backpressure signal — forward to browser clients so MapLibre can
-    // switch to cluster rendering and reduce re-render cost.
+    // Backpressure — MapLibre switches to cluster rendering on the browser
     this.controller.on('backpressure', (active) => {
       this.sse.broadcastSystemEvent({ type: 'backpressure', active })
     })
 
-    // Log state transitions for observability.
+    // State transitions — observability + browser UI feedback
     this.controller.on('state:change', (state) => {
       console.log(`[MapService] Controller state → ${state}`)
       if (state === ConnectionState.RECONNECTING) {
@@ -375,21 +376,25 @@ export class MapService {
     })
 
     this.controller.on('error', (err) => {
-      console.error('[MapService] Controller error:', err)
+      console.error('[MapService] Controller error:', err.message ?? err)
     })
   }
 
   // ==========================================================================
-  // Traffic polling (HTTP through controller → Hypnotiz → Sirtebasin)
+  // Traffic polling
   //
-  // Traffic topology changes slowly; 30-second HTTP queries are sufficient.
-  // Vehicles arrive event-driven at Hypnotiz's tick rate (20Hz).
+  // Traffic topology changes slowly — 30s HTTP poll is sufficient.
+  // Vehicles are event-driven via the SSE stream above.
+  //
+  // Set HYPNOTIZ_TRAFFIC_ENABLED=true once the /api/traffic/* endpoints
+  // are confirmed with the Hypnotiz team. Until then, the guard below
+  // silences the 404 noise.
   // ==========================================================================
 
   private _startTrafficPoll(): void {
     if (this.trafficPollTimer) return
     this.trafficPollTimer = setInterval(() => this._pushTraffic(), this.TRAFFIC_POLL_MS)
-    // Also push immediately on start
+    // Push immediately on start so the browser gets data without waiting 30s
     this._pushTraffic()
   }
 
@@ -401,39 +406,39 @@ export class MapService {
   }
 
   private async _pushTraffic(): Promise<void> {
-  if (this.controller.state === ConnectionState.DISCONNECTED) return
+    if (this.controller.state === ConnectionState.DISCONNECTED) return
 
-  // Traffic endpoints are not yet confirmed with Hypnotiz.
-  // Set HYPNOTIZ_TRAFFIC_ENABLED=true in .env once the real paths are known.
-  if (process.env.HYPNOTIZ_TRAFFIC_ENABLED !== 'true') return
+    // Guard: traffic endpoints not yet confirmed with Hypnotiz.
+    // Remove once HYPNOTIZ_TRAFFIC_ENABLED=true is set in .env.
+    if (process.env.HYPNOTIZ_TRAFFIC_ENABLED !== 'true') return
 
-  const bounds = toControllerBounds(this.currentBounds())
+    const bounds = toControllerBounds(this.currentBounds())
 
-  try {
-    const [rawNodes, rawEdges] = await Promise.all([
-      this.controller.queryTrafficNodes(bounds),
-      this.controller.queryTrafficEdges(bounds),
-    ])
+    try {
+      const [rawNodes, rawEdges] = await Promise.all([
+        this.controller.queryTrafficNodes(bounds),
+        this.controller.queryTrafficEdges(bounds),
+      ])
 
-    const nodes: TrafficNode[]           = rawNodes.map(adaptTrafficNode)
-    const corridors: CorridorAnalytics[] = rawEdges.map(adaptEdgeToCorridor)
+      const nodes:     TrafficNode[]       = rawNodes.map(adaptTrafficNode)
+      const corridors: CorridorAnalytics[] = rawEdges.map(adaptEdgeToCorridor)
 
-    this.sse.broadcastTraffic({
-      nodes,
-      corridors,
-      updatedAt: new Date().toISOString(),
-    } satisfies TrafficStreamData)
-  } catch (err) {
-    // Log once at warn level — do not rethrow, poll must survive individual failures
-    console.warn('[MapService] Traffic poll failed:', err instanceof Error ? err.message : err)
+      this.sse.broadcastTraffic({
+        nodes,
+        corridors,
+        updatedAt: new Date().toISOString(),
+      } satisfies TrafficStreamData)
+    } catch (err) {
+      // Warn only — poll must survive individual failures
+      console.warn('[MapService] Traffic poll failed:', err instanceof Error ? err.message : err)
+    }
   }
-}
 
   // ==========================================================================
-  // Query API (consumed by +server.ts route handlers)
+  // Query API — consumed by +server.ts route handlers
   //
-  // These delegate to the controller which routes through Hypnotiz.
-  // No SQL in this file — ClickHouse is owned by Sirtebasin → Hypnotiz.
+  // All queries delegate to the controller → Hypnotiz → Sirtebasin.
+  // No SQL in this file.
   // ==========================================================================
 
   async getTrafficNodes(
@@ -441,7 +446,7 @@ export class MapService {
     options?: { nodeTypes?: string[]; minSaturation?: number },
   ): Promise<TrafficNode[]> {
     this._ensureRunning()
-    const raw = await this.controller.queryTrafficNodes(toControllerBounds(bounds))
+    const raw   = await this.controller.queryTrafficNodes(toControllerBounds(bounds))
     const nodes = raw.map(adaptTrafficNode)
     return options?.minSaturation
       ? nodes.filter(n => n.saturation >= options.minSaturation!)
@@ -450,35 +455,35 @@ export class MapService {
 
   async getNodeById(id: string): Promise<TrafficNode | null> {
     this._ensureRunning()
-    // Single-node query: use the aggregations endpoint (most specific proxy)
     const aggs = await this.controller.queryTrafficAggregations(id, 5)
     if (aggs.length === 0) return null
-    // Reconstruct a minimal node from the latest aggregation
     const latest = aggs[aggs.length - 1]
     return {
       id,
-      lat: 0,         // caller should enrich from cached node list
-      lng: 0,
-      type: 'unknown',
-      saturation: latest.avgSaturation,
+      lat:                  0,   // caller enriches from cached node list
+      lng:                  0,
+      type:                 'unknown',
+      saturation:           latest.avgSaturation,
       passenger_throughput: latest.totalThroughput,
-      average_dwell_time: 0,
-      updated_at: latest.lastUpdate,
+      average_dwell_time:   0,
+      updated_at:           latest.lastUpdate,
     }
   }
 
   async getVehicles(bounds: MapBoundingBox): Promise<Vehicle[]> {
     this._ensureRunning()
-    // Prefer the brain's local snapshot (zero latency) for viewport queries.
+
+    // Prefer brain's local snapshot (zero latency).
     // Falls back to HTTP if no local state exists yet.
-    const localCtx = this._buildQueryContext(bounds)
+    const localCtx    = this._buildQueryContext(bounds)
     const localResult = this.controller.selectLocal(localCtx)
+
     if (localResult.items.length > 0) {
       return localResult.items
         .filter(i => i.kind === 'vehicle')
         .map(adaptToVehicle)
     }
-    // No local state — fetch from Hypnotiz via HTTP
+
     const items = await this.controller.queryVehicles(toControllerBounds(bounds))
     return items.filter(i => i.kind === 'vehicle').map(adaptToVehicle)
   }
@@ -498,23 +503,23 @@ export class MapService {
   // ==========================================================================
 
   async getHealth() {
-    const controllerHealth = await this.controller.healthCheck()
+    const controllerHealth  = await this.controller.healthCheck()
     const controllerMetrics = this.controller.getMetrics()
 
     return {
-      healthy:    controllerHealth.healthy,
-      hypnotiz:   {
-        reachable: controllerHealth.hypnotizReachable,
-        state:     controllerHealth.currentState,
-        uptime:    controllerMetrics.connectionUptime,
-        reconnects: controllerMetrics.reconnectCount,
+      healthy:   controllerHealth.healthy,
+      hypnotiz:  {
+        reachable:          controllerHealth.hypnotizReachable,
+        state:              controllerHealth.currentState,
+        uptime:             controllerMetrics.connectionUptime,
+        reconnects:         controllerMetrics.reconnectCount,
         backpressureEvents: controllerMetrics.backpressureEvents,
-        avgBrainLatencyMs: controllerMetrics.averageBrainLatencyMs,
-        itemsPerTick: controllerMetrics.averageItemsPerTick,
+        avgBrainLatencyMs:  controllerMetrics.averageBrainLatencyMs,
+        itemsPerTick:       controllerMetrics.averageItemsPerTick,
       },
-      sse:        { clients: this.sse.getClientCount() },
-      bootstrap:  !!this.manifest,
-      cityId:     this.manifest?.cityId ?? null,
+      sse:       { clients: this.sse.getClientCount() },
+      bootstrap: !!this.manifest,
+      cityId:    this.manifest?.cityId ?? null,
     }
   }
 
@@ -535,10 +540,6 @@ export class MapService {
     }
   }
 
-  /**
-   * Build a minimal ClientContext for a bounds-based query.
-   * Used when the caller doesn't have a full context (e.g. route handlers).
-   */
   private _buildQueryContext(bounds: MapBoundingBox): ClientContext {
     const cb = toControllerBounds(bounds)
     return {
@@ -547,7 +548,7 @@ export class MapService {
         lat: (cb.minLat + cb.maxLat) / 2,
         lng: (cb.minLng + cb.maxLng) / 2,
       },
-      zoom: 13,
+      zoom:   13,
       budget: { total: 1_000, reserved: { anomalies: 50, clusters: 50 } },
       policy: { includeAnomalies: true, includeHighSpeed: true },
     }

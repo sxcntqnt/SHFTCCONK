@@ -17,7 +17,7 @@
  *   - Parquet / DuckDB        → browser only
  */
 
-import { SirtebasinBrainV3 } from '$lib/realtime/hypntyz'
+import { SirtebasinBrainV3 } from '$lib/map/hypntyz'
 import type {
   AttentionItem,
   BoundingBox,
@@ -276,11 +276,18 @@ export class VehicleTrafficController {
 
     let response: Response
     try {
+      // handshakeSignal: timeout applies ONLY to TCP+HTTP header exchange.
+      // Once fetch() resolves, this signal is done — it must NOT be passed
+      // to _consumeStream, or AbortSignal.timeout() will fire 10s later and
+      // kill the long-lived SSE body read loop.
+      // abortCtrl.signal governs the stream for its entire lifetime.
+      const handshakeSignal = AbortSignal.any([
+        this.abortCtrl.signal,
+        AbortSignal.timeout(this.cfg.hypnotiz.connectionTimeoutMs!),
+      ])
+
       response = await fetch(url, {
-        signal: AbortSignal.any([
-          this.abortCtrl.signal,
-          AbortSignal.timeout(this.cfg.hypnotiz.connectionTimeoutMs!),
-        ]),
+        signal: handshakeSignal,
         headers: {
           'Accept':        'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -301,7 +308,7 @@ export class VehicleTrafficController {
     this.transition(ConnectionState.CONNECTED)
     this.connectedAt = Date.now()
 
-    // Read stream in the background — errors trigger reconnect
+    // Stream body read governed only by abortCtrl — no timeout on long-lived stream
     this._consumeStream(response.body).catch(err => {
       if (this._state === ConnectionState.DISCONNECTED) return
       this.emitter.emit('error', err instanceof Error ? err : new Error(String(err)))

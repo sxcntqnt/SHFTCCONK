@@ -12,6 +12,7 @@ export const GET: RequestHandler = async () => {
       ".*\\(marketing\\)/auth.*", // exclude (marketing)/auth
       "^/verify(/.*)?$", // standalone /verify
       "^/login(/.*)?$", // login from (marketing)
+      "^/login/invite(/.*)?$",
     ],
   })
 }
