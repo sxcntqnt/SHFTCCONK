@@ -540,6 +540,7 @@ export class SirtebasinBrainV3 {
 
     return evicted
   }
+}
 
 // ============================================================================
 // 7. Example usage (same as before)
