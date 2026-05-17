@@ -401,25 +401,33 @@ export class MapService {
   }
 
   private async _pushTraffic(): Promise<void> {
-    if (this.controller.state === ConnectionState.DISCONNECTED) return
-    const bounds = toControllerBounds(this.currentBounds())
-    try {
-      const [rawNodes, rawEdges] = await Promise.all([
-        this.controller.queryTrafficNodes(bounds),
-        this.controller.queryTrafficEdges(bounds),
-      ])
-      const nodes: TrafficNode[] = rawNodes.map(adaptTrafficNode)
-      const corridors: CorridorAnalytics[] = rawEdges.map(adaptEdgeToCorridor)
+  if (this.controller.state === ConnectionState.DISCONNECTED) return
 
-      this.sse.broadcastTraffic({
-        nodes,
-        corridors,
-        updatedAt: new Date().toISOString(),
-      } satisfies TrafficStreamData)
-    } catch (err) {
-      console.warn('[MapService] Traffic poll failed:', err)
-    }
+  // Traffic endpoints are not yet confirmed with Hypnotiz.
+  // Set HYPNOTIZ_TRAFFIC_ENABLED=true in .env once the real paths are known.
+  if (process.env.HYPNOTIZ_TRAFFIC_ENABLED !== 'true') return
+
+  const bounds = toControllerBounds(this.currentBounds())
+
+  try {
+    const [rawNodes, rawEdges] = await Promise.all([
+      this.controller.queryTrafficNodes(bounds),
+      this.controller.queryTrafficEdges(bounds),
+    ])
+
+    const nodes: TrafficNode[]           = rawNodes.map(adaptTrafficNode)
+    const corridors: CorridorAnalytics[] = rawEdges.map(adaptEdgeToCorridor)
+
+    this.sse.broadcastTraffic({
+      nodes,
+      corridors,
+      updatedAt: new Date().toISOString(),
+    } satisfies TrafficStreamData)
+  } catch (err) {
+    // Log once at warn level — do not rethrow, poll must survive individual failures
+    console.warn('[MapService] Traffic poll failed:', err instanceof Error ? err.message : err)
   }
+}
 
   // ==========================================================================
   // Query API (consumed by +server.ts route handlers)
