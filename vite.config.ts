@@ -40,7 +40,7 @@ export default defineConfig({
 
   server: {
     host: true,
-    allowedHosts: ["sxcntcnqunts.org", "chat.sxcntcnqunts.com", "sentry.io", "eu.posthog.com"],
+    allowedHosts: ["sxcntcnqunts.org", "chat.sxcntcnqunts.org","maps.sxcntcnqunts.org", "hypnotiz.sxcntcnqunts.org","games.sxcntcnqunts.org", "sentry.io", "eu.posthog.com"],
     fs: {
       allow: [".."],
     },
