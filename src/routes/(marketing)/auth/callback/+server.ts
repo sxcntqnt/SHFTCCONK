@@ -1,139 +1,327 @@
 // src/routes/auth/callback/+server.ts
 //
-// Auth Callback — Federated Governance (Production)
+// Auth Callback — Provider-Aware Edition
 //
-// Aligned with:
-//   - hooks.server.ts (supabase client from locals)
-//   - redeem_invite(invite_token uuid) actual signature
-//   - bootstrap_session() → BootstrapPayload shape
-//   - auth.ts initSession() / ROLES constants
-//   - Optimized my_permissions (federal permissions now work)
+// AUTH_PROVIDER=supabase (default):
+//   1. Exchange OAuth/magic-link code → Supabase session (via locals.supabase)
+//   2. Validate via getUser()
+//   3. Redeem invite token if present
+//   4. Bootstrap session via RPC
+//   5. Route to correct landing page
 //
-// Flow:
-//   1. Exchange OAuth/magic-link code for Supabase session
-//   2. Validate user via getUser() (hits auth server, not just cookies)
-//   3. Redeem invite token if present (creates actor + jurisdiction + membership)
-//   4. Bootstrap session via RPC for routing decision
-//   5. Route to correct landing page based on actors, permissions, orgs
+// AUTH_PROVIDER=internal:
+//   1. User already validated — locals.auth.user set by authHandle in hooks
+//   2. Sync internal identity → Supabase users row (via supabaseAdmin)
+//   3. Create user-scoped Supabase client so RPCs see correct auth.uid()
+//   4. Redeem invite token if present
+//   5. Bootstrap session via RPC
+//   6. Route to correct landing page
 //
-// The client-side +layout.ts will re-hydrate the full session store —
-// this server-side logic is for the initial redirect only.
+// CLIENT SELECTION RATIONALE:
+//   supabaseAdmin              — service role, bypasses RLS
+//                                used for: sync (getOrCreateSupabaseUser),
+//                                          admin.createSession()
+//   locals.supabase            — anon key + request cookies, respects RLS
+//                                used for: Supabase provider RPC calls
+//                                (session in cookies after code exchange)
+//   createSupabaseUserScopedClient — anon key + Authorization header
+//                                used for: internal provider RPC calls
+//                                (no cookie session; token from admin.createSession)
 
 import { redirect } from "@sveltejs/kit"
 import { isAuthApiError } from "@supabase/supabase-js"
 import type { RequestHandler } from "./$types"
+import { env } from "$env/dynamic/private"
+import { supabaseAdmin, createSupabaseUserScopedClient } from "$lib/server/db"
+import { getOrCreateSupabaseUser } from "$lib/features/auth/services/sync"
 
-export const GET: RequestHandler = async ({ url, locals: { supabase } }) => {
-  const code = url.searchParams.get("code")
+
+export const GET: RequestHandler = async ({ url, locals }) => {
+  const isInternal = env.AUTH_PROVIDER === "internal"
+
+  return isInternal
+    ? handleInternalCallback(url, locals)
+    : handleSupabaseCallback(url, locals)
+}
+
+
+/* ============================================================
+   SUPABASE PROVIDER PATH
+   Uses locals.supabase — the cookie-aware request client set up
+   by supabaseHandle in hooks. After exchangeCodeForSession(),
+   the auth session is written to cookies and all subsequent
+   supabase calls in this request are authenticated.
+============================================================ */
+
+async function handleSupabaseCallback(
+  url: URL,
+  locals: App.Locals,
+): Promise<Response> {
+  const { supabase } = locals
+  const code        = url.searchParams.get("code")
   const inviteToken = url.searchParams.get("invite")
-  const next = url.searchParams.get("next")
+  const next        = url.searchParams.get("next")
 
-  // ─── 1. Exchange code for session ────────────────────────────
+  // ── 1. Exchange code for session ─────────────────────────
   if (code) {
     try {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
       if (error) throw error
     } catch (err) {
       if (isAuthApiError(err)) {
-        // Invalid/expired code → back to login with context preserved
         const params = new URLSearchParams({ verified: "true" })
         if (inviteToken) params.set("invite", inviteToken)
         if (next) params.set("next", next)
         redirect(303, `/login/sign_in?${params.toString()}`)
       }
-      console.error("[auth/callback] Code exchange failed:", err)
+      console.error("[auth/callback:supabase] Code exchange failed:", err)
       redirect(303, "/auth/auth-code-error")
     }
   }
 
-  // ─── 2. Validate session via getUser() ───────────────────────
-  // getUser() hits the Supabase auth server to validate the JWT.
-  // More secure than getSession() which only reads cookies.
-  // One-time cost at callback — subsequent requests use cookies.
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+  // ── 2. Validate session via getUser() ─────────────────────
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
 
   if (userError || !user) {
     console.error(
-      "[auth/callback] No valid user after code exchange:",
+      "[auth/callback:supabase] No valid user after code exchange:",
       userError,
     )
     redirect(303, "/login/sign_in?error=session_expired")
   }
 
-  // ─── 3. Redeem invite token ──────────────────────────────────
-  // Runs BEFORE bootstrap so the new actor appears in the payload.
-  //
-  // redeem_invite() is idempotent:
-  //   - Success: creates actor + jurisdiction + org_member + policy_group
-  //   - Already exists: returns { status: 'already_exists' }
-  //   - Invalid/expired: raises exception (caught below)
-  //
-  // RPC signature: redeem_invite(invite_token uuid) returns jsonb
-  let inviteRedeemed = false
-  let inviteResult: {
-    status: string
-    actor_id?: string
-    actor_type?: string
-    organization_id?: string
-  } | null = null
+  // ── 3 & 4. Redeem invite + bootstrap (locals.supabase has auth.uid()) ──
+  const { inviteRedeemed, inviteResult } = await redeemInvite(supabase, inviteToken)
+  const bootstrapData = await bootstrapSession(supabase)
 
-  if (inviteToken) {
-    const { data, error: inviteError } = await supabase.rpc("redeem_invite", {
-      invite_token: inviteToken,
-    })
+  if (next && !inviteRedeemed) redirect(303, sanitizeRedirect(next))
 
-    if (inviteError) {
-      console.error("[auth/callback] Invite redemption failed:", inviteError)
-      // Non-blocking: user proceeds with existing permissions.
-      // The invite error can be surfaced in the landing page
-      // via a query param if desired.
-    } else {
-      inviteResult = data as typeof inviteResult
-      inviteRedeemed = inviteResult?.status === "success"
-    }
-  }
-
-  // ─── 4. Bootstrap session ────────────────────────────────────
-  // Returns: profile, actors, jurisdictions, org_memberships,
-  //          policy_groups, permissions (post-optimization: aggregated)
-  const { data: bootstrapData, error: bootstrapError } =
-    await supabase.rpc("bootstrap_session")
-
-  if (bootstrapError || !bootstrapData) {
-    console.error("[auth/callback] Bootstrap failed:", bootstrapError)
-    // Fallback: client-side layout will retry bootstrap
-    redirect(303, "/app/dashboard")
-  }
-
-  // ─── 5. Route to final destination ───────────────────────────
-  //
-  // Priority:
-  //   1. Explicit ?next= (unless invite was just redeemed)
-  //   2. Invite-based routing (new actor → org dashboard)
-  //   3. Permission-aware routing (admin, regulator, org, crew, etc.)
-  //   4. Default: /dashboard
-  if (next && !inviteRedeemed) {
-    redirect(303, sanitizeRedirect(next))
-  }
-
-  const destination = resolveDestination(bootstrapData as BootstrapPayload, {
-    inviteRedeemed,
-    inviteResult,
-    inviteToken,
-    next,
-  })
-
-  redirect(303, destination)
+  redirect(
+    303,
+    resolveDestination(bootstrapData, { inviteRedeemed, inviteResult, inviteToken, next }),
+  )
 }
 
+
 /* ============================================================
-   TYPES — minimal bootstrap shape for routing decisions.
-   The full EffectivePermission[] is in the payload but we don't
-   need it server-side — client layout will hydrate the store.
+   INTERNAL PROVIDER PATH
+   User authenticated via internal auth service — no Supabase
+   session cookie exists. We use supabaseAdmin for privileged
+   operations, then derive a user-scoped client so RPC calls
+   have the correct auth.uid() in Postgres.
 ============================================================ */
+
+async function handleInternalCallback(
+  url: URL,
+  locals: App.Locals,
+): Promise<Response> {
+  const inviteToken = url.searchParams.get("invite")
+  const next        = url.searchParams.get("next")
+
+  // ── 1. Confirm internal user resolved by authHandle ───────
+  const internalUser = locals.auth.user
+
+  if (!internalUser?.id) {
+    console.error(
+      "[auth/callback:internal] locals.auth.user missing — " +
+      "authHandle may not have run or session cookie is invalid",
+    )
+    redirect(303, "/login/sign_in?error=session_missing")
+  }
+
+  // ── 2. Sync internal identity → Supabase users row ────────
+  // supabaseAdmin bypasses RLS so we can upsert the users table
+  // even when the user has no row yet (which is always true on
+  // first login). Never use locals.supabase here — RLS blocks it.
+  const syncResult = await getOrCreateSupabaseUser(
+    supabaseAdmin,
+    internalUser.id,
+    internalUser.email,
+  )
+
+  if (syncResult.supabaseUserId === null) {
+    console.error(
+      "[auth/callback:internal] Sync failed for internal user:",
+      internalUser.id,
+      syncResult.error.message,
+    )
+    redirect(303, "/auth/auth-code-error")
+  }
+
+  const { supabaseUserId } = syncResult
+
+  // Persist to locals so downstream load functions have it
+  locals.supabaseUserId = supabaseUserId
+
+  if (syncResult.created) {
+    console.info(
+      "[auth/callback:internal] New Supabase user created:",
+      supabaseUserId,
+      "← internal:",
+      internalUser.id,
+    )
+  }
+
+  // ── 3. Derive user-scoped client for RPC calls ────────────
+  // RPCs (bootstrap_session, redeem_invite) rely on auth.uid() in
+  // Postgres. Without a Supabase session cookie, auth.uid() is null
+  // and all user-scoped queries fail. We request a short-lived
+  // admin session for the synced user and pass its access_token as
+  // the Authorization header — Postgres sees the correct auth.uid()
+  // without any changes to RPC signatures or RLS policies.
+  const {
+    data: { session: adminSession },
+    error: adminSessionError,
+  } = await supabaseAdmin.auth.admin.createSession({ userId: supabaseUserId })
+
+  if (adminSessionError || !adminSession) {
+    console.error(
+      "[auth/callback:internal] Failed to create admin Supabase session:",
+      adminSessionError,
+    )
+    redirect(303, "/auth/auth-code-error")
+  }
+
+  // createSupabaseUserScopedClient injects the token as an
+  // Authorization header — auth.uid() = supabaseUserId in Postgres.
+  const userScopedClient = createSupabaseUserScopedClient(
+    adminSession.access_token,
+  )
+
+  // ── 4 & 5. Redeem invite + bootstrap (userScopedClient has auth.uid()) ─
+  const { inviteRedeemed, inviteResult } = await redeemInvite(userScopedClient, inviteToken)
+  const bootstrapData = await bootstrapSession(userScopedClient)
+
+  if (next && !inviteRedeemed) redirect(303, sanitizeRedirect(next))
+
+  redirect(
+    303,
+    resolveDestination(bootstrapData, { inviteRedeemed, inviteResult, inviteToken, next }),
+  )
+}
+
+
+/* ============================================================
+   SHARED HELPERS — provider-agnostic, accept any Supabase client
+============================================================ */
+
+async function redeemInvite(
+  client: ReturnType<typeof createSupabaseUserScopedClient>,
+  inviteToken: string | null,
+): Promise<{ inviteRedeemed: boolean; inviteResult: InviteResult | null }> {
+  if (!inviteToken) return { inviteRedeemed: false, inviteResult: null }
+
+  const { data, error } = await client.rpc("redeem_invite", {
+    invite_token: inviteToken,
+  })
+
+  if (error) {
+    // Non-blocking — user continues with existing permissions.
+    // Surface the error on the landing page via query param if needed.
+    console.warn("[auth/callback] Invite redemption failed (non-blocking):", error)
+    return { inviteRedeemed: false, inviteResult: null }
+  }
+
+  const inviteResult = data as InviteResult | null
+  return {
+    inviteRedeemed: inviteResult?.status === "success",
+    inviteResult,
+  }
+}
+
+async function bootstrapSession(
+  client: ReturnType<typeof createSupabaseUserScopedClient>,
+): Promise<BootstrapPayload> {
+  const { data, error } = await client.rpc("bootstrap_session")
+
+  if (error || !data) {
+    console.error("[auth/callback] Bootstrap failed:", error)
+    redirect(303, "/app/dashboard")  // client layout will retry
+  }
+
+  return data as BootstrapPayload
+}
+
+
+/* ============================================================
+   ROUTING — same logic for both providers
+============================================================ */
+
+function resolveDestination(
+  session: BootstrapPayload,
+  ctx: RoutingContext,
+): string {
+  if (!session.profile) return "/onboarding"
+
+  const { profile, actors, organization_memberships: orgs, permissions } = session
+  const activeActors      = actors.filter((a) => a.status === "active")
+  const profileIncomplete = !profile.full_name || profile.full_name.trim() === "User"
+  const hasOnlyPassenger  =
+    activeActors.length === 0 ||
+    (activeActors.length === 1 && activeActors[0].type === "PASSENGER")
+
+  if (hasOnlyPassenger && profileIncomplete) {
+    const params = new URLSearchParams()
+    if (ctx.inviteRedeemed && ctx.inviteToken) params.set("invite", ctx.inviteToken)
+    const qs = params.toString()
+    return `/onboarding${qs ? `?${qs}` : ""}`
+  }
+
+  if (ctx.inviteRedeemed && ctx.inviteResult) {
+    if (profileIncomplete) {
+      return `/onboarding/${profile.kyc_intent ?? "passenger"}/create_profile`
+    }
+    const inviteOrgId = ctx.inviteResult.organization_id
+    if (inviteOrgId) return `/org/${inviteOrgId}/dashboard`
+    if (orgs.length === 1) return `/org/${orgs[0].organization_id}/dashboard`
+    if (orgs.length > 1) return "/org/select"
+    return "/org/dashboard"
+  }
+
+  if (ctx.next) return sanitizeRedirect(ctx.next)
+
+  const hasAdminPermission = permissions.some(
+    (p) =>
+      p.effect === "allow" &&
+      p.level === "federal" &&
+      (p.action === "admin.full" || p.action === "admin.users"),
+  )
+  if (hasAdminPermission) return "/admin/dashboard"
+
+  const actorTypes = new Set(activeActors.map((a) => a.type))
+
+  if (actorTypes.has("ADMIN")) return "/admin/dashboard"
+  if (actorTypes.has("REGULATOR") || actorTypes.has("PLANNER")) return "/app/dashboard"
+
+  const orgActorTypes = ["ORGANIZATION", "STAGE_OPERATOR", "OWNER"]
+  if (orgActorTypes.some((t) => actorTypes.has(t))) {
+    if (orgs.length === 1) return `/org/${orgs[0].organization_id}/dashboard`
+    if (orgs.length > 1) return "/org/select"
+    return "/org/dashboard"
+  }
+
+  if (actorTypes.has("DRIVER") || actorTypes.has("CONDUCTOR")) return "/crew/dashboard"
+
+  return "/app/dashboard"
+}
+
+function sanitizeRedirect(path: string): string {
+  const FALLBACK = "/app/dashboard"
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return FALLBACK
+  try {
+    const url = new URL(path, "http://localhost")
+    if (url.hostname !== "localhost") return FALLBACK
+  } catch {
+    return FALLBACK
+  }
+  return path
+}
+
+
+/* ============================================================
+   TYPES
+============================================================ */
+
 interface BootstrapPayload {
   profile: {
     id: string
@@ -141,26 +329,14 @@ interface BootstrapPayload {
     permissions_version: number
     kyc_intent: string | null
   } | null
-  actors: Array<{
-    id: string
-    type: string
-    status: string
-  }>
-  jurisdictions: Array<{
-    actor_id: string
-    level: string
-    scope_id: string | null
-  }>
+  actors: Array<{ id: string; type: string; status: string }>
+  jurisdictions: Array<{ actor_id: string; level: string; scope_id: string | null }>
   organization_memberships: Array<{
     organization_id: string
     role: string
     org_name: string
   }>
-  policy_groups: Array<{
-    group_name: string
-    level: string
-    scope_id: string | null
-  }>
+  policy_groups: Array<{ group_name: string; level: string; scope_id: string | null }>
   permissions: Array<{
     actor_id: string
     action: string
@@ -182,151 +358,4 @@ interface RoutingContext {
   inviteResult: InviteResult | null
   inviteToken: string | null
   next: string | null
-}
-
-/* ============================================================
-   ROUTING DECISION LOGIC
-
-   Uses actor types for broad routing categories, then
-   falls back to permission checks for edge cases.
-
-   The DB already resolved permissions (aggregated, deny-wins,
-   federal-aware), so we can trust the bootstrap payload.
-
-   Actor types map to route groups:
-     ADMIN                    → /admin/dashboard
-     REGULATOR, PLANNER       → /analytics
-     ORGANIZATION, OWNER,
-       STAGE_OPERATOR         → /org/{id}/dashboard (or /org/select)
-     DRIVER, CONDUCTOR        → /crew/dashboard
-     PASSENGER (default)      → /dashboard
-============================================================ */
-function resolveDestination(
-  session: BootstrapPayload,
-  ctx: RoutingContext,
-): string {
-  if (!session.profile) {
-    return "/onboarding"
-  }
-
-  const { profile, actors, organization_memberships: orgs } = session
-  const activeActors = actors.filter((a) => a.status === "active")
-  const profileIncomplete =
-    !profile.full_name || profile.full_name.trim() === "User"
-
-  const hasOnlyPassenger =
-    activeActors.length === 0 ||
-    (activeActors.length === 1 && activeActors[0].type === "PASSENGER")
-
-  // ─── New/incomplete user → onboarding ────────────────────
-  if (hasOnlyPassenger && profileIncomplete) {
-    const params = new URLSearchParams()
-    if (ctx.inviteRedeemed && ctx.inviteToken) {
-      params.set("invite", ctx.inviteToken)
-    }
-    const qs = params.toString()
-    return `/onboarding${qs ? `?${qs}` : ""}`
-  }
-
-  // ─── Just accepted invite → org dashboard ────────────────
-  if (ctx.inviteRedeemed && ctx.inviteResult) {
-    if (profileIncomplete) {
-      const intent = profile.kyc_intent ?? "passenger"
-      return `/onboarding/${intent}/create_profile`
-    }
-
-    // Direct to the invited org's dashboard
-    const inviteOrgId = ctx.inviteResult.organization_id
-    if (inviteOrgId) {
-      return `/org/${inviteOrgId}/dashboard`
-    }
-
-    if (orgs.length === 1) {
-      return `/org/${orgs[0].organization_id}/dashboard`
-    }
-    // Multiple orgs or no org context → org picker
-    return "/org/select"
-  }
-
-  // ─── Explicit next (already checked !inviteRedeemed) ─────
-  if (ctx.next) {
-    return sanitizeRedirect(ctx.next)
-  }
-
-  // ─── Permission-aware routing ────────────────────────────
-  // Check for federal-level admin permissions first (these only
-  // work after the BUG 6 fix — federal permissions in my_permissions)
-  const hasAdminPermission = session.permissions.some(
-    (p) =>
-      p.effect === "allow" &&
-      p.level === "federal" &&
-      (p.action === "admin.full" || p.action === "admin.users"),
-  )
-
-  if (hasAdminPermission) {
-    return "/admin/dashboard"
-  }
-
-  // ─── Actor-type routing ──────────────────────────────────
-  // Maps actor types to their actual route-group dashboards.
-  //
-  // Route structure:
-  //   /admin/dashboard        — ADMIN
-  //   /app/dashboard          — PASSENGER, REGULATOR, PLANNER (default app)
-  //   /crew/dashboard         — DRIVER, CONDUCTOR
-  //   /org/[orgId]/dashboard  — ORGANIZATION, STAGE_OPERATOR, OWNER
-  //   /operator/*             — STAGE_OPERATOR (fuel, trips, notifications)
-  const actorTypes = new Set(activeActors.map((a) => a.type))
-
-  if (actorTypes.has("ADMIN")) {
-    return "/admin/dashboard"
-  }
-
-  // Regulators/planners use the main app (map, feed, routes, etc.)
-  if (actorTypes.has("REGULATOR") || actorTypes.has("PLANNER")) {
-    return "/app/dashboard"
-  }
-
-  // Org-level actors → org dashboard (or picker if multiple)
-  const orgActorTypes = ["ORGANIZATION", "STAGE_OPERATOR", "OWNER"]
-  if (orgActorTypes.some((t) => actorTypes.has(t))) {
-    if (orgs.length === 1) {
-      return `/org/${orgs[0].organization_id}/dashboard`
-    }
-    if (orgs.length > 1) {
-      return "/org/select"
-    }
-    // Org actor but no org memberships (shouldn't happen, but safe fallback)
-    return "/org/dashboard"
-  }
-
-  if (actorTypes.has("DRIVER") || actorTypes.has("CONDUCTOR")) {
-    return "/crew/dashboard"
-  }
-
-  // Default: passenger or unknown → main app
-  return "/app/dashboard"
-}
-
-/* ============================================================
-   REDIRECT SANITIZATION — prevent open redirect attacks
-============================================================ */
-function sanitizeRedirect(path: string): string {
-  // Default fallback — must be a real route
-  const FALLBACK = "/app/dashboard"
-
-  if (!path || !path.startsWith("/") || path.startsWith("//")) {
-    return FALLBACK
-  }
-
-  try {
-    const url = new URL(path, "http://localhost")
-    if (url.hostname !== "localhost") {
-      return FALLBACK
-    }
-  } catch {
-    return FALLBACK
-  }
-
-  return path
 }
