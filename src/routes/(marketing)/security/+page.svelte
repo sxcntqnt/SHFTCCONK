@@ -34,18 +34,18 @@
       <div class="quick-grid">
         <div class="quick-card">
           <h3>Primary Contact</h3>
-          <a href="mailto:security@matatupulse.com" class="mono"
-            >security@matatupulse.com</a
+          <a href="mailto:security@sxcntcnqunts.org" class="mono"
+            >security@sxcntcnqunts.org</a
           >
         </div>
         <div class="quick-card">
           <h3>security.txt</h3>
           <a
-            href="https://matatupulse.com/.well-known/security.txt"
+            href="https://sxcntcnqunts.org/.well-known/security.txt"
             target="_blank"
             rel="noopener"
             class="mono link"
-            >https://matatupulse.com/.well-known/security.txt</a
+            >https://sxcntcnqunts.org/.well-known/security.txt</a
           >
           <p class="small">
             RFC 9116 compliant • Preferred contact & policy details
@@ -54,7 +54,7 @@
         <div class="quick-card">
           <h3>Program Scope</h3>
           <ul class="scope-list">
-            <li>*.matatupulse.com</li>
+            <li>*.sxcntcnqunts.org</li>
             <li>Matatu Pulse Android & iOS production apps</li>
             <li>Public APIs serving live matatu transit data</li>
           </ul>
@@ -97,7 +97,7 @@
         <a href="#disclosure" class="btn-primary">Submit Report</a>
 
         <a
-          href="https://matatupulse.com/.well-known/security.txt"
+          href="https://sxcntcnqunts.org/.well-known/security.txt"
           target="_blank"
           rel="noopener"
           class="btn-ghost">View security.txt</a
@@ -275,8 +275,8 @@
       </p>
 
       <div class="hero-actions" style="justify-content:center;">
-        <a href="mailto:security@matatupulse.com" class="btn-primary"
-          >Contact security@matatupulse.com</a
+        <a href="mailto:security@sxcntcnqunts.org" class="btn-primary"
+          >Contact security@sxcntcnqunts.org</a
         >
 
         <a
