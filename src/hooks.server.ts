@@ -33,7 +33,6 @@ import { sequence }               from '@sveltejs/kit/hooks'
 import type { HandleServerError } from '@sveltejs/kit'
 import { CSRF_SECRET }            from '$env/static/private'
 import { getPostHogClient }       from '$lib/server/posthog'
-import { createCsrfHandle }       from '$lib/sec/hooks/csrf-handle'
 
 import {
   cloudflareHttpsFix,
@@ -43,6 +42,7 @@ import {
   supabaseHandle,
   authHandle,         // NEW
   sessionSyncHandle,  // NEW
+  createCsrfHandle,
   authGuardHandle,
   userStateHandle,
 } from './hooks-server'
