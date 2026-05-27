@@ -18,9 +18,11 @@ create table roles (
   created_at timestamptz default now()
 );
 
--- User profiles (1:1 with auth.users)
+-- User profiles: canonical domain identity.
+-- No FK to auth.users — profile outlives any auth credential.
+-- Provider accounts are mapped via identity_accounts.
 create table profiles (
-  id uuid references auth.users on delete cascade not null primary key,
+  id uuid primary key default gen_random_uuid(),
   full_name text,
   company_name text,
   avatar_url text,
@@ -53,7 +55,20 @@ create table profiles (
   updated_at timestamptz default now()
 );
 
--- Actors: persona a user can assume (one user → many)
+-- Provider identity accounts.
+-- Maps external auth providers to a canonical profile.
+-- Supabase auth.users.id lands here as provider='supabase'.
+-- Future providers: 'google', 'mpesa', 'internal' (Dgraph).
+create table identity_accounts (
+  id               uuid primary key default gen_random_uuid(),
+  profile_id       uuid not null references profiles(id) on delete cascade,
+  provider         text not null,        -- 'supabase' | 'internal' | 'google' | 'mpesa'
+  provider_subject text not null,        -- auth.users.id, oauth sub, phone, Dgraph UID, etc.
+  created_at       timestamptz default now(),
+  unique (provider, provider_subject)    -- one account per provider identity
+);
+
+-- Actors: persona a user can assume (one profile → many)
 create table actors (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references profiles(id) on delete cascade,
@@ -345,8 +360,10 @@ create table access_denied_log (
 -- STRIPE / CONTACT
 -- ═══════════════════════════════════════════════════════════
 
+-- profile_id is canonical — no direct auth.users dependency.
+-- Resolve Supabase user → profile via identity_accounts.
 create table stripe_customers (
-  user_id uuid references auth.users on delete cascade not null primary key,
+  profile_id uuid references profiles(id) on delete cascade not null primary key,
   stripe_customer_id text unique,
   updated_at timestamptz default now()
 );

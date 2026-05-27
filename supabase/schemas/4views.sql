@@ -12,7 +12,8 @@
 --          NONE of the conditions → admins got 0 permissions.
 --          FIX: Added explicit federal handling in the scope join.
 --
--- Must run AFTER 03_functions.sql (depends on get_cached_actor_ids).
+-- Must run AFTER 03_functions.sql (depends on get_cached_actor_ids,
+--   get_current_profile_id).
 -- Must run BEFORE 06_rls.sql (RLS functions read my_permissions).
 -- =========================================================
 
@@ -91,7 +92,9 @@ with current_user_state as (
     coalesce((auth.jwt()->>'permissions_version')::int, 0) as jwt_version,
     public.get_cached_actor_ids() as actor_ids
   from profiles p
-  where p.id = auth.uid()
+  -- auth.uid() is the Supabase execution identity, not the profile PK.
+  -- Resolve to canonical profile via identity_accounts.
+  where p.id = public.get_current_profile_id()
 ),
 
 -- Step 1: Score permissions for conflict resolution

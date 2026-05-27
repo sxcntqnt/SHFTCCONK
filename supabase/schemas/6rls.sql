@@ -69,6 +69,11 @@
 -- Tables that are server-side only (service_role writes):
 --   stripe_customers (webhook handler), contact_requests (SvelteKit action)
 --
+-- IDENTITY NOTE:
+--   auth.uid() is the Supabase execution identity — NOT a profile FK.
+--   Self-owned fast-paths use get_current_profile_id() to resolve the
+--   canonical profile. Bare auth.uid() is only used for null-checks
+--   (authentication guard), never as a profile primary key.
 -- =========================================================
 
 
@@ -79,24 +84,24 @@
 -- admin/org-manager access via my_permissions for user management.
 --
 -- Pattern:
---   SELECT self     → auth.uid() = id (instant)
+--   SELECT self     → get_current_profile_id() = id (instant)
 --   SELECT admin    → admin.users at federal (platform admins)
 --   SELECT org-mgr  → org.manage at org (see profiles of their org's actors)
 --   INSERT          → self only (handle_new_user trigger creates profiles)
---   UPDATE self     → auth.uid() = id (instant)
+--   UPDATE self     → get_current_profile_id() = id (instant)
 --   UPDATE admin    → admin.users at federal (deactivate, edit names, etc.)
 
 alter table profiles enable row level security;
 
--- Self-owned (no my_permissions, no joins — fastest possible path)
+-- Self-owned: resolve Supabase execution identity → canonical profile
 create policy "profiles_select_self" on profiles
-  for select using (auth.uid() = id);
+  for select using (id = public.get_current_profile_id());
 
 create policy "profiles_insert_self" on profiles
-  for insert with check (auth.uid() = id);
+  for insert with check (id = public.get_current_profile_id());
 
 create policy "profiles_update_self" on profiles
-  for update using (auth.uid() = id);
+  for update using (id = public.get_current_profile_id());
 
 -- Platform admins see all profiles
 create policy "profiles_select_admin" on profiles
@@ -144,7 +149,7 @@ create policy "profiles_update_admin" on profiles
 -- actor management (deactivation, role changes, cross-org queries).
 --
 -- Pattern:
---   SELECT self     → profile_id = auth.uid() (instant)
+--   SELECT self     → profile_id = get_current_profile_id() (instant)
 --   SELECT admin    → admin.users at federal
 --   SELECT org-mgr  → org.manage at org (see actors in their org)
 --   INSERT          → self only (invite flow creates via redeem_invite)
@@ -153,12 +158,12 @@ create policy "profiles_update_admin" on profiles
 
 alter table actors enable row level security;
 
--- Self-owned (instant, no my_permissions)
+-- Self-owned: resolve Supabase execution identity → canonical profile
 create policy "actors_select_own" on actors
-  for select using (profile_id = auth.uid());
+  for select using (profile_id = public.get_current_profile_id());
 
 create policy "actors_insert_own" on actors
-  for insert with check (profile_id = auth.uid());
+  for insert with check (profile_id = public.get_current_profile_id());
 
 -- Platform admins see all actors
 create policy "actors_select_admin" on actors
@@ -392,7 +397,7 @@ create policy "vehicles_delete" on vehicles
 alter table bookings enable row level security;
 
 -- Passengers see their own bookings (fast-path)
--- + scoped vehicle.view for org/branch/dept staff
+-- + scoped booking.view for org/branch/dept staff
 create policy "bookings_select" on bookings
   for select using (
     passenger_actor_id = any(public.get_cached_actor_ids())
@@ -492,7 +497,9 @@ create policy "driver_assignments_select" on driver_assignments
   );
 
 
--- Same fix as driver_assignments.
+-- ═══════════════════════════════════════════════════════════
+-- CONDUCTOR ASSIGNMENTS [BUG 2 FIX: JOIN through vehicle_id]
+-- ═══════════════════════════════════════════════════════════
 
 alter table conductor_assignments enable row level security;
 
@@ -541,6 +548,9 @@ create policy "fleet_ownership_select" on fleet_ownership
     )
   );
 
+
+-- ═══════════════════════════════════════════════════════════
+-- COMPLIANCE EVENTS
 -- ═══════════════════════════════════════════════════════════
 
 alter table compliance_events enable row level security;
@@ -585,6 +595,9 @@ create policy "compliance_insert" on compliance_events
   );
 
 
+-- ═══════════════════════════════════════════════════════════
+-- RECONCILIATION EVENTS
+-- ═══════════════════════════════════════════════════════════
 
 alter table reconciliation_events enable row level security;
 
@@ -620,11 +633,11 @@ alter table actor_requests enable row level security;
 
 -- Users see their own requests
 create policy "actor_requests_select_own" on actor_requests
-  for select using (profile_id = auth.uid());
+  for select using (profile_id = public.get_current_profile_id());
 
 -- Users create their own requests
 create policy "actor_requests_insert_own" on actor_requests
-  for insert with check (profile_id = auth.uid());
+  for insert with check (profile_id = public.get_current_profile_id());
 
 -- Admins see all requests (federal-level)
 create policy "actor_requests_admin_select" on actor_requests
@@ -657,7 +670,7 @@ alter table invite_tokens enable row level security;
 
 -- Creators see their own invites (fast-path)
 create policy "invite_tokens_select_creator" on invite_tokens
-  for select using (created_by = auth.uid());
+  for select using (created_by = public.get_current_profile_id());
 
 -- Org managers can view org invites
 create policy "invite_tokens_select_org" on invite_tokens
@@ -766,6 +779,7 @@ alter table actor_jurisdictions enable row level security;
 alter table delegated_authority enable row level security;
 
 -- Permissions catalog: readable by all authenticated users
+-- auth.uid() is not null guards authentication only — not used as a profile FK
 create policy "permissions_select" on permissions
   for select using (auth.uid() is not null);
 
@@ -826,11 +840,12 @@ create policy "delegated_authority_select" on delegated_authority
 -- ═══════════════════════════════════════════════════════════
 -- INSERT/UPDATE/DELETE: service_role only (Stripe webhooks).
 -- SELECT: users see their own record (for billing UI).
+-- NOTE: column is profile_id (renamed from user_id in 01_tables.sql).
 
 alter table stripe_customers enable row level security;
 
 create policy "stripe_customers_select_own" on stripe_customers
-  for select using (user_id = auth.uid());
+  for select using (profile_id = public.get_current_profile_id());
 
 -- No INSERT/UPDATE/DELETE policies for anon/authenticated.
 -- Stripe webhook handler uses supabaseServiceRole which bypasses RLS.

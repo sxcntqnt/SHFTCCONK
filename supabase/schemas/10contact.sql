@@ -12,20 +12,23 @@
 -- a clean table or clean existing data first.
 -- =========================================================
 
+
 -- Email must look like an email (matches Zod's z.string().email())
 alter table contact_requests
   add constraint contact_requests_email_format
   check (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
 
 -- Message must not be empty or whitespace-only
+-- Column name: message (not message_body)
 alter table contact_requests
   add constraint contact_requests_message_not_empty
-  check (message_body is not null and char_length(trim(message_body)) > 0);
+  check (message is not null and char_length(trim(message)) > 0);
 
 -- First name must be present and non-empty
+-- Column name: first (not first_name)
 alter table contact_requests
   add constraint contact_requests_first_name_not_empty
-  check (first_name is not null and char_length(trim(first_name)) > 0);
+  check (first is not null and char_length(trim(first)) > 0);
 
 -- Reasonable length limits to prevent abuse
 alter table contact_requests
@@ -34,11 +37,12 @@ alter table contact_requests
 
 alter table contact_requests
   add constraint contact_requests_message_length
-  check (char_length(message_body) <= 10000);  -- ~2500 words
+  check (char_length(message) <= 10000);  -- ~2500 words
 
+-- Column names: first / last (not first_name / last_name)
 alter table contact_requests
   add constraint contact_requests_name_length
-  check (char_length(first_name) <= 200 and char_length(coalesce(last_name, '')) <= 200);
+  check (char_length(first) <= 200 and char_length(coalesce(last, '')) <= 200);
 
 alter table contact_requests
   add constraint contact_requests_phone_length
