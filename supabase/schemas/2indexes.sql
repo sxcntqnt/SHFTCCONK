@@ -11,6 +11,12 @@
 create index idx_actors_profile on actors(profile_id);
 create index idx_actors_type on actors(type);
 
+-- identity_accounts:
+--   (provider, provider_subject) is covered by the unique constraint index.
+--   profile_id index supports "all accounts for a profile" lookups.
+create index idx_identity_accounts_profile
+  on identity_accounts(profile_id);
+
 -- ── Hierarchy ──────────────────────────────────────────────
 create index idx_branches_org on branches(organization_id);
 create index idx_departments_branch on departments(branch_id);
@@ -121,3 +127,4 @@ create index if not exists idx_profiles_ballerine_case
 create index if not exists idx_profiles_guardian
   on public.profiles(guardian_profile_id)
   where guardian_profile_id is not null;
+

@@ -7,18 +7,20 @@
 -- Dependency chain:
 --   scope_covers_resource (leaf — no deps)
 --   get_cached_actor_ids (leaf — reads JWT only)
---   get_actor_ids_for_user (fallback — reads actors table)
---   is_jwt_version_current (reads profiles)
---   log_access_denied (writes access_denied_log)
+--   get_actor_ids_for_user (fallback — reads actors via identity_accounts)
+--   get_current_profile_id (leaf — resolves auth.uid() → canonical profile)
+--   is_jwt_version_current (reads profiles via get_current_profile_id)
+--   log_access_denied (writes access_denied_log via get_current_profile_id)
 --   can_actor_perform (uses my_permissions view + log_access_denied)
 --   can_actor_perform_on_resource (wraps can_actor_perform)
 --   current_user_can (wraps can_actor_perform_on_resource)
 --   current_user_can_in_scope (wraps can_actor_perform)
---   bootstrap_session (reads many tables + my_permissions)
+--   bootstrap_session (reads many tables + my_permissions via get_current_profile_id)
 --   get_my_effective_permissions (reads my_permissions)
---   handle_new_user (writes profiles + actors)
+--   handle_new_user (writes profiles + identity_accounts + actors)
+--   create_profile (updates profiles, auth check via identity_accounts)
 --   redeem_invite (writes actors, org_members, jurisdictions, etc.)
---   custom_access_token_hook (reads actors + profiles)
+--   custom_access_token_hook (resolves Supabase user_id via identity_accounts)
 --   set_updated_at (trigger helper)
 --   log_permission_change (audit trigger)
 --   bump_permissions_version (version trigger)
@@ -75,7 +77,8 @@ as $$
   );
 $$;
 
--- Fallback: queries actors table (used before JWT hook is enabled)
+-- Fallback: resolves Supabase user UUID → canonical profile → actor IDs.
+-- Used before JWT hook is enabled. Accepts the Supabase auth.uid() value.
 create or replace function public.get_actor_ids_for_user(user_uuid uuid)
 returns uuid[]
 language sql
@@ -83,10 +86,34 @@ security definer
 set search_path = public
 stable
 as $$
-  select coalesce(array_agg(id), '{}')
-  from actors
-  where profile_id = user_uuid
-    and status = 'active';
+  select coalesce(array_agg(a.id), '{}')
+  from actors a
+  join identity_accounts ia on ia.profile_id = a.profile_id
+  where ia.provider = 'supabase'
+    and ia.provider_subject = user_uuid::text
+    and a.status = 'active';
+$$;
+
+
+-- ─────────────────────────────────────────────────────────
+-- CANONICAL PROFILE RESOLUTION
+-- ─────────────────────────────────────────────────────────
+-- Resolves the Supabase execution identity (auth.uid()) to the
+-- canonical domain profile_id via identity_accounts.
+-- All functions that previously used auth.uid() as a profile FK
+-- call this instead. Returns NULL if no mapping exists.
+
+create or replace function public.get_current_profile_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select profile_id
+  from identity_accounts
+  where provider = 'supabase'
+    and provider_subject = auth.uid()::text;
 $$;
 
 
@@ -108,7 +135,7 @@ as $$
         0
       )
       from profiles p
-      where p.id = auth.uid()
+      where p.id = public.get_current_profile_id()
     ),
     false
   );
@@ -137,7 +164,7 @@ begin
     resource_org, resource_branch, resource_dept,
     denial_reason
   ) values (
-    p_actor_id, auth.uid(), p_action,
+    p_actor_id, public.get_current_profile_id(), p_action,
     p_res_org, p_res_branch, p_res_dept,
     p_reason
   );
@@ -336,6 +363,9 @@ $$;
 -- ─────────────────────────────────────────────────────────
 -- BOOTSTRAP SESSION (single RPC for frontend hydration)
 -- ─────────────────────────────────────────────────────────
+-- Resolves canonical profile once at the top via
+-- get_current_profile_id(), then uses it throughout.
+-- auth.uid() is the Supabase execution identity — not a profile FK.
 
 create or replace function public.bootstrap_session()
 returns jsonb
@@ -345,7 +375,10 @@ set search_path = public
 as $$
 declare
   result jsonb;
+  current_profile_id uuid;
 begin
+  current_profile_id := public.get_current_profile_id();
+
   select jsonb_build_object(
     'profile', (
       select jsonb_build_object(
@@ -357,7 +390,7 @@ begin
         'unsubscribed', p.unsubscribed,
         'permissions_version', p.permissions_version
       )
-      from profiles p where p.id = auth.uid()
+      from profiles p where p.id = current_profile_id
     ),
     'actors', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -366,7 +399,7 @@ begin
         'metadata', a.metadata, 'created_at', a.created_at
       ))
       from actors a
-      where a.profile_id = auth.uid() and a.status = 'active'
+      where a.profile_id = current_profile_id and a.status = 'active'
     ), '[]'::jsonb),
     'jurisdictions', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -376,7 +409,7 @@ begin
       ))
       from actor_jurisdictions aj
       join actors a on a.id = aj.actor_id
-      where a.profile_id = auth.uid() and a.status = 'active'
+      where a.profile_id = current_profile_id and a.status = 'active'
     ), '[]'::jsonb),
     'organization_memberships', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -387,7 +420,7 @@ begin
       from organization_members om
       join actors a on a.id = om.actor_id
       join organizations o on o.id = om.organization_id
-      where a.profile_id = auth.uid() and a.status = 'active'
+      where a.profile_id = current_profile_id and a.status = 'active'
     ), '[]'::jsonb),
     'policy_groups', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -398,7 +431,7 @@ begin
       from actor_policy_groups apg
       join policy_groups pg on pg.id = apg.group_id
       join actors a on a.id = apg.actor_id
-      where a.profile_id = auth.uid() and a.status = 'active'
+      where a.profile_id = current_profile_id and a.status = 'active'
     ), '[]'::jsonb),
     'permissions', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -443,6 +476,9 @@ $$;
 -- ─────────────────────────────────────────────────────────
 -- NEW USER TRIGGER
 -- ─────────────────────────────────────────────────────────
+-- Fires on auth.users INSERT (new.id = Supabase execution UUID).
+-- Generates an independent canonical profile_id, then maps it
+-- in identity_accounts so all subsequent calls can resolve it.
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -450,16 +486,27 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  new_profile_id uuid;
 begin
+  -- Canonical profile ID is independent of Supabase user ID
+  new_profile_id := gen_random_uuid();
+
   insert into public.profiles (id, full_name, avatar_url, permissions_version)
   values (
-    new.id,
+    new_profile_id,
     new.raw_user_meta_data->>'full_name',
     new.raw_user_meta_data->>'avatar_url',
     1
   );
+
+  -- Map the Supabase execution identity to the canonical profile
+  insert into public.identity_accounts (profile_id, provider, provider_subject)
+  values (new_profile_id, 'supabase', new.id::text);
+
   insert into public.actors (profile_id, type, status)
-  values (new.id, 'PASSENGER', 'active');
+  values (new_profile_id, 'PASSENGER', 'active');
+
   return new;
 exception when others then
   raise warning 'handle_new_user failed for %: %', new.id, sqlerrm;
@@ -467,7 +514,14 @@ exception when others then
 end;
 $$;
 
--- Client-facing profile enrichment / create_profile
+
+-- ─────────────────────────────────────────────────────────
+-- CLIENT-FACING PROFILE ENRICHMENT
+-- ─────────────────────────────────────────────────────────
+-- Authorization check: caller must own the profile being updated.
+-- Ownership is confirmed via identity_accounts, not by comparing
+-- auth.uid() directly to the profile ID.
+
 create or replace function public.create_profile(
   p_profile_id uuid,
   p_payload jsonb
@@ -479,7 +533,12 @@ as $$
 declare
   _row public.profiles%rowtype;
 begin
-  if auth.uid() is null or auth.uid()::uuid <> p_profile_id then
+  if auth.uid() is null or not exists (
+    select 1 from identity_accounts
+    where provider = 'supabase'
+      and provider_subject = auth.uid()::text
+      and profile_id = p_profile_id
+  ) then
     raise exception 'permission denied: caller must match profile id';
   end if;
 
@@ -536,6 +595,9 @@ grant execute on function public.create_profile(uuid, jsonb) to authenticated;
 -- ─────────────────────────────────────────────────────────
 -- INVITE REDEMPTION
 -- ─────────────────────────────────────────────────────────
+-- auth.uid() is the Supabase execution identity.
+-- All profile FK writes use get_current_profile_id() to get
+-- the canonical profile_id.
 
 create or replace function public.redeem_invite(invite_token uuid)
 returns jsonb
@@ -547,7 +609,10 @@ declare
   tok invite_tokens%rowtype;
   new_actor_id uuid;
   default_group_id uuid;
+  current_profile_id uuid;
 begin
+  current_profile_id := public.get_current_profile_id();
+
   select * into tok from invite_tokens where token = invite_token;
 
   if not found then
@@ -564,19 +629,19 @@ begin
   if exists (
     select 1 from actors a
     join organization_members om on om.actor_id = a.id
-    where a.profile_id = auth.uid()
+    where a.profile_id = current_profile_id
       and a.type = tok.actor_type
       and om.organization_id = tok.organization_id
   ) then
     update invite_tokens
-    set used = true, used_by = auth.uid(), used_at = now()
+    set used = true, used_by = current_profile_id, used_at = now()
     where token = invite_token;
     return jsonb_build_object('status', 'already_exists', 'message', 'Role already assigned');
   end if;
 
   -- Create actor
   insert into actors (profile_id, type, status, metadata)
-  values (auth.uid(), tok.actor_type, 'active',
+  values (current_profile_id, tok.actor_type, 'active',
     jsonb_build_object('invited_by_token', invite_token))
   returning id into new_actor_id;
 
@@ -604,11 +669,11 @@ begin
   end if;
 
   update invite_tokens
-  set used = true, used_by = auth.uid(), used_at = now()
+  set used = true, used_by = current_profile_id, used_at = now()
   where token = invite_token;
 
   insert into audit_logs (event_type, actor_id, profile_id, performed_by, details)
-  values ('INVITE_REDEEMED', new_actor_id, auth.uid(), auth.uid(),
+  values ('INVITE_REDEEMED', new_actor_id, current_profile_id, current_profile_id,
     jsonb_build_object('invite_token', invite_token,
       'actor_type', tok.actor_type, 'organization_id', tok.organization_id));
 
@@ -621,6 +686,9 @@ $$;
 -- ─────────────────────────────────────────────────────────
 -- JWT HOOK (Supabase custom access token)
 -- ─────────────────────────────────────────────────────────
+-- event->>'user_id' is the Supabase execution UUID.
+-- Resolves to canonical profile via identity_accounts, then
+-- embeds actor_ids and permissions_version into the JWT.
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -631,17 +699,24 @@ set search_path = public
 as $$
 declare
   claims jsonb;
+  current_profile_id uuid;
   user_actor_ids uuid[];
   perm_version int;
 begin
+  -- Resolve Supabase execution user → canonical profile
+  select profile_id into current_profile_id
+  from identity_accounts
+  where provider = 'supabase'
+    and provider_subject = event->>'user_id';
+
   select array_agg(a.id) into user_actor_ids
   from actors a
-  where a.profile_id = (event->>'user_id')::uuid
+  where a.profile_id = current_profile_id
     and a.status = 'active';
 
   select p.permissions_version into perm_version
   from profiles p
-  where p.id = (event->>'user_id')::uuid;
+  where p.id = current_profile_id;
 
   claims := event->'claims';
   claims := jsonb_set(claims, '{actor_ids}', coalesce(to_jsonb(user_actor_ids), '[]'::jsonb));
@@ -695,7 +770,7 @@ begin
   values (
     tg_op,
     coalesce(new.actor_id, old.actor_id),
-    auth.uid(),
+    public.get_current_profile_id(),
     tg_table_name,
     coalesce(new.id, old.id),
     jsonb_build_object(
