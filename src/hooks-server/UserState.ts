@@ -1,5 +1,5 @@
 /**
- * src/hooks/user-state.ts
+ * src/hooks-server/UserState.ts
  *
  * THE BRAIN — resolves domain state for authenticated users.
  *
@@ -12,15 +12,20 @@
  *                          with cookie preference + org-id binding
  *   - Context fallback   → always sets activeContext, never leaves it null
  *
- * This handle knows NOTHING about requestContext / location / geo.
+ * Identity source: event.locals.auth.user (set by authHandle — provider-agnostic).
+ *
+ * Profile query ID: event.locals.supabaseUserId ?? user.id
+ *   When AUTH_PROVIDER=internal, sessionSyncHandle resolves the Supabase row UUID
+ *   and writes it to supabaseUserId. All profile queries and RLS policies anchor
+ *   on that UUID. For the Supabase provider, user.id is already the Supabase UUID.
+ *
+ * This handle knows NOTHING about requestContext / location / geo / auth providers.
  * It only runs for authenticated users on non-public paths.
  *
- * Placement: AFTER authGuardHandle (event.locals.user is guaranteed populated
- *            for protected routes), LAST in the sequence.
+ * Placement: LAST in the sequence, after authGuardHandle.
  */
 
-import type { Handle }            from '@sveltejs/kit'
-import { redirect }               from '@sveltejs/kit'
+import { redirect, type Handle } from '@sveltejs/kit'
 import type { App }               from '../../app'
 import { resolveUserState }       from '$lib/features/auth/services/userState.server'
 import { activateXContext }       from '$lib/features/auth/contexts/context.template'
@@ -30,22 +35,24 @@ import { activateXContext }       from '$lib/features/auth/contexts/context.temp
 const PUBLIC_PATHS      = ['/login', '/verify', '/auth/callback', '/auth/confirm']
 const ONBOARDING_PREFIX = '/onboarding'
 
-const isPublicPath    = (pathname: string) => PUBLIC_PATHS.some((p) => pathname.startsWith(p))
+const isPublicPath     = (pathname: string) => PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 const isOnboardingPath = (pathname: string) => pathname.startsWith(ONBOARDING_PREFIX)
 
 // ─── handle ───────────────────────────────────────────────────────────────────
 
 export const userStateHandle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url
-  const user         = event.locals.user
+  const user          = event.locals.auth.user  // ← unified source; never locals.user directly
 
-  // Skip for guests and public paths — nothing to resolve
-  if (!user || isPublicPath(pathname)) {
-    return resolve(event)
-  }
+  if (!user || isPublicPath(pathname)) return resolve(event)
+
+  // Resolve the Supabase row UUID to use for all profile queries.
+  // Internal provider: sessionSyncHandle has already populated supabaseUserId.
+  // Supabase provider: user.id is already the Supabase UUID.
+  const resolveId = event.locals.supabaseUserId ?? user.id
 
   try {
-    const state = await resolveUserState(event.locals.supabase, user.id)
+    const state = await resolveUserState(event.locals.supabase, resolveId)
     event.locals.userState = state
 
     // ── guest trap ──────────────────────────────────────────────────────────
@@ -80,23 +87,17 @@ export const userStateHandle: Handle = async ({ event, resolve }) => {
 
     const preferredOrgId = event.cookies.get('active_org_id') ?? undefined
 
-    let activeContext = activateXContext(state, preferredContext, {
-      orgId: preferredOrgId,
-    })
+    let activeContext = activateXContext(state, preferredContext, { orgId: preferredOrgId })
 
     // Always fall back to passenger — never leave activeContext null
-    if (!activeContext) {
-      activeContext = activateXContext(state, 'passenger')
-    }
+    if (!activeContext) activeContext = activateXContext(state, 'passenger')
 
     event.locals.activeContext = activeContext
 
   } catch (err) {
     // Re-throw SvelteKit redirects — swallow everything else so a broken
     // profile doesn't take down the whole request pipeline
-    if (err instanceof Error && 'status' in err && 'location' in err) {
-      throw err
-    }
+    if (err instanceof Error && 'status' in err && 'location' in err) throw err
     console.error('[hooks:userStateHandle] Resolution failed:', err)
   }
 

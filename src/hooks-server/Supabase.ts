@@ -1,50 +1,37 @@
 /**
- * src/hooks/supabase.ts
+ * src/hooks-server/Supabase.ts
  *
- * Creates the per-request Supabase SSR client and service-role client, then
- * attaches a safeGetSession helper that validates the JWT server-side via
- * getUser() rather than trusting the client-controlled session object.
+ * Responsibility: create Supabase clients and zero all auth/domain locals.
  *
- * Also null-initialises all auth-related locals so downstream handles never
- * encounter `undefined` on public routes:
- *   session, user, userState, activeContext → null
+ * This handle deliberately owns NO session logic. Session resolution has
+ * moved to authHandle (Auth.ts) so that the Supabase and internal auth
+ * providers both produce the same locals.auth shape downstream.
  *
- * Note: requestContext is already set by locationHandle before this runs.
+ * Locals set:    supabase, supabaseServiceRole
+ * Locals zeroed: auth, supabaseUserId, userState, activeContext
  *
- * Placement: AFTER posthogProxy (which short-circuits /ingest routes),
- *            BEFORE authGuardHandle + userStateHandle.
+ * Placement: AFTER cloudflareHttpsFix, BEFORE authHandle.
  */
 
-import type { Handle }                      from '@sveltejs/kit'
-import type { Session, User }               from '@supabase/supabase-js'
-import type { AuthenticatorAssuranceLevelEntry } from '@supabase/supabase-js'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { createClient }                     from '@supabase/supabase-js'
+import { createClient }                            from '@supabase/supabase-js'
+import type { Handle }                             from '@sveltejs/kit'
 import {
   PUBLIC_SUPABASE_URL,
   PUBLIC_SUPABASE_ANON_KEY,
 } from '$env/static/public'
-import { PRIVATE_SUPABASE_SERVICE_ROLE }    from '$env/static/private'
-
-// ─── types ────────────────────────────────────────────────────────────────────
-
-export type SafeSessionResult = {
-  session: Session | null
-  user:    User    | null
-  amr:     AuthenticatorAssuranceLevelEntry[] | null
-}
-
-// ─── handle ───────────────────────────────────────────────────────────────────
+import { PRIVATE_SUPABASE_SERVICE_ROLE } from '$env/static/private'
 
 export const supabaseHandle: Handle = async ({ event, resolve }) => {
-  // Null-initialise all auth locals — prevents `undefined` on public routes
-  event.locals.session      = null
-  event.locals.user         = null
-  event.locals.userState    = null
-  event.locals.activeContext = null
-  // Note: requestContext already set by locationHandle
+  // ── Zero all auth/domain locals ─────────────────────────────────────────
+  // Prevents undefined-access errors in downstream handles on public routes.
+  // authHandle is the authoritative writer for event.locals.auth.
+  event.locals.auth             = { session: null, user: null, amr: [] }
+  event.locals.supabaseUserId   = null
+  event.locals.userState        = null
+  event.locals.activeContext    = null
 
-  // ── per-request SSR client (cookie-backed, user-scoped) ─────────────────
+  // ── SSR client (user-scoped, cookie-backed) ──────────────────────────────
   event.locals.supabase = createServerClient(
     PUBLIC_SUPABASE_URL,
     PUBLIC_SUPABASE_ANON_KEY,
@@ -62,7 +49,7 @@ export const supabaseHandle: Handle = async ({ event, resolve }) => {
     },
   )
 
-  // ── service-role client (admin ops, no user context) ─────────────────────
+  // ── Service-role client (RLS bypass — server-only operations) ───────────
   event.locals.supabaseServiceRole = createClient(
     PUBLIC_SUPABASE_URL,
     PRIVATE_SUPABASE_SERVICE_ROLE,
@@ -74,29 +61,11 @@ export const supabaseHandle: Handle = async ({ event, resolve }) => {
     },
   )
 
-  // Suppress the internal warning about calling getSession() server-side —
-  // we always follow up with getUser() for real validation.
+  // Suppress the @supabase/ssr warning about getSession() in server context.
+  // We call getUser() (server-validated) in authHandle — the warning is noise.
   if ('suppressGetSessionWarning' in event.locals.supabase.auth) {
-    // @ts-expect-error — internal Supabase flag
+    // @ts-expect-error — internal flag, not in public types
     event.locals.supabase.auth.suppressGetSessionWarning = true
-  }
-
-  // ── safeGetSession — validates JWT server-side ──────────────────────────
-  event.locals.safeGetSession = async (): Promise<SafeSessionResult> => {
-    const { data: { session } } = await event.locals.supabase.auth.getSession()
-    if (!session) return { session: null, user: null, amr: null }
-
-    const { data: { user }, error } = await event.locals.supabase.auth.getUser()
-    if (error || !user) return { session: null, user: null, amr: null }
-
-    const { data: aal } =
-      await event.locals.supabase.auth.mfa.getAuthenticatorAssuranceLevel()
-
-    return {
-      session,
-      user,
-      amr: aal?.currentAuthenticationMethods ?? null,
-    }
   }
 
   return resolve(event, {

@@ -5,10 +5,12 @@
  * a thin composition file with no implementation details.
  */
 
-export { cloudflareHttpsFix } from './cloudflare'
-export { locationHandle }     from './location'
-export { mapServiceHandle }   from './map-service'
-export { posthogProxy }       from './posthog'
-export { supabaseHandle }     from './supabase'
-export { authGuardHandle }    from './auth-guard'
-export { userStateHandle }    from './user-state'
+export { supabaseHandle }     from './Supabase'
+export { authHandle }         from './Auth'           // NEW
+export { sessionSyncHandle }  from './SessionSync'    // NEW
+export { authGuardHandle }    from './AuthGuard'
+export { userStateHandle }    from './UserState'
+export { locationHandle }     from './Location'
+export { mapServiceHandle }   from './MapService'
+export { cloudflareHttpsFix } from './Cloudflare'
+export { posthogProxy }       from './Posthog'
