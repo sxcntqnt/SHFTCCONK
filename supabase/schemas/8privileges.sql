@@ -43,6 +43,11 @@ grant execute on function public.get_cached_actor_ids to authenticated;
 revoke execute on function public.get_actor_ids_for_user from public, anon;
 grant execute on function public.get_actor_ids_for_user to authenticated;
 
+-- Canonical profile resolution — called by RLS self-owned policies
+-- and any function that needs to map auth.uid() → profile_id
+revoke execute on function public.get_current_profile_id from public, anon;
+grant execute on function public.get_current_profile_id to authenticated;
+
 revoke execute on function public.is_jwt_version_current from public, anon;
 grant execute on function public.is_jwt_version_current to authenticated;
 
@@ -69,9 +74,11 @@ revoke execute on function public.custom_access_token_hook from public, anon, au
 grant usage on schema public to supabase_auth_admin;
 grant execute on function public.custom_access_token_hook to supabase_auth_admin;
 
--- The hook reads these tables
+-- The hook reads these tables to embed actor_ids + permissions_version.
+-- identity_accounts is needed to resolve Supabase user_id → profile_id.
 grant select on public.actors to supabase_auth_admin;
 grant select on public.profiles to supabase_auth_admin;
+grant select on public.identity_accounts to supabase_auth_admin;
 
 
 -- ═══════════════════════════════════════════════════════════

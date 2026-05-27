@@ -13,7 +13,8 @@
 -- ─────────────────────────────────────────────────────────
 -- 1. ALL TABLES EXIST
 -- ─────────────────────────────────────────────────────────
--- PASS: 27 rows
+-- PASS: 29 rows
+-- (28 original + identity_accounts)
 
 select count(*) as table_count
 from information_schema.tables
@@ -21,6 +22,7 @@ where table_schema = 'public'
   and table_type = 'BASE TABLE'
   and table_name in (
     'roles', 'profiles', 'actors',
+    'identity_accounts',
     'organizations', 'branches', 'departments',
     'actor_jurisdictions', 'permissions', 'actor_permissions',
     'policy_groups', 'policy_group_permissions', 'actor_policy_groups',
@@ -76,6 +78,7 @@ where n.nspname = 'public'
     'can_actor_perform', 'can_actor_perform_on_resource',
     'current_user_can', 'current_user_can_in_scope',
     'get_actor_ids_for_user', 'get_cached_actor_ids',
+    'get_current_profile_id',
     'scope_covers_resource', 'custom_access_token_hook',
     'log_access_denied', 'bump_permissions_version',
     'handle_new_user', 'bootstrap_session',
@@ -229,6 +232,83 @@ $$;
 
 
 -- ─────────────────────────────────────────────────────────
+-- 14. IDENTITY ACCOUNTS — structure and trigger wiring
+-- ─────────────────────────────────────────────────────────
+
+-- 14a. identity_accounts table has expected columns
+-- PASS: 5 rows (id, profile_id, provider, provider_subject, created_at)
+select column_name, data_type
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'identity_accounts'
+order by ordinal_position;
+
+-- 14b. Unique constraint exists on (provider, provider_subject)
+-- PASS: 1 row
+select indexname, indexdef
+from pg_indexes
+where schemaname = 'public'
+  and tablename = 'identity_accounts'
+  and indexdef ilike '%provider%provider_subject%';
+
+-- 14c. profiles.id has NO foreign key to auth.users
+-- PASS: 0 rows
+-- (any row here means the old FK was not dropped)
+select
+  tc.constraint_name,
+  kcu.column_name,
+  ccu.table_schema as foreign_schema,
+  ccu.table_name as foreign_table
+from information_schema.table_constraints tc
+join information_schema.key_column_usage kcu
+  on kcu.constraint_name = tc.constraint_name
+join information_schema.constraint_column_usage ccu
+  on ccu.constraint_name = tc.constraint_name
+where tc.table_schema = 'public'
+  and tc.table_name = 'profiles'
+  and tc.constraint_type = 'FOREIGN KEY'
+  and ccu.table_name = 'users'
+  and ccu.table_schema = 'auth';
+
+-- 14d. stripe_customers references profiles, not auth.users
+-- PASS: 1 row with foreign_table = 'profiles'
+select
+  tc.constraint_name,
+  kcu.column_name,
+  ccu.table_name as foreign_table
+from information_schema.table_constraints tc
+join information_schema.key_column_usage kcu
+  on kcu.constraint_name = tc.constraint_name
+join information_schema.constraint_column_usage ccu
+  on ccu.constraint_name = tc.constraint_name
+where tc.table_schema = 'public'
+  and tc.table_name = 'stripe_customers'
+  and tc.constraint_type = 'FOREIGN KEY';
+
+-- 14e. After a test signup: verify handle_new_user wired identity correctly.
+-- Replace '<supabase-user-uuid>' with an actual auth.users.id from your test.
+-- PASS: 1 row with provider='supabase', profile_id != supabase_user_id
+/*
+select
+  ia.provider,
+  ia.provider_subject   as supabase_user_id,
+  ia.profile_id         as canonical_profile_id,
+  ia.profile_id != ia.provider_subject::uuid as ids_are_decoupled
+from identity_accounts ia
+where ia.provider = 'supabase'
+  and ia.provider_subject = '<supabase-user-uuid>';
+*/
+
+-- 14f. get_current_profile_id() function exists
+-- PASS: 1 row
+select p.proname, p.prosecdef
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname = 'get_current_profile_id';
+
+
+-- ─────────────────────────────────────────────────────────
 -- DEPLOYMENT COMPLETE CHECKLIST
 -- ─────────────────────────────────────────────────────────
 --
@@ -239,8 +319,14 @@ $$;
 --      → public.custom_access_token_hook
 --
 --  [ ] Test login flow end-to-end:
---      Sign up → profile created → PASSENGER actor created
---      → bootstrap_session returns data → frontend renders
+--      Sign up → profile created → identity_accounts row inserted
+--      → PASSENGER actor created → bootstrap_session returns data
+--      → profile.id ≠ auth.uid() (ids_are_decoupled = true in 14e)
+--      → frontend renders correctly
+--
+--  [ ] Verify identity resolution:
+--      select public.get_current_profile_id();
+--      -- must return a UUID that matches profiles.id, not auth.uid()
 --
 --  [ ] Test invite flow:
 --      Create invite_token → sign up with ?invite= param
