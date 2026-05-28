@@ -1,36 +1,51 @@
-/* 
- src/routes/+layout.ts
-
- Root client layout — creates the Supabase browser client and
- bootstraps the federated session store.
-
- ARCHITECTURE:
-   +layout.server.ts now passes:
-     { session, user, userState, activeContext, cookies }
-
-   This file:
-     1. Creates the browser/SSR Supabase client (typed with Database)
-     2. Passes userState + activeContext through to all child routes
-     3. Runs bootstrap_session() RPC ONLY as a compatibility shim
-        for components still reading from sessionStore
-     4. Returns { supabase, session, userState, activeContext, ... }
-
- BOOTSTRAP SHIM STATUS:
-   bootstrap_session() is now a compatibility bridge — NOT the source
-   of truth for domain state. userState (resolved server-side by
-   userStateHandle) is authoritative. The RPC call will be removed
-   once all components are migrated away from sessionStore.
-
-   Skip conditions for bootstrap_session():
-     - userState is present (server already resolved everything)
-     - Store already initialized for the same user
-     - No ?rebootstrap param
-
- CONTEXT STORE HYDRATION:
-   Individual context activate*() functions are called from their
-   respective route +layout.ts files (lazy pattern), NOT here.
-   Root layout does not activate any context — it only passes data.
-*/
+/**
+ * src/routes/+layout.ts
+ *
+ * Root client layout — creates the Supabase browser client and
+ * bootstraps the federated session store.
+ *
+ * ARCHITECTURE:
+ *   +layout.server.ts now passes:
+ *     { session, user, userState, activeContext, requestContext, cookies }
+ *
+ *   IDENTITY SIGNAL: use `data.user` to determine authenticated state.
+ *   Do NOT use `data.session?.user` — the internal provider session is
+ *   { sessionId, expiresAt } and has no .user field.  The Supabase
+ *   provider session does, but relying on that shape here creates a
+ *   provider-specific coupling this file must not have.
+ *
+ *   This file:
+ *     1. Creates the browser/SSR Supabase client (typed with Database)
+ *        — Supabase remains the RPC execution layer even when the
+ *          internal auth provider is active.
+ *     2. Passes userState + activeContext through to all child routes.
+ *     3. Runs bootstrap_session() RPC ONLY as a compatibility shim for
+ *        components still reading from sessionStore.
+ *     4. Returns { supabase, session, user, userState, activeContext, … }
+ *
+ * BOOTSTRAP SHIM STATUS:
+ *   bootstrap_session() is a compatibility bridge — NOT the source of
+ *   truth for domain state.  userState (resolved server-side by
+ *   userStateHandle) is authoritative.  The RPC call will be removed
+ *   once all components are migrated away from sessionStore.
+ *
+ *   Skip conditions for bootstrap_session():
+ *     - userState is present (server already resolved everything)
+ *     - Store already initialised for the same user (profile.id match)
+ *     - No ?rebootstrap param
+ *
+ * CONTEXT STORE HYDRATION:
+ *   Individual context activate*() functions are called from their
+ *   respective route +layout.ts files (lazy pattern), NOT here.
+ *   Root layout does not activate any context — it only passes data.
+ *
+ * SUPABASE DEPENDENCY NOTE:
+ *   depends("supabase:auth") + onAuthStateChange → invalidate("supabase:auth")
+ *   This pair currently drives re-runs for both providers because
+ *   sessionSyncHandle creates a Supabase session for internal users too.
+ *   When that bridge is removed, change the dependency to "auth:session"
+ *   and pair it with a server-sent event or cookie-change signal.
+ */
 
 import {
   PUBLIC_SUPABASE_ANON_KEY,
@@ -54,9 +69,12 @@ import { get } from "svelte/store"
 export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
   depends("supabase:auth")
 
-  // ─── Create Supabase client (browser or SSR) ──────────────────
-  // Browser: uses browser fetch + cookie storage
-  // SSR:     uses server cookies passed from +layout.server.ts
+  // ─── Create Supabase client (browser or SSR) ─────────────────────────────
+  // Supabase is the RPC / SQL execution layer regardless of which auth
+  // provider issued the session.  The browser client is used for
+  // bootstrap_session() and any client-side RPCs.  The SSR client reuses
+  // the cookie jar forwarded by +layout.server.ts so the first server-side
+  // render picks up the right user context.
   const supabase = isBrowser()
     ? createBrowserClient<Database>(
         PUBLIC_SUPABASE_URL,
@@ -76,36 +94,38 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
         },
       )
 
- //  ─── No session → clear store, return minimal context ─────────
-  const session = data.session
-  if (!session) {
+  // ─── No authenticated user → clear store, return minimal context ──────────
+  // Use data.user as the identity signal — NOT data.session — because the
+  // internal provider session shape ({ sessionId, expiresAt }) has no .user
+  // property.  authHandle always sets both independently; user being null
+  // is the single correct indicator of an unauthenticated request.
+  const user = data.user
+  if (!user) {
     clearSession()
     return {
       supabase,
-      session: null,
-      user: null,
-      userState: null,
+      session:      data.session,
+      user:         null,
+      userState:    null,
       activeContext: null,
       bootstrapped: false,
     }
   }
 
-  //  ─── userState is present — server already resolved everything ─
-   //  userStateHandle in hooks.server.ts ran resolveUserState() and
-   //  activateXContext() before this load function was called.
-   //  Pass it through and skip bootstrap_session() entirely.
-   //  This is the fast path for all authenticated requests.
+  // ─── userState present → server resolved everything, fast path ───────────
+  // userStateHandle in hooks.server.ts ran resolveUserState() and any
+  // activateXContext() call before this load function executed.
+  // Skip bootstrap_session() unless the sessionStore shim needs hydrating.
   if (data.userState) {
-    const current = get(sessionStore)
+    const current      = get(sessionStore)
     const forceRefresh = url.searchParams.has("rebootstrap")
 
-     //  Only bootstrap the sessionStore shim if it isn't already hydrated
-     //  for this user, OR if a force refresh was requested.
-     //  This keeps legacy components reading sessionStore functional
-     //  without an unnecessary RPC round trip on every navigation.
+    // Only bootstrap the sessionStore shim when it's stale for this user
+    // or a force refresh was requested.  Avoids an unnecessary RPC on
+    // every navigation while keeping legacy components functional.
     const needsBootstrap =
-      !current.initialized ||
-      current.profile?.id !== session.user.id ||
+      !current.initialized        ||
+      current.profile?.id !== user.id ||
       forceRefresh
 
     if (needsBootstrap) {
@@ -113,51 +133,50 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
         await supabase.rpc("bootstrap_session")
 
       if (bootstrapError) {
-     //    Non-fatal — userState is the authoritative source.
-     //    sessionStore will remain stale but pages using the new
-     //    context system are unaffected.
+        // Non-fatal — userState is authoritative.  sessionStore will be
+        // stale but all pages using the new context system are unaffected.
         console.warn(
           "[layout] bootstrap_session() shim failed — " +
-            "sessionStore not updated. userState is still authoritative.",
+            "sessionStore not updated.  userState is still authoritative.",
           bootstrapError,
         )
       } else {
         const bootstrapData = payload as BootstrapSessionPayload
-        const inviteScoped = url.searchParams.get("complete_profile") === "true"
+        const inviteScoped  = url.searchParams.get("complete_profile") === "true"
         initSession(bootstrapData, { inviteScoped })
       }
     }
 
     return {
       supabase,
-      session,
-      user: session.user,
-      userState: data.userState,
+      session:       data.session,
+      user,
+      userState:     data.userState,
       activeContext: data.activeContext,
-      bootstrapped: true,
+      bootstrapped:  true,
     }
   }
 
- //  ─── Fallback: no userState (public route or resolution failure) ──
- //  userStateHandle skips resolution on public paths and swallows
- //  non-redirect errors. In both cases userState + activeContext are null.
- //  Still run bootstrap_session() so sessionStore-dependent components
- //  function correctly on partially-authenticated states.
-  const current = get(sessionStore)
+  // ─── Fallback: no userState (public route or resolution failure) ──────────
+  // userStateHandle skips resolution on public paths and swallows non-redirect
+  // errors.  In both cases userState + activeContext are null.
+  // Still run bootstrap_session() so sessionStore-dependent components work
+  // on partially-authenticated states (e.g. invite completion flow).
+  const current      = get(sessionStore)
   const forceRefresh = url.searchParams.has("rebootstrap")
 
   if (
-    current.initialized &&
-    current.profile?.id === session.user.id &&
+    current.initialized          &&
+    current.profile?.id === user.id &&
     !forceRefresh
   ) {
     return {
       supabase,
-      session,
-      user: session.user,
-      userState: null,
+      session:       data.session,
+      user,
+      userState:     null,
       activeContext: null,
-      bootstrapped: true,
+      bootstrapped:  true,
     }
   }
 
@@ -169,25 +188,25 @@ export const load: LayoutLoad = async ({ fetch, data, depends, url }) => {
     clearSession()
     return {
       supabase,
-      session,
-      user: session.user,
-      userState: null,
+      session:       data.session,
+      user,
+      userState:     null,
       activeContext: null,
-      bootstrapped: false,
+      bootstrapped:  false,
     }
   }
 
   const bootstrapData = payload as BootstrapSessionPayload
-  const inviteScoped = url.searchParams.get("complete_profile") === "true"
+  const inviteScoped  = url.searchParams.get("complete_profile") === "true"
   initSession(bootstrapData, { inviteScoped })
 
   return {
     supabase,
-    session,
-    user: session.user,
-    profile: bootstrapData.profile,
-    userState: null,
+    session:       data.session,
+    user,
+    profile:       bootstrapData.profile,
+    userState:     null,
     activeContext: null,
-    bootstrapped: true,
+    bootstrapped:  true,
   }
 }

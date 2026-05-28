@@ -132,7 +132,35 @@ export function createCsrfHandle(opts: CsrfHandleOptions): Handle {
 
       // 2. Token presence ─────────────────────────────────────────────────────
       const cookieVal = event.cookies.get(cookieName)
-      const headerVal = event.request.headers.get(headerName)
+      let headerVal = event.request.headers.get(headerName)
+
+      // If the header is missing, fall back to a hidden form field when the
+      // request is a traditional browser form submission. We clone the request
+      // before reading the body so downstream handlers (actions) can still
+      // consume it.
+      if (!headerVal) {
+        const contentType = event.request.headers.get('content-type') ?? ''
+        if (
+          contentType.includes('application/x-www-form-urlencoded') ||
+          contentType.includes('multipart/form-data')
+        ) {
+          try {
+            const cloned = event.request.clone()
+            const form = await cloned.formData()
+            // Prefer the cookie-name as the hidden input name, fall back to
+            // some common alternatives to ease integration.
+            headerVal = (form.get(cookieName) as string) ??
+              (form.get('csrf-token') as string) ??
+              (form.get('_csrf') as string) ??
+              (form.get('csrf') as string) ??
+              null
+          } catch (e) {
+            // If form parsing fails, we'll continue and treat the token as
+            // missing which results in a 403 below.
+            headerVal = null
+          }
+        }
+      }
 
       if (!cookieVal || !headerVal) {
         return forbidden('Missing CSRF token')

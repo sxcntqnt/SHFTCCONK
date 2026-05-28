@@ -11,9 +11,10 @@
  *   csrf-client    — double-submit token reader + csrfFetch wrapper
  */
 
-import type { HandleClientError } from '@sveltejs/kit'
+import type { HandleClientError, HandleFetch } from '@sveltejs/kit'
 import { browser }                from '$app/environment'
 import { initSentry, getPosthog } from './hooks-client/analytics'
+import { getCsrfToken } from './hooks-client/csrf-client'
 
 // ─── eager but non-blocking init ─────────────────────────────────────────────
 // Fire-and-forget on browser mount.  Neither call blocks rendering.
@@ -47,6 +48,27 @@ export const handleError: HandleClientError = async ({ error, status, message })
       ? error.message
       : (message ?? 'Unexpected client error'),
     status,
+  }
+}
+
+// Inject CSRF header for client-side fetches (used by $app/forms/`enhance`).
+export const handleFetch: HandleFetch = async ({ request, fetch }) => {
+  try {
+    const method = request.method?.toUpperCase() ?? 'GET'
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+      return fetch(request)
+    }
+
+    const token = getCsrfToken()
+    if (!token) return fetch(request)
+
+    const headers = new Headers(request.headers)
+    headers.set('x-csrf-token', token)
+
+    const patched = new Request(request, { headers })
+    return fetch(patched)
+  } catch (e) {
+    return fetch(request)
   }
 }
 
