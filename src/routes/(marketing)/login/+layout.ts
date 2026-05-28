@@ -1,3 +1,19 @@
+/**
+ * src/routes/(marketing)/login/+layout.ts
+ *
+ * Client layout for all /login/* pages.
+ *
+ * WHAT CHANGED FROM SUPABASE-ONLY VERSION:
+ *   - Removed load_helper() session check — already-authed redirect is
+ *     now done server-side in +layout.server.ts (single source of truth).
+ *   - Removed bootstrap_session() RPC call and resolveRouteFromBootstrap()
+ *     redirect — not needed on the login side; app routing handles it.
+ *   - Supabase client is still created because GitHub OAuth still flows
+ *     through Supabase (signInWithOAuth + /auth/callback).  Email/password
+ *     login now bypasses Supabase entirely and calls the Go auth service.
+ *   - depends("supabase:auth") is kept so OAuth state changes (SIGNED_IN
+ *     event via onAuthStateChange) still trigger a load re-run.
+ */
 import {
   PUBLIC_SUPABASE_ANON_KEY,
   PUBLIC_SUPABASE_URL,
@@ -7,43 +23,35 @@ import {
   createServerClient,
   isBrowser,
 } from "@supabase/ssr"
-import { redirect } from "@sveltejs/kit"
-import { load_helper } from "$lib/load_helpers.js"
-import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute.js"
+import type { Database } from "../../../DatabaseDefinitions"
+import type { LayoutLoad } from "./$types"
 
-export const load = async ({ fetch, data, depends }) => {
+export const load: LayoutLoad = async ({ fetch, data, depends }) => {
   depends("supabase:auth")
 
+  // Supabase client — used by child pages for GitHub OAuth only.
+  // Email/password routes do not touch this client.
   const supabase = isBrowser()
-    ? createBrowserClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: {
-          fetch,
-        },
-      })
-    : createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
-        global: {
-          fetch,
-        },
-        cookies: {
-          getAll() {
-            return data.cookies
+    ? createBrowserClient<Database>(
+        PUBLIC_SUPABASE_URL,
+        PUBLIC_SUPABASE_ANON_KEY,
+        { global: { fetch } },
+      )
+    : createServerClient<Database>(
+        PUBLIC_SUPABASE_URL,
+        PUBLIC_SUPABASE_ANON_KEY,
+        {
+          global: { fetch },
+          cookies: {
+            getAll() {
+              return data.cookies
+            },
           },
         },
-      })
+      )
 
-  // Redirect if already logged in — route to the correct role dashboard
-  const { session, user } = await load_helper(data.session, supabase)
-  if (session && user) {
-    const { data: rpcData, error: rpcError } =
-      await supabase.rpc("bootstrap_session")
-    if (rpcError) {
-      console.error("[login/+layout] bootstrap_session failed:", rpcError)
-    }
-    const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
-    redirect(303, resolveRouteFromBootstrap(payload))
+  return {
+    supabase,
+    url: data.url,
   }
-
-  const url = data.url
-
-  return { supabase, url }
 }

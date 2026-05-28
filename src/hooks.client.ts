@@ -13,8 +13,8 @@
 
 import type { HandleClientError, HandleFetch } from '@sveltejs/kit'
 import { browser }                from '$app/environment'
-import { initSentry, getPosthog } from './hooks-client/analytics'
-import { getCsrfToken } from './hooks-client/csrf-client'
+import { initSentry, getPosthog } from './hooks-client/Analytics'
+import { getCsrfToken } from './hooks-client/csrf_client'
 
 // ─── eager but non-blocking init ─────────────────────────────────────────────
 // Fire-and-forget on browser mount.  Neither call blocks rendering.
@@ -79,9 +79,9 @@ export {
   initMapBootstrap,
   prefetchHexesForViewport,
   downloadCityForOffline,
-} from './hooks-client/map-bootstrap'
+} from './hooks-client/MapBootstrap'
 
-export { onSWMessage }    from './hooks-client/sw-messages'
-export type { SWMessage } from './hooks-client/sw-messages'
+export { onSWMessage }    from './hooks-client/sw_messages'
+export type { SWMessage } from './hooks-client/sw_messages'
 
-export { getCsrfToken, withCsrfHeader, csrfFetch } from './hooks-client/csrf-client'
+export { getCsrfToken, withCsrfHeader, csrfFetch } from './hooks-client/csrf_client'

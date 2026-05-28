@@ -23,7 +23,7 @@
 
 import type { Handle } from '@sveltejs/kit'
 import { env }         from '$env/dynamic/private'
-import { authProvider } from './authProvider'  // singleton — see note below
+import { authProvider } from './AuthProvider'  // singleton — see note below
 
 export const authHandle: Handle = async ({ event, resolve }) => {
   const isInternal = env.AUTH_PROVIDER === 'internal'
