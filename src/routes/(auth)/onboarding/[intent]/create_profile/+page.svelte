@@ -46,6 +46,10 @@
   let { data, form }: Props = $props()
   let { user, profile, organizations, linkedOrgIds } = data
 
+  // ── Step state ─────────────────────────────────────────────────────────────
+  let step = $state(1)
+  const TOTAL_STEPS = 3
+
   // ── Form state ─────────────────────────────────────────────────────────────
   let loading = $state(false)
   let fullName = $state(form?.fullName ?? profile?.full_name ?? "")
@@ -53,14 +57,11 @@
   let companyName = $state(form?.companyName ?? profile?.company_name ?? "")
   let website = $state(form?.website ?? profile?.website ?? "")
 
-  // Enrichment fields — pre-filled from existing profile if editing
   let startingLocations = $state(profile?.starting_locations ?? "")
   let destinations = $state(profile?.destinations ?? "")
   let highwayCorridors = $state<string[]>(profile?.highway_corridors ?? [])
   let routesToTrack = $state<string[]>(profile?.routes_to_track ?? [])
-  let preferredVehicleType = $state<string[]>(
-    profile?.preferred_vehicle_type ?? [],
-  )
+  let preferredVehicleType = $state<string[]>(profile?.preferred_vehicle_type ?? [])
   let socialMediaLinks = $state(profile?.social_media_links ?? "")
   let emergencyContacts = $state(profile?.emergency_contacts ?? "")
   let languagesSpoken = $state<string[]>(profile?.languages_spoken ?? [])
@@ -96,7 +97,28 @@
     selectedOrgs = next
   }
 
-  const fieldError = (name: string) => (form?.errorFields ?? []).includes(name)
+  // ── Step validation ────────────────────────────────────────────────────────
+  let step1Errors = $state<string[]>([])
+
+  function validateStep1(): boolean {
+    const errors: string[] = []
+    if (!fullName.trim()) errors.push("fullName")
+    if (!phone.trim()) errors.push("phone")
+    step1Errors = errors
+    return errors.length === 0
+  }
+
+  function goNext() {
+    if (step === 1 && !validateStep1()) return
+    if (step < TOTAL_STEPS) step++
+  }
+
+  function goBack() {
+    if (step > 1) step--
+  }
+
+  const fieldError = (name: string) =>
+    step1Errors.includes(name) || (form?.errorFields ?? []).includes(name)
 
   const handleSubmit: SubmitFunction = () => {
     loading = true
@@ -106,6 +128,13 @@
       loading = false
     }
   }
+
+  // ── Step meta ──────────────────────────────────────────────────────────────
+  const steps = [
+    { label: "Basic Info" },
+    { label: "Preferences" },
+    { label: "Organisations" },
+  ]
 </script>
 
 <svelte:head>
@@ -114,269 +143,284 @@
 
 <div class="page">
   <div class="card">
+
+    <!-- Header -->
     <div class="card-header">
       <div class="logo-mark">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#fff"
-          stroke-width="2.5"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5">
           <rect x="1" y="3" width="15" height="13" />
           <path d="M16 8h4l3 3v5h-7z" />
         </svg>
       </div>
       <h1 class="title">Create your profile</h1>
-      <p class="subtitle">
-        Just a few details to get you started on Matatu Pulse.
-      </p>
+      <p class="subtitle">Just a few details to get you started on Matatu Pulse.</p>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="stepper">
+      {#each steps as s, i}
+        {@const idx = i + 1}
+        {@const done = step > idx}
+        {@const active = step === idx}
+        <div class="step-item">
+          <div class="step-circle {done ? 'done' : active ? 'active' : ''}">
+            {#if done}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            {:else}
+              {idx}
+            {/if}
+          </div>
+          <span class="step-label {active ? 'active' : done ? 'done' : ''}">{s.label}</span>
+        </div>
+        {#if i < steps.length - 1}
+          <div class="step-connector {step > idx ? 'filled' : ''}"></div>
+        {/if}
+      {/each}
     </div>
 
     <form method="POST" action="?/updateProfile" use:enhance={handleSubmit}>
-      <!-- Return path — carries ?next through the save flow -->
       <input type="hidden" name="returnTo" value={data.returnTo ?? ""} />
-
-      <!-- One hidden input per selected org -->
       {#each [...selectedOrgs] as orgId}
         <input type="hidden" name="org_ids" value={orgId} />
       {/each}
 
       <div class="form-body">
-        <!-- ── Required fields ──────────────────────────────────────────── -->
 
-        <div class="field">
-          <label class="field-label" for="fullName">Full Name</label>
-          <input
-            id="fullName"
-            name="fullName"
-            type="text"
-            placeholder="e.g. Amina Odhiambo"
-            class="field-input {fieldError('fullName') ? 'err' : ''}"
-            bind:value={fullName}
-            maxlength="50"
-            required
-          />
-          {#if fieldError("fullName")}
-            <span class="field-err">Full name is required</span>
-          {/if}
-        </div>
+        <!-- ── Step 1: Basic Info ─────────────────────────────────────────── -->
+        {#if step === 1}
+          <div class="step-heading">
+            <span class="step-badge">Step 1</span>
+            <h2 class="step-title">Basic information</h2>
+            <p class="step-desc">Your name and contact details.</p>
+          </div>
 
-        <div class="field">
-          <label class="field-label" for="phone">Phone Number</label>
-          <div class="phone-wrap {fieldError('phone') ? 'err' : ''}">
-            <span class="phone-prefix">+254</span>
+          <div class="field">
+            <label class="field-label" for="fullName">Full Name</label>
             <input
-              id="phone"
-              name="phone"
-              type="tel"
-              placeholder="712 345 678"
-              class="phone-input"
-              bind:value={phone}
-              maxlength="15"
-              required
+              id="fullName"
+              name="fullName"
+              type="text"
+              placeholder="e.g. Amina Odhiambo"
+              class="field-input {fieldError('fullName') ? 'err' : ''}"
+              bind:value={fullName}
+              maxlength="50"
+            />
+            {#if fieldError("fullName")}
+              <span class="field-err">Full name is required</span>
+            {/if}
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="phone">Phone Number</label>
+            <div class="phone-wrap {fieldError('phone') ? 'err' : ''}">
+              <span class="phone-prefix">+254</span>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                placeholder="712 345 678"
+                class="phone-input"
+                bind:value={phone}
+                maxlength="15"
+              />
+            </div>
+            {#if fieldError("phone")}
+              <span class="field-err">A valid phone number is required</span>
+            {/if}
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="companyName">
+              Company Name <span class="optional">optional</span>
+            </label>
+            <input
+              id="companyName"
+              name="companyName"
+              type="text"
+              placeholder="e.g. Citi Hoppa SACCO"
+              class="field-input"
+              bind:value={companyName}
+              maxlength="50"
             />
           </div>
-          {#if fieldError("phone")}
-            <span class="field-err">A valid phone number is required</span>
-          {/if}
-        </div>
 
-        <!-- ── Optional basic fields ────────────────────────────────────── -->
-
-        <div class="field">
-          <label class="field-label" for="companyName">
-            Company Name <span class="optional">optional</span>
-          </label>
-          <input
-            id="companyName"
-            name="companyName"
-            type="text"
-            placeholder="e.g. Citi Hoppa SACCO"
-            class="field-input"
-            bind:value={companyName}
-            maxlength="50"
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="website">
-            Website <span class="optional">optional</span>
-          </label>
-          <input
-            id="website"
-            name="website"
-            type="url"
-            placeholder="https://example.co.ke"
-            class="field-input"
-            bind:value={website}
-            maxlength="100"
-          />
-        </div>
-
-        <!-- ── Enrichment fields ─────────────────────────────────────────── -->
-
-        <div class="field">
-          <label class="field-label" for="startingLocations">
-            Starting Locations <span class="optional">optional</span>
-          </label>
-          <input
-            id="startingLocations"
-            name="startingLocations"
-            type="text"
-            placeholder="e.g. CBD, Westlands"
-            class="field-input"
-            bind:value={startingLocations}
-            maxlength="200"
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="destinations">
-            Common Destinations <span class="optional">optional</span>
-          </label>
-          <input
-            id="destinations"
-            name="destinations"
-            type="text"
-            placeholder="e.g. Thika Road, Ngong Road"
-            class="field-input"
-            bind:value={destinations}
-            maxlength="200"
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="preferredVehicleType">
-            Preferred Vehicle Type <span class="optional">optional</span>
-          </label>
-          <select
-            id="preferredVehicleType"
-            name="preferredVehicleType"
-            class="field-input"
-            multiple
-            bind:value={preferredVehicleType}
-          >
-            <option value="Bus">Bus</option>
-            <option value="Minibus">Minibus</option>
-            <option value="Van">Van</option>
-            <option value="Taxi">Taxi</option>
-            <option value="Matatu">Matatu</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="languagesSpoken">
-            Languages Spoken <span class="optional">optional</span>
-          </label>
-          <select
-            id="languagesSpoken"
-            name="languagesSpoken"
-            class="field-input"
-            multiple
-            bind:value={languagesSpoken}
-          >
-            <option value="English">English</option>
-            <option value="Swahili">Swahili</option>
-            <option value="Luo">Luo</option>
-            <option value="Kikuyu">Kikuyu</option>
-            <option value="Kalenjin">Kalenjin</option>
-            <option value="Somali">Somali</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="socialMediaLinks">
-            Social Media <span class="optional">optional</span>
-          </label>
-          <input
-            id="socialMediaLinks"
-            name="socialMediaLinks"
-            type="url"
-            placeholder="https://linkedin.com/in/amina-odhiambo"
-            class="field-input"
-            bind:value={socialMediaLinks}
-            maxlength="200"
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="emergencyContacts">
-            Emergency Contacts <span class="optional">optional</span>
-          </label>
-          <input
-            id="emergencyContacts"
-            name="emergencyContacts"
-            type="text"
-            placeholder="e.g. 0712 345 678, 0722 987 654"
-            class="field-input"
-            bind:value={emergencyContacts}
-            maxlength="150"
-          />
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="preferredWorkingHours">
-            Preferred Working Hours <span class="optional">optional</span>
-          </label>
-          <div class="time-range">
+          <div class="field">
+            <label class="field-label" for="website">
+              Website <span class="optional">optional</span>
+            </label>
             <input
-              type="time"
-              id="workingHoursStart"
-              name="workingHoursStart"
-              class="field-input time-input"
-              bind:value={workingHoursStart}
-            />
-            <span class="time-separator">to</span>
-            <input
-              type="time"
-              id="workingHoursEnd"
-              name="workingHoursEnd"
-              class="field-input time-input"
-              bind:value={workingHoursEnd}
+              id="website"
+              name="website"
+              type="url"
+              placeholder="https://example.co.ke"
+              class="field-input"
+              bind:value={website}
+              maxlength="100"
             />
           </div>
-        </div>
+        {/if}
 
-        <div class="field">
-          <label class="field-label" for="timeZone">
-            Time Zone <span class="optional">optional</span>
-          </label>
-          <select
-            id="timeZone"
-            name="timeZone"
-            class="field-input"
-            bind:value={timeZone}
-          >
-            <option value="Africa/Nairobi"
-              >East Africa Time (EAT) — Nairobi</option
+        <!-- ── Step 2: Preferences ───────────────────────────────────────── -->
+        {#if step === 2}
+          <div class="step-heading">
+            <span class="step-badge">Step 2</span>
+            <h2 class="step-title">Routes & preferences</h2>
+            <p class="step-desc">Help us personalise your experience. All fields are optional.</p>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="startingLocations">
+              Starting Locations <span class="optional">optional</span>
+            </label>
+            <input
+              id="startingLocations"
+              name="startingLocations"
+              type="text"
+              placeholder="e.g. CBD, Westlands"
+              class="field-input"
+              bind:value={startingLocations}
+              maxlength="200"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="destinations">
+              Common Destinations <span class="optional">optional</span>
+            </label>
+            <input
+              id="destinations"
+              name="destinations"
+              type="text"
+              placeholder="e.g. Thika Road, Ngong Road"
+              class="field-input"
+              bind:value={destinations}
+              maxlength="200"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="preferredVehicleType">
+              Preferred Vehicle Type <span class="optional">optional</span>
+            </label>
+            <select
+              id="preferredVehicleType"
+              name="preferredVehicleType"
+              class="field-input"
+              multiple
+              bind:value={preferredVehicleType}
             >
-            <option value="Africa/Mombasa"
-              >East Africa Time (EAT) — Mombasa</option
+              <option value="Bus">Bus</option>
+              <option value="Minibus">Minibus</option>
+              <option value="Van">Van</option>
+              <option value="Taxi">Taxi</option>
+              <option value="Matatu">Matatu</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="languagesSpoken">
+              Languages Spoken <span class="optional">optional</span>
+            </label>
+            <select
+              id="languagesSpoken"
+              name="languagesSpoken"
+              class="field-input"
+              multiple
+              bind:value={languagesSpoken}
             >
-          </select>
-        </div>
+              <option value="English">English</option>
+              <option value="Swahili">Swahili</option>
+              <option value="Luo">Luo</option>
+              <option value="Kikuyu">Kikuyu</option>
+              <option value="Kalenjin">Kalenjin</option>
+              <option value="Somali">Somali</option>
+            </select>
+          </div>
 
-        <!-- ── Organisation selector ─────────────────────────────────────── -->
+          <div class="field">
+            <label class="field-label" for="socialMediaLinks">
+              Social Media <span class="optional">optional</span>
+            </label>
+            <input
+              id="socialMediaLinks"
+              name="socialMediaLinks"
+              type="url"
+              placeholder="https://linkedin.com/in/amina-odhiambo"
+              class="field-input"
+              bind:value={socialMediaLinks}
+              maxlength="200"
+            />
+          </div>
 
-        <div class="field">
-          <div class="field-label">
-            Organisations <span class="optional">select all that apply</span>
+          <div class="field">
+            <label class="field-label" for="emergencyContacts">
+              Emergency Contacts <span class="optional">optional</span>
+            </label>
+            <input
+              id="emergencyContacts"
+              name="emergencyContacts"
+              type="text"
+              placeholder="e.g. 0712 345 678, 0722 987 654"
+              class="field-input"
+              bind:value={emergencyContacts}
+              maxlength="150"
+            />
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="preferredWorkingHours">
+              Preferred Working Hours <span class="optional">optional</span>
+            </label>
+            <div class="time-range">
+              <input
+                type="time"
+                id="workingHoursStart"
+                name="workingHoursStart"
+                class="field-input time-input"
+                bind:value={workingHoursStart}
+              />
+              <span class="time-separator">to</span>
+              <input
+                type="time"
+                id="workingHoursEnd"
+                name="workingHoursEnd"
+                class="field-input time-input"
+                bind:value={workingHoursEnd}
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="timeZone">
+              Time Zone <span class="optional">optional</span>
+            </label>
+            <select
+              id="timeZone"
+              name="timeZone"
+              class="field-input"
+              bind:value={timeZone}
+            >
+              <option value="Africa/Nairobi">East Africa Time (EAT) — Nairobi</option>
+              <option value="Africa/Mombasa">East Africa Time (EAT) — Mombasa</option>
+            </select>
+          </div>
+        {/if}
+
+        <!-- ── Step 3: Organisations ─────────────────────────────────────── -->
+        {#if step === 3}
+          <div class="step-heading">
+            <span class="step-badge">Step 3</span>
+            <h2 class="step-title">Organisations</h2>
+            <p class="step-desc">Link yourself to one or more transport organisations.</p>
           </div>
 
           {#if organizations.length === 0}
             <div class="org-empty">No organisations found.</div>
           {:else}
             <div class="org-search-wrap">
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
@@ -387,30 +431,15 @@
                 bind:value={orgSearch}
               />
               {#if orgSearch}
-                <button
-                  type="button"
-                  class="org-clear"
-                  onclick={() => (orgSearch = "")}
-                  aria-label="Clear search"
-                >
-                  ✕
-                </button>
+                <button type="button" class="org-clear" onclick={() => (orgSearch = "")} aria-label="Clear search">✕</button>
               {/if}
             </div>
 
             {#if selectedOrgs.size > 0}
               <div class="selected-pill">
                 <span class="selected-dot"></span>
-                {selectedOrgs.size} organisation{selectedOrgs.size !== 1
-                  ? "s"
-                  : ""} selected
-                <button
-                  type="button"
-                  class="clear-all"
-                  onclick={() => (selectedOrgs = new Set())}
-                >
-                  Clear all
-                </button>
+                {selectedOrgs.size} organisation{selectedOrgs.size !== 1 ? "s" : ""} selected
+                <button type="button" class="clear-all" onclick={() => (selectedOrgs = new Set())}>Clear all</button>
               </div>
             {/if}
 
@@ -427,51 +456,31 @@
                     >
                       <div class="org-check {checked ? 'checked' : ''}">
                         {#if checked}
-                          <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="3"
-                          >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
                         {/if}
                       </div>
                       <div class="org-info">
                         <div class="org-name">{org.name}</div>
-                        {#if org.type}<div class="org-type">
-                            {org.type}
-                          </div>{/if}
+                        {#if org.type}<div class="org-type">{org.type}</div>{/if}
                       </div>
                     </button>
                   {/each}
                 </div>
               {/each}
-
               {#if filteredOrgs.length === 0}
                 <div class="org-empty">No results for "{orgSearch}"</div>
               {/if}
             </div>
           {/if}
-        </div>
+        {/if}
 
-        <!-- ── Error + submit ─────────────────────────────────────────────── -->
-
+        <!-- ── Error banner ───────────────────────────────────────────────── -->
         {#if form?.errorMessage}
           <div class="error-banner">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path
-                d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-              />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
@@ -479,23 +488,40 @@
           </div>
         {/if}
 
-        <button type="submit" class="submit-btn" disabled={loading}>
-          {#if loading}
-            <span class="spinner" aria-hidden="true"></span>Saving…
+        <!-- ── Navigation ─────────────────────────────────────────────────── -->
+        <div class="nav-row">
+          {#if step > 1}
+            <button type="button" class="back-btn" onclick={goBack}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
           {:else}
-            Continue
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <div></div>
           {/if}
-        </button>
+
+          {#if step < TOTAL_STEPS}
+            <button type="button" class="next-btn" onclick={goNext}>
+              Next
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          {:else}
+            <button type="submit" class="submit-btn" disabled={loading}>
+              {#if loading}
+                <span class="spinner" aria-hidden="true"></span>Saving…
+              {:else}
+                Finish
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              {/if}
+            </button>
+          {/if}
+        </div>
+
       </div>
     </form>
 
@@ -529,11 +555,7 @@
     padding: 32px 32px 24px;
     border-bottom: 1px solid var(--rim);
     text-align: center;
-    background: linear-gradient(
-      160deg,
-      rgba(0, 176, 155, 0.07),
-      transparent 60%
-    );
+    background: linear-gradient(160deg, rgba(0, 176, 155, 0.07), transparent 60%);
     position: relative;
   }
   .card-header::before {
@@ -543,12 +565,7 @@
     left: 24px;
     right: 24px;
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(0, 176, 155, 0.35),
-      transparent
-    );
+    background: linear-gradient(90deg, transparent, rgba(0, 176, 155, 0.35), transparent);
   }
   .logo-mark {
     width: 42px;
@@ -574,6 +591,111 @@
     color: var(--text-3);
     line-height: 1.5;
   }
+
+  /* ── Stepper ── */
+  .stepper {
+    display: flex;
+    align-items: center;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--rim);
+    gap: 0;
+  }
+  .step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .step-circle {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-3);
+    transition: all 0.2s;
+  }
+  .step-circle.active {
+    border-color: var(--teal);
+    background: rgba(0, 176, 155, 0.12);
+    color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(0, 176, 155, 0.12);
+  }
+  .step-circle.done {
+    border-color: var(--teal);
+    background: var(--teal);
+    color: #fff;
+  }
+  .step-label {
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    opacity: 0.5;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .step-label.active {
+    color: var(--teal);
+    opacity: 1;
+  }
+  .step-label.done {
+    color: var(--text-2);
+    opacity: 0.7;
+  }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 8px;
+    margin-bottom: 16px; /* offset to align with circles, not labels */
+    transition: background 0.3s;
+  }
+  .step-connector.filled {
+    background: var(--teal);
+    opacity: 0.4;
+  }
+
+  /* ── Step heading ── */
+  .step-heading {
+    margin-bottom: 4px;
+  }
+  .step-badge {
+    display: inline-block;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--teal);
+    background: rgba(0, 176, 155, 0.1);
+    border: 1px solid rgba(0, 176, 155, 0.2);
+    border-radius: 100px;
+    padding: 2px 8px;
+    margin-bottom: 8px;
+  }
+  .step-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--text-1);
+    margin-bottom: 4px;
+  }
+  .step-desc {
+    font-size: 0.78rem;
+    color: var(--text-3);
+    line-height: 1.5;
+    margin-bottom: 4px;
+  }
+
+  /* ── Form ── */
   .form-body {
     padding: 24px 32px;
     display: flex;
@@ -615,9 +737,7 @@
     font-family: var(--font-body);
     font-size: 0.88rem;
     color: var(--text-1);
-    transition:
-      border-color 0.15s,
-      background 0.15s;
+    transition: border-color 0.15s, background 0.15s;
     box-sizing: border-box;
   }
   .field-input::placeholder {
@@ -644,9 +764,7 @@
     border-radius: 10px;
     overflow: hidden;
     background: rgba(255, 255, 255, 0.04);
-    transition:
-      border-color 0.15s,
-      box-shadow 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
   .phone-wrap:focus-within {
     border-color: rgba(0, 176, 155, 0.45);
@@ -695,6 +813,8 @@
     color: var(--text-3);
     flex-shrink: 0;
   }
+
+  /* ── Org selector ── */
   .org-search-wrap {
     display: flex;
     align-items: center;
@@ -705,10 +825,7 @@
     border-radius: 10px;
     margin-bottom: 8px;
   }
-  .org-search-wrap svg {
-    opacity: 0.4;
-    flex-shrink: 0;
-  }
+  .org-search-wrap svg { opacity: 0.4; flex-shrink: 0; }
   .org-search {
     flex: 1;
     background: none;
@@ -718,10 +835,7 @@
     font-size: 0.82rem;
     color: var(--text-1);
   }
-  .org-search::placeholder {
-    color: var(--text-3);
-    opacity: 0.6;
-  }
+  .org-search::placeholder { color: var(--text-3); opacity: 0.6; }
   .org-clear {
     background: none;
     border: none;
@@ -732,9 +846,7 @@
     opacity: 0.6;
     transition: opacity 0.15s;
   }
-  .org-clear:hover {
-    opacity: 1;
-  }
+  .org-clear:hover { opacity: 1; }
   .selected-pill {
     display: inline-flex;
     align-items: center;
@@ -768,9 +880,7 @@
     opacity: 0.7;
     transition: opacity 0.15s;
   }
-  .clear-all:hover {
-    opacity: 1;
-  }
+  .clear-all:hover { opacity: 1; }
   .org-list {
     max-height: 260px;
     overflow-y: auto;
@@ -806,15 +916,9 @@
     font-family: var(--font-body);
     transition: background 0.12s;
   }
-  .org-row:last-child {
-    border-bottom: none;
-  }
-  .org-row:hover {
-    background: rgba(255, 255, 255, 0.04);
-  }
-  .org-row.selected {
-    background: rgba(0, 176, 155, 0.06);
-  }
+  .org-row:last-child { border-bottom: none; }
+  .org-row:hover { background: rgba(255, 255, 255, 0.04); }
+  .org-row.selected { background: rgba(0, 176, 155, 0.06); }
   .org-check {
     width: 16px;
     height: 16px;
@@ -831,27 +935,65 @@
     border-color: var(--teal);
     color: #fff;
   }
-  .org-info {
-    flex: 1;
-    min-width: 0;
+  .org-info { flex: 1; min-width: 0; }
+  .org-name { font-size: 0.82rem; font-weight: 600; color: var(--text-1); }
+  .org-type { font-size: 0.62rem; color: var(--text-3); margin-top: 1px; text-transform: capitalize; }
+  .org-empty { padding: 20px; text-align: center; font-size: 0.78rem; color: var(--text-3); }
+
+  /* ── Navigation row ── */
+  .nav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 4px;
   }
-  .org-name {
-    font-size: 0.82rem;
+  .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    font-family: var(--font-body);
+    font-size: 0.88rem;
     font-weight: 600;
-    color: var(--text-1);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
   }
-  .org-type {
-    font-size: 0.62rem;
-    color: var(--text-3);
-    margin-top: 1px;
-    text-transform: capitalize;
+  .back-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
   }
-  .org-empty {
-    padding: 20px;
-    text-align: center;
-    font-size: 0.78rem;
-    color: var(--text-3);
+  .next-btn,
+  .submit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 11px 22px;
+    background: var(--teal);
+    border: none;
+    border-radius: 12px;
+    font-family: var(--font-body);
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 18px rgba(0, 176, 155, 0.28);
   }
+  .next-btn:hover,
+  .submit-btn:hover:not(:disabled) {
+    background: #009a88;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0, 176, 155, 0.36);
+  }
+  .submit-btn:disabled { opacity: 0.6; cursor: default; }
+
+  /* ── Error banner ── */
   .error-banner {
     display: flex;
     align-items: center;
@@ -863,36 +1005,8 @@
     font-size: 0.78rem;
     color: #f87171;
   }
-  .submit-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 100%;
-    padding: 12px;
-    background: var(--teal);
-    border: none;
-    border-radius: 12px;
-    font-family: var(--font-body);
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: #fff;
-    cursor: pointer;
-    transition:
-      background 0.15s,
-      transform 0.15s,
-      box-shadow 0.15s;
-    box-shadow: 0 4px 18px rgba(0, 176, 155, 0.28);
-  }
-  .submit-btn:hover:not(:disabled) {
-    background: #009a88;
-    transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(0, 176, 155, 0.36);
-  }
-  .submit-btn:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
+
+  /* ── Spinner ── */
   .spinner {
     width: 14px;
     height: 14px;
@@ -901,11 +1015,9 @@
     border-radius: 50%;
     animation: spin 0.65s linear infinite;
   }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Footer ── */
   .card-footer {
     padding: 14px 32px 20px;
     text-align: center;
@@ -913,16 +1025,7 @@
     color: var(--text-3);
     border-top: 1px solid var(--rim);
   }
-  .card-footer strong {
-    color: var(--text-2);
-    font-weight: 600;
-  }
-  .card-footer a {
-    color: var(--teal);
-    text-decoration: none;
-    font-weight: 600;
-  }
-  .card-footer a:hover {
-    text-decoration: underline;
-  }
+  .card-footer strong { color: var(--text-2); font-weight: 600; }
+  .card-footer a { color: var(--teal); text-decoration: none; font-weight: 600; }
+  .card-footer a:hover { text-decoration: underline; }
 </style>
