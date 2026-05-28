@@ -51,6 +51,13 @@
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="7" cy="12" r="2"/><circle cx="17" cy="12" r="2"/><path d="M7 8h10"/></svg>`,
     },
   ]
+  console.log({
+  host: request.headers.get('host'),
+  origin: request.headers.get('origin'),
+  referer: request.headers.get('referer'),
+  xfhost: request.headers.get('x-forwarded-host'),
+  xfproto: request.headers.get('x-forwarded-proto')
+});
 </script>
 
 <svelte:head>

@@ -13,8 +13,10 @@
 
 import type { HandleClientError, HandleFetch } from '@sveltejs/kit'
 import { browser }                from '$app/environment'
-import { initSentry, getPosthog } from './hooks-client/Analytics'
+
 import { getCsrfToken } from './hooks-client/csrf_client'
+import { initSentry, getPosthog } from './hooks-client/Analytics'
+
 
 // ─── eager but non-blocking init ─────────────────────────────────────────────
 // Fire-and-forget on browser mount.  Neither call blocks rendering.

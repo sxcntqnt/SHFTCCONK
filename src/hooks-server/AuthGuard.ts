@@ -16,7 +16,7 @@
 
 import { redirect, type Handle } from '@sveltejs/kit'
 import { env }                   from '$env/dynamic/private'
-import { authProvider }          from './authProvider'
+import { authProvider }          from './AuthProvider'
 
 // ─── route config ─────────────────────────────────────────────────────────────
 

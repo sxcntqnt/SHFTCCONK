@@ -31,7 +31,7 @@ import {
   generateRawToken,
   bundleToken,
   unbundleToken,
-} from './csrf-primitives'
+} from './csrf_primitives'
 
 // ─── config ──────────────────────────────────────────────────────────────────
 
