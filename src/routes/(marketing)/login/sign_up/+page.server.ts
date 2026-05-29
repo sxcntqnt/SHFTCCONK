@@ -32,6 +32,14 @@
  *   later, remove the login() block and redirect to a "check your
  *   email" page instead.
  *
+ * NICKNAME DERIVATION:
+ *   The Go /auth/register endpoint requires a nickname field.
+ *   We derive it server-side from first_name + last_name initial,
+ *   lowercase, non-alphanumeric chars stripped.
+ *   e.g. "Adrian Mwicigi" → "adrianm"
+ *   The Go service enforces uniqueness — on collision the register
+ *   call returns 409 which is surfaced as a user-facing error.
+ *
  * INVITE FORWARDING:
  *   If sign-up was reached with ?invite=xyz, the token is forwarded
  *   to the callback which calls redeem_invite() RPC before routing.
@@ -48,17 +56,33 @@
  * ANALYTICS:
  *   Server-side with the real user ID from the registration response.
  */
-import { fail, redirect }             from "@sveltejs/kit"
+import { fail, redirect }              from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
 import {
   register,
   login,
   setAuthCookies,
   AuthError,
-}                                     from "$lib/server/auth-client"
-import { getPostHogClient }           from "$lib/server/posthog"
+}                                      from "$lib/server/auth-client"
+import { getPostHogClient }            from "$lib/server/posthog"
 
 export const load: PageServerLoad = async () => ({})
+
+/**
+ * deriveNickname
+ *
+ * Builds a URL-safe, lowercase nickname from first + last name.
+ * Strips all non-alphanumeric characters so the Go nicknameRegex
+ * (which typically allows [a-z0-9_]) always passes.
+ *
+ * Examples:
+ *   "Adrian", "Mwicigi" → "adrianm"
+ *   "Jean-Pierre", "Dupont" → "jeanpierred"
+ */
+function deriveNickname(firstName: string, lastName: string): string {
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+  return clean(firstName) + clean(lastName).charAt(0)
+}
 
 export const actions: Actions = {
   default: async ({ request, cookies, url }) => {
@@ -79,6 +103,9 @@ export const actions: Actions = {
       return fail(400, { error: "Password must be at least 8 characters.", ...fields })
     }
 
+    // ── Derive nickname for the Go service ───────────────────────
+    const nickname = deriveNickname(firstName, lastName)
+
     // ── Register ─────────────────────────────────────────────────
     let userId: string | undefined
     try {
@@ -87,6 +114,7 @@ export const actions: Actions = {
         password,
         first_name: firstName,
         last_name:  lastName,
+        nickname,
         country,
       })
       userId = result.user.id
@@ -114,7 +142,7 @@ export const actions: Actions = {
       setAuthCookies(cookies, tokens)
     } catch (err) {
       console.error("[sign_up] auto-login after register failed:", err)
-      redirect(303, "/login/sign_in?registered=true")
+      throw redirect(303, "/login/sign_in?registered=true")
     }
 
     // ── Analytics ────────────────────────────────────────────────
@@ -139,6 +167,6 @@ export const actions: Actions = {
     if (inviteToken) callbackUrl.searchParams.set("invite", inviteToken)
     if (next)        callbackUrl.searchParams.set("next", next)
 
-    redirect(303, callbackUrl.pathname + callbackUrl.search)
+    throw redirect(303, callbackUrl.pathname + callbackUrl.search)
   },
 }

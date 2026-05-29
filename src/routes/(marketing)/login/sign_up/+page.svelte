@@ -16,6 +16,7 @@
    * FIELDS:
    *   Matching the Go /auth/register contract:
    *     email, password, first_name, last_name, country
+   *   Nickname is derived server-side — not shown to the user.
    *   Country defaults to KE (Kenya) — most users are in Nairobi.
    */
 
@@ -26,18 +27,18 @@
   import { oauthProviders } from "../login_config"
 
   // ── Props ────────────────────────────────────────────────────────
-  let { data } = $props<{ data: { supabase: any; url: string } }>()
+  let { data } = $props<{ data: { supabase: any; url: string; csrfToken?: string } }>()
 
   // ── Form state ───────────────────────────────────────────────────
-  let submitting = $state(false)
-  let mounted = $state(false)
+  let submitting  = $state(false)
+  let mounted     = $state(false)
 
   // Server action result
-  let actionError = $derived(page.form?.error as string | undefined)
-  let actionEmail = $derived(page.form?.email as string | undefined)
-  let actionFirst = $derived(page.form?.firstName as string | undefined)
-  let actionLast = $derived(page.form?.lastName as string | undefined)
-  let actionCountry = $derived(page.form?.country as string | undefined)
+  let actionError   = $derived(page.form?.error    as string | undefined)
+  let actionEmail   = $derived(page.form?.email    as string | undefined)
+  let actionFirst   = $derived(page.form?.firstName as string | undefined)
+  let actionLast    = $derived(page.form?.lastName  as string | undefined)
+  let actionCountry = $derived(page.form?.country  as string | undefined)
 
   // ── GitHub OAuth ─────────────────────────────────────────────────
   $effect(() => {
@@ -51,7 +52,7 @@
           email: session.user.email ?? undefined,
         })
         posthog.capture("user_signed_up", {
-          email: session.user.email ?? undefined,
+          email:    session.user.email ?? undefined,
           provider: session.user.app_metadata?.provider ?? "github",
         })
       }
@@ -71,14 +72,14 @@
   }
 
   const COUNTRIES = [
-    { code: "KE", label: "Kenya" },
-    { code: "UG", label: "Uganda" },
-    { code: "TZ", label: "Tanzania" },
-    { code: "RW", label: "Rwanda" },
-    { code: "ET", label: "Ethiopia" },
-    { code: "NG", label: "Nigeria" },
-    { code: "GH", label: "Ghana" },
-    { code: "ZA", label: "South Africa" },
+    { code: "KE",    label: "Kenya" },
+    { code: "UG",    label: "Uganda" },
+    { code: "TZ",    label: "Tanzania" },
+    { code: "RW",    label: "Rwanda" },
+    { code: "ET",    label: "Ethiopia" },
+    { code: "NG",    label: "Nigeria" },
+    { code: "GH",    label: "Ghana" },
+    { code: "ZA",    label: "South Africa" },
     { code: "Other", label: "Other" },
   ]
 </script>
@@ -161,6 +162,9 @@
       }
     }}
   >
+    <!-- CSRF token — required by csrfHandle for all POST requests -->
+    <input type="hidden" name="csrf-token" value={data.csrfToken} />
+
     <!-- Server-side error banner -->
     {#if actionError}
       <div class="form-error" role="alert">{actionError}</div>
