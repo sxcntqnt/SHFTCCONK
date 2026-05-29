@@ -106,6 +106,11 @@ declare global {
       // Set by locationHandle. Typed as | null for safety on
       // routes that run before locationHandle (e.g. early CF errors).
       requestContext: RequestContext | null;
+
+      // ── CSRF ───────────────────────────────────────────────
+      // Set by csrfHandle on every GET/HEAD/OPTIONS request.
+      // Exposed to pages via +layout.server.ts load function.
+      csrfToken?: string;
     }
 
     // ──────────────────────────────────────────────────────────
@@ -125,6 +130,9 @@ declare global {
 
       /** Forwarded cookies for client-side Supabase initialization */
       cookies: Array<{ name: string; value: string }>;
+
+      /** CSRF token forwarded from locals — inject into forms as a hidden field */
+      csrfToken?: string;
     }
   }
 }

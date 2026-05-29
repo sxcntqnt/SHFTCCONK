@@ -37,7 +37,7 @@
 import type { LayoutServerLoad } from "./$types"
 
 export const load: LayoutServerLoad = async ({
-  locals: { auth, userState, activeContext, requestContext },
+  locals: { auth, userState, activeContext, requestContext, csrfToken },
   cookies,
 }) => {
   return {
@@ -68,5 +68,10 @@ export const load: LayoutServerLoad = async ({
     // the same cookie jar (needed for bootstrap_session() RPC on the
     // first SSR pass and for Supabase execution-layer calls).
     cookies: cookies.getAll(),
+
+    // ── CSRF ──────────────────────────────────────────────────────
+    // Issued by csrfHandle on every GET request. Pages inject this
+    // into forms as a hidden field or into fetch calls as a header.
+    csrfToken,
   }
 }
