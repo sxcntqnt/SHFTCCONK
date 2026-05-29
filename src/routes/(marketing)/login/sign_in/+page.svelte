@@ -30,11 +30,11 @@
   import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute"
 
   // ── Props ────────────────────────────────────────────────────────
-  let { data } = $props<{ data: { supabase: any; url: string } }>()
+  let { data } = $props<{ data: { supabase: any; url: string; csrfToken?: string } }>()
 
   // ── Form state ───────────────────────────────────────────────────
   let submitting = $state(false)
-  let mounted = $state(false)
+  let mounted    = $state(false)
 
   // Server action result — present after a failed submission
   let actionError = $derived(page.form?.error as string | undefined)
@@ -77,12 +77,12 @@
           if (browser && payload?.profile_id) {
             posthog.identify(payload.profile_id, {
               email: payload.email ?? undefined,
-              name: payload.name ?? undefined,
-              role: payload.actor_type ?? undefined,
+              name:  payload.name  ?? undefined,
+              role:  payload.actor_type ?? undefined,
             })
             posthog.capture("user_signed_in", {
               provider: "github",
-              role: payload.actor_type ?? "unknown",
+              role:     payload.actor_type ?? "unknown",
             })
           }
 
@@ -207,6 +207,9 @@
       }
     }}
   >
+    <!-- CSRF token — required by csrfHandle for all POST requests -->
+    <input type="hidden" name="csrf-token" value={data.csrfToken} />
+
     <!-- Server-side error banner -->
     {#if actionError}
       <div class="form-error" role="alert">{actionError}</div>

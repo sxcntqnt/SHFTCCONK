@@ -95,6 +95,6 @@ export const actions: Actions = {
     if (inviteToken) callbackUrl.searchParams.set("invite", inviteToken)
     if (next)        callbackUrl.searchParams.set("next", next)
 
-    redirect(303, callbackUrl.pathname + callbackUrl.search)
+    throw redirect(303, callbackUrl.pathname + callbackUrl.search)
   },
 }
