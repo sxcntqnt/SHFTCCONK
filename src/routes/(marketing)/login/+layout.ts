@@ -13,6 +13,8 @@
  *     login now bypasses Supabase entirely and calls the Go auth service.
  *   - depends("supabase:auth") is kept so OAuth state changes (SIGNED_IN
  *     event via onAuthStateChange) still trigger a load re-run.
+ *   - csrfToken is passed through from server data so sign-in and sign-up
+ *     pages can inject it into their forms as a hidden field.
  */
 import {
   PUBLIC_SUPABASE_ANON_KEY,
@@ -52,6 +54,7 @@ export const load: LayoutLoad = async ({ fetch, data, depends }) => {
 
   return {
     supabase,
-    url: data.url,
+    url:       data.url,
+    csrfToken: data.csrfToken,
   }
 }

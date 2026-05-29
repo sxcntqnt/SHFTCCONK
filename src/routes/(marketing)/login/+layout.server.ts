@@ -24,12 +24,17 @@
  * COOKIES:
  *   Forwarded for the SSR Supabase client in +layout.ts (still needed
  *   for GitHub OAuth flows and the bootstrap_session() compatibility shim).
+ *
+ * CSRF:
+ *   csrfToken forwarded from locals so child pages (+page.svelte) can
+ *   inject it as a hidden field into their forms.  Issued by csrfHandle
+ *   on every GET request before this layout runs.
  */
-import { redirect }          from "@sveltejs/kit"
+import { redirect }              from "@sveltejs/kit"
 import type { LayoutServerLoad } from "./$types"
 
 export const load: LayoutServerLoad = async ({
-  locals: { auth },
+  locals: { auth, csrfToken },
   cookies,
   url,
 }) => {
@@ -37,12 +42,13 @@ export const load: LayoutServerLoad = async ({
   // authHandle guarantees locals.auth is always set; user being non-null
   // is the single correct signal for an active session regardless of provider.
   if (auth.user) {
-    redirect(303, "/app/dashboard")
+    throw redirect(303, "/app/dashboard")
   }
 
   return {
-    url:     url.origin,
-    cookies: cookies.getAll(),
+    url:       url.origin,
+    cookies:   cookies.getAll(),
+    csrfToken,
     // user is null here — don't expose a typed null session to the client.
     // Child pages that need to know "are we authed" use locals.auth on the
     // server, or data.user (null) on the client.
