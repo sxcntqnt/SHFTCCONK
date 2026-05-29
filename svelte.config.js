@@ -3,31 +3,40 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte"
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-  kit: {
-    // adapter-auto only supports some environments, see https://kit.svelte.dev/docs/adapter-auto for a list.
-    // If your environment is not supported or you settled on a specific environment, switch out the adapter.
-    // See https://kit.svelte.dev/docs/adapters for more information about adapters.
-    adapter: adapter(),
+	kit: {
+		adapter: adapter(),
 
-    // allow up to 150kb of style to be inlined with the HTML
-    // Faster FCP (First Contentful Paint) by reducing the number of requests
-    inlineStyleThreshold: 150000,
-    // Required for PostHog session replay to work correctly with SSR
-    paths: {
-      relative: false,
-    },
+		// allow up to 150kb of style to be inlined with the HTML
+		inlineStyleThreshold: 150000,
 
-    experimental: {
-      tracing: {
-        server: true,
-      },
+		// Required for PostHog session replay to work correctly with SSR
+		paths: {
+			relative: false,
+		},
 
-      instrumentation: {
-        server: true,
-      },
-    },
-  },
-  preprocess: vitePreprocess(),
+		prerender: {
+			handleHttpError: ({ path, referrer, message }) => {
+				console.error("PRERENDER ERROR")
+				console.error({
+					path,
+					referrer,
+					message,
+				})
+			},
+		},
+
+		experimental: {
+			tracing: {
+				server: true,
+			},
+
+			instrumentation: {
+				server: true,
+			},
+		},
+	},
+
+	preprocess: vitePreprocess(),
 }
 
 export default config

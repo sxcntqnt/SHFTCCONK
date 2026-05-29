@@ -26,173 +26,146 @@
  *  6. Body access is safely guarded with optional chaining.
  */
 
+/**
+ * src/hooks-server/csrf_handle.ts
+ *
+ * Prerender-safe CSRF double-submit protection.
+ * - Does NOT assume auth exists
+ * - Does NOT crash when locals.auth is missing
+ * - Safe for build-time crawling
+ */
+
 import type { Handle, RequestEvent } from '@sveltejs/kit'
+import { building } from '$app/environment'
 import {
-  generateRawToken,
-  bundleToken,
-  unbundleToken,
+	generateRawToken,
+	bundleToken,
+	unbundleToken,
 } from './csrf_primitives'
 
-// ─── config ──────────────────────────────────────────────────────────────────
-
-const SAFE_METHODS   = new Set(['GET', 'HEAD', 'OPTIONS'])
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 export interface CsrfHandleOptions {
-  /** HMAC secret – load from $env/static/private, never hard-code */
-  secret: string
-
-  /** Cookie that carries the double-submit token. Default: 'csrf-token' */
-  cookieName?: string
-
-  /**
-   * Request header the client echoes the token in.
-   * Default: 'x-csrf-token'
-   */
-  headerName?: string
-
-  /**
-   * Allowed Origin header values for state-mutating requests.
-   * Omit to skip origin validation (useful during local dev).
-   */
-  allowedOrigins?: string[]
-
-  /** Token lifetime in milliseconds. Default: 1 hour */
-  tokenTtlMs?: number
-
-  /** Random byte length for the raw token. Default: 32 */
-  tokenSize?: number
-
-  /**
-   * Optional resolver: return a session/user id to bind tokens to the
-   * current identity.  Receive a request event and return a string, or
-   * undefined to skip session binding.
-   *
-   * Example:
-   *   getSessionId: (event) => event.locals.session?.userId
-   */
-  getSessionId?: (event: RequestEvent) => string | undefined | Promise<string | undefined>
+	secret: string
+	cookieName?: string
+	headerName?: string
+	allowedOrigins?: string[]
+	tokenTtlMs?: number
+	tokenSize?: number
+	getSessionId?: (
+		event: RequestEvent
+	) => string | undefined | Promise<string | undefined>
 }
-
-// ─── factory ─────────────────────────────────────────────────────────────────
 
 export function createCsrfHandle(opts: CsrfHandleOptions): Handle {
-  const {
-    secret,
-    cookieName     = 'csrf-token',
-    headerName     = 'x-csrf-token',
-    allowedOrigins = [],
-    tokenTtlMs     = 60 * 60 * 1_000, // 1 hour
-    tokenSize      = 32,
-    getSessionId,
-  } = opts
+	const {
+		secret,
+		cookieName = 'csrf-token',
+		headerName = 'x-csrf-token',
+		allowedOrigins = [],
+		tokenTtlMs = 60 * 60 * 1000,
+		tokenSize = 32,
+		getSessionId,
+	} = opts
 
-  return async ({ event, resolve }) => {
-    const method = event.request.method.toUpperCase()
+	return async ({ event, resolve }) => {
+		const method = event.request.method.toUpperCase()
 
-    // ── safe methods: issue token only when the cookie is absent ────────────
-    if (SAFE_METHODS.has(method)) {
-      const existing = event.cookies.get(cookieName)
+		// 🧠 CRITICAL: skip CSRF entirely during prerender
+		if (building) return resolve(event)
 
-      if (!existing) {
-        const sessionId = await getSessionId?.(event)
-        const raw       = generateRawToken(tokenSize)
-        const bundled   = bundleToken(raw, secret, {
-          expiresAt: Date.now() + tokenTtlMs,
-          sessionId,
-        })
+		// ── SAFE METHODS: issue or reuse token ───────────────────────────────
+		if (SAFE_METHODS.has(method)) {
+			const existing = event.cookies.get(cookieName)
 
-        event.cookies.set(cookieName, bundled, {
-          httpOnly: false,               // JS must be able to read it
-          sameSite: 'lax',
-          secure:   process.env.NODE_ENV === 'production',
-          path:     '/',
-          maxAge:   Math.floor(tokenTtlMs / 1_000),
-        })
+			if (!existing) {
+				const sessionId = await getSessionId?.(event)
+				const raw = generateRawToken(tokenSize)
 
-        event.locals.csrfToken = bundled
-      } else {
-        // Surface the existing token to server-side renderers
-        event.locals.csrfToken = existing
-      }
+				const bundled = bundleToken(raw, secret, {
+					expiresAt: Date.now() + tokenTtlMs,
+					sessionId,
+				})
 
-      return resolve(event)
-    }
+				event.cookies.set(cookieName, bundled, {
+					httpOnly: false,
+					sameSite: 'lax',
+					secure: process.env.NODE_ENV === 'production',
+					path: '/',
+					maxAge: Math.floor(tokenTtlMs / 1000),
+				})
 
-    // ── unsafe methods: verify ───────────────────────────────────────────────
-    if (UNSAFE_METHODS.has(method)) {
+				event.locals.csrfToken = bundled
+			} else {
+				event.locals.csrfToken = existing
+			}
 
-      // 1. Origin check ───────────────────────────────────────────────────────
-      if (allowedOrigins.length > 0) {
-        const origin = event.request.headers.get('origin')
-        if (origin && !allowedOrigins.includes(origin)) {
-          return forbidden('Invalid origin')
-        }
-      }
+			return resolve(event)
+		}
 
-      // 2. Token presence ─────────────────────────────────────────────────────
-      const cookieVal = event.cookies.get(cookieName)
-      let headerVal = event.request.headers.get(headerName)
+		// ── UNSAFE METHODS: verify ───────────────────────────────────────────
+		if (UNSAFE_METHODS.has(method)) {
+			// Origin check (optional)
+			if (allowedOrigins.length > 0) {
+				const origin = event.request.headers.get('origin')
+				if (origin && !allowedOrigins.includes(origin)) {
+					return forbidden('Invalid origin')
+				}
+			}
 
-      // If the header is missing, fall back to a hidden form field when the
-      // request is a traditional browser form submission. We clone the request
-      // before reading the body so downstream handlers (actions) can still
-      // consume it.
-      if (!headerVal) {
-        const contentType = event.request.headers.get('content-type') ?? ''
-        if (
-          contentType.includes('application/x-www-form-urlencoded') ||
-          contentType.includes('multipart/form-data')
-        ) {
-          try {
-            const cloned = event.request.clone()
-            const form = await cloned.formData()
-            // Prefer the cookie-name as the hidden input name, fall back to
-            // some common alternatives to ease integration.
-            headerVal = (form.get(cookieName) as string) ??
-              (form.get('csrf-token') as string) ??
-              (form.get('_csrf') as string) ??
-              (form.get('csrf') as string) ??
-              null
-          } catch (e) {
-            // If form parsing fails, we'll continue and treat the token as
-            // missing which results in a 403 below.
-            headerVal = null
-          }
-        }
-      }
+			const cookieVal = event.cookies.get(cookieName)
+			let headerVal = event.request.headers.get(headerName)
 
-      if (!cookieVal || !headerVal) {
-        return forbidden('Missing CSRF token')
-      }
+			// fallback for form submissions
+			if (!headerVal) {
+				const contentType =
+					event.request.headers.get('content-type') ?? ''
 
-      // 3. Double-submit equality check ──────────────────────────────────────
-      //    The token the cookie holds must match the token in the header byte-for-byte.
-      //    Note: this comparison is NOT timing-sensitive because the attacker
-      //    cannot set the cookie (SameSite + HttpOnly-on-session-cookie); the
-      //    HMAC check below is where constant-time matters.
-      if (cookieVal !== headerVal) {
-        return forbidden('CSRF token mismatch')
-      }
+				if (
+					contentType.includes('application/x-www-form-urlencoded') ||
+					contentType.includes('multipart/form-data')
+				) {
+					try {
+						const form = await event.request.clone().formData()
 
-      // 4. HMAC + expiry + optional session validation ─────────────────────────
-      const sessionId = await getSessionId?.(event)
-      const { valid } = unbundleToken(cookieVal, secret, { sessionId })
+						headerVal =
+							(form.get(cookieName) as string) ??
+							(form.get('csrf-token') as string) ??
+							(form.get('_csrf') as string) ??
+							(form.get('csrf') as string) ??
+							null
+					} catch {
+						headerVal = null
+					}
+				}
+			}
 
-      if (!valid) {
-        return forbidden('Invalid or expired CSRF token')
-      }
-    }
+			if (!cookieVal || !headerVal) {
+				return forbidden('Missing CSRF token')
+			}
 
-    return resolve(event)
-  }
+			if (cookieVal !== headerVal) {
+				return forbidden('CSRF token mismatch')
+			}
+
+			const sessionId = await getSessionId?.(event)
+			const { valid } = unbundleToken(cookieVal, secret, {
+				sessionId,
+			})
+
+			if (!valid) {
+				return forbidden('Invalid or expired CSRF token')
+			}
+		}
+
+		return resolve(event)
+	}
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 function forbidden(message: string): Response {
-  return new Response(message, {
-    status:  403,
-    headers: { 'Content-Type': 'text/plain' },
-  })
+	return new Response(message, {
+		status: 403,
+		headers: { 'Content-Type': 'text/plain' },
+	})
 }

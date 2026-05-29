@@ -14,52 +14,71 @@
  *            BEFORE userStateHandle (no point resolving state for guests).
  */
 
-import { redirect, type Handle } from '@sveltejs/kit'
-import { env }                   from '$env/dynamic/private'
-import { authProvider }          from './AuthProvider'
+/**
+ * src/hooks-server/AuthGuard.ts
+ *
+ * Prerender-safe session guard.
+ * - Skips enforcement during build/prerender
+ * - Never assumes locals.auth exists
+ * - Only enforces auth in real runtime requests
+ */
 
-// ─── route config ─────────────────────────────────────────────────────────────
+import { redirect, type Handle } from '@sveltejs/kit'
+import { building } from '$app/environment'
+import { authProvider } from './AuthProvider'
 
 const PROTECTED_PAGE_PREFIXES = [
-  '/admin',
-  '/app',
-  '/crew',
-  '/onboarding',
-  '/operator',
-  '/org',
+	'/admin',
+	'/app',
+	'/crew',
+	'/onboarding',
+	'/operator',
+	'/org',
 ] as const
 
-// ─── handle ───────────────────────────────────────────────────────────────────
-
 export const authGuardHandle: Handle = async ({ event, resolve }) => {
-  const { pathname } = event.url
+	const { pathname } = event.url
 
-  const isProtectedPage = PROTECTED_PAGE_PREFIXES.some((p) => pathname.startsWith(p))
-  const isProtectedApi  = pathname.startsWith('/api')
+	// 🧠 CRITICAL: prerender-safe escape hatch
+	if (building) return resolve(event)
 
-  if (isProtectedPage || isProtectedApi) {
-    const { session, user } = event.locals.auth  // ← unified source; no more safeGetSession()
+	const isProtectedPage = PROTECTED_PAGE_PREFIXES.some((p) =>
+		pathname.startsWith(p)
+	)
 
-    if (!session || !user) {
-      // Clear provider cookies on auth failure
-      if ('clearCookies' in authProvider) {
-        ;(authProvider as any).clearCookies(event)
-      } else {
-        await event.locals.supabase.auth.signOut()
-      }
+	const isProtectedApi = pathname.startsWith('/api')
 
-      if (isProtectedApi) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status:  401,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
+	if (isProtectedPage || isProtectedApi) {
+		const auth = event.locals.auth ?? { session: null, user: null }
+		const { session, user } = auth
 
-      const loginUrl = new URL('/login/sign_in', event.url.origin)
-      loginUrl.searchParams.set('next', event.url.pathname + event.url.search)
-      throw redirect(303, loginUrl.toString())
-    }
-  }
+		if (!session || !user) {
+			// best-effort cleanup only in real runtime
+			if (authProvider && 'clearCookies' in authProvider) {
+				;(authProvider as any).clearCookies(event)
+			} else {
+				await event.locals.supabase?.auth?.signOut?.()
+			}
 
-  return resolve(event)
+			if (isProtectedApi) {
+				return new Response(
+					JSON.stringify({ error: 'Unauthorized' }),
+					{
+						status: 401,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				)
+			}
+
+			const loginUrl = new URL('/login/sign_in', event.url.origin)
+			loginUrl.searchParams.set(
+				'next',
+				pathname + event.url.search
+			)
+
+			throw redirect(303, loginUrl.toString())
+		}
+	}
+
+	return resolve(event)
 }

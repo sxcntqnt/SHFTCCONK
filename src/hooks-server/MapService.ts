@@ -14,42 +14,84 @@
  *            BEFORE posthogProxy + supabaseHandle (no auth dependency).
  */
 
-import { building }                                from '$app/environment'
-import type { Handle }                             from '@sveltejs/kit'
-import { createMapService, getMapService }         from '$lib/map/index.server'
-import { buildMapServiceConfig }                   from '$lib/map/services/Config.server'
+/**
+ * src/hooks-server/MapService.ts
+ *
+ * Singleton-safe DuckDB + SSE map service bootstrap.
+ *
+ * DESIGN SHIFT:
+ * ❌ BEFORE: request-middleware initialization (race-prone under prerender)
+ * ✅ NOW: process-level lazy singleton initialization
+ *
+ * This module MUST NOT depend on SvelteKit request lifecycle.
+ */
 
-// ─── singleton state ──────────────────────────────────────────────────────────
+import { building } from '$app/environment'
+import { createMapService, getMapService } from '$lib/map/index.server'
+import { buildMapServiceConfig } from '$lib/map/services/Config.server'
 
-let mapServiceReady       = false
-let mapServiceInitPromise: Promise<void> | null = null
+/**
+ * Single shared init promise for the entire Node process.
+ * Prevents concurrent initialization storms.
+ */
+let initPromise: Promise<void> | null = null
 
-// ─── handle ───────────────────────────────────────────────────────────────────
+/**
+ * Tracks successful readiness.
+ */
+let ready = false
 
-export const mapServiceHandle: Handle = async ({ event, resolve }) => {
-  if (!building && !mapServiceReady) {
-    if (!mapServiceInitPromise) {
-      mapServiceInitPromise = (async () => {
-        let service = getMapService()
+/**
+ * Core initializer.
+ *
+ * Safe to call:
+ * - multiple times
+ * - from request handlers
+ * - during SSR
+ *
+ * Only the first call triggers actual startup.
+ */
+export async function initMapService(): Promise<void> {
+	// ❄️ Never initialize during build/prerender phase
+	if (building) return
 
-        if (!service) {
-          service = await createMapService(buildMapServiceConfig())
-        }
+	// 🚀 Already fully initialized
+	if (ready && getMapService()) return
 
-        await service.start()
+	// 🧠 If initialization is already in progress, reuse it
+	if (initPromise) {
+		await initPromise
+		return
+	}
 
-        mapServiceReady = true
-        console.info('[map-service] started successfully')
-      })().catch((err) => {
-        // Clear the promise so the next request retries
-        mapServiceInitPromise = null
-        console.error('[map-service] startup failed:', err)
-        throw err
-      })
-    }
+	initPromise = (async () => {
+		const existing = getMapService()
 
-    await mapServiceInitPromise
-  }
+		const service =
+			existing ?? (await createMapService(buildMapServiceConfig()))
 
-  return resolve(event)
+		await service.start()
+
+		ready = true
+
+		console.info('[map-service] initialized successfully')
+	})().catch((err) => {
+		// 🧹 reset so next request can retry cleanly
+		initPromise = null
+		ready = false
+
+		console.error('[map-service] initialization failed:', err)
+
+		throw err
+	})
+
+	await initPromise
+}
+
+/**
+ * Optional helper if other modules need direct access safely.
+ */
+export async function getReadyMapService() {
+	await initMapService()
+	return getMapService()
 }

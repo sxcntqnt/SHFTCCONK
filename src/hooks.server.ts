@@ -37,7 +37,6 @@ import { getPostHogClient }       from '$lib/server/posthog'
 import {
   cloudflareHttpsFix,
   locationHandle,
-  mapServiceHandle,
   posthogProxy,
   supabaseHandle,
   authHandle,         // NEW
@@ -75,7 +74,6 @@ export const handle = sequence(
   Sentry.sentryHandle(),
   cloudflareHttpsFix,
   locationHandle,
-  mapServiceHandle,
   posthogProxy,
   supabaseHandle,     // clients only; zeros all auth locals
   authHandle,         // → locals.auth                       NEW

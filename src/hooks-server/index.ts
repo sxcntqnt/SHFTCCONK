@@ -11,7 +11,6 @@ export { sessionSyncHandle }  from './SessionSync'    // NEW
 export { authGuardHandle }    from './AuthGuard'
 export { userStateHandle }    from './UserState'
 export { locationHandle }     from './Location'
-export { mapServiceHandle }   from './MapService'
 export { cloudflareHttpsFix } from './Cloudflare'
 export { posthogProxy }       from './Posthog'
 export { createCsrfHandle } from   './csrf_handle'                                                    
