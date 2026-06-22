@@ -201,6 +201,10 @@
 
 <svelte:head>
   <title>{WebsiteName} – Never Wait Again</title>
+  <link
+    rel="canonical"
+    href="https://sxcntcnqunts.org/"
+  />
   <meta
     name="description"
     content="Live matatu tracking in Nairobi. See real-time positions, accurate ETAs and get 2–3 min arrival alerts. Free for commuters."

@@ -9,6 +9,10 @@
     property="og:description"
     content="Get the app and start tracking matatus live."
   />
+  <link
+    rel="canonical"
+    href="https://sxcntcnqunts.org/download"
+  />
 </svelte:head>
 
 <div class="page">
