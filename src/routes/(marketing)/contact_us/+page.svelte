@@ -4,6 +4,10 @@
     name="description"
     content="Contact the Matatu Pulse team. Reach us for operator demos, partnership enquiries, press, technical support, or general questions about our Nairobi matatu tracking platform."
   />
+  <link
+    rel="canonical"
+    href="https://sxcntcnqunts.org/contact_us"
+  />
   <script
     src="https://challenges.cloudflare.com/turnstile/v0/api.js"
     async
