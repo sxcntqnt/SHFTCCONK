@@ -1,7 +1,29 @@
+<script lang="ts">
+  import { authorColor } from '$lib/content/author-color';
+  import type { PageData } from './$types';
+
+  export let data: PageData;
+
+  const tagLabels: Record<string, string> = {
+    tip: 'Tip',
+    report: 'Report',
+    question: 'Question',
+    announce: 'Announce'
+  };
+
+  function timeAgo(date: string): string {
+    const diffMs = Date.now() - new Date(date).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr ago`;
+    const days = Math.floor(hrs / 24);
+    return days === 1 ? 'Yesterday' : `${days} days ago`;
+  }
+</script>
+
 <svelte:head>
-  <title
-    >Community — Matatu Pulse | Nairobi Transit Riders & Operators Forum</title
-  >
+  <title>Community — Matatu Pulse | Nairobi Transit Riders & Operators Forum</title>
   <meta
     name="description"
     content="Join the Matatu Pulse community — a forum for Nairobi commuters, matatu operators, and transit enthusiasts to share route tips, report issues, and shape the future of Nairobi's transit data."
@@ -21,12 +43,9 @@
       <div class="hero-actions">
         <a href="/community/join" class="btn-primary"
           >Join the Community<svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
+            width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5"
+          ><path d="M5 12h14M12 5l7 7-7 7" /></svg
           ></a
         >
         <a href="/community/latest" class="btn-ghost">Latest Discussions →</a>
@@ -51,54 +70,47 @@
     <div class="inner">
       <span class="section-tag">Forum</span>
       <h2 class="section-title">Browse by Category</h2>
-      <p
-        style="font-size:1rem;color:var(--text-2);line-height:1.7;max-width:520px;margin-bottom:40px;"
-      >
+      <p style="font-size:1rem;color:var(--text-2);line-height:1.7;max-width:520px;margin-bottom:40px;">
         Sign in to post, vote, and follow threads. Browsing is open to everyone.
       </p>
 
       <div class="forum-layout">
         <div>
           <div class="categories-list">
-            {#each [{ name: "Route Tips & Tricks", desc: "Share what you know — best boarding stages, fastest times of day, shortcuts operators use.", count: "312", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 00-8 8c0 5.4 7.05 11.5 7.7 12.06a.5.5 0 00.6 0C12.95 21.5 20 15.4 20 10a8 8 0 00-8-8z"/></svg>` }, { name: "Live Alerts & Ground Reports", desc: "Real-time reports from riders and drivers — diversions, blockages, accidents, protests.", count: "1,840", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>` }, { name: "Questions & Support", desc: "Ask anything about the platform, your route, or Nairobi transit. Community and team both respond.", count: "924", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` }, { name: "Operator Corner", desc: "A dedicated space for sacco managers, fleet owners, and drivers to discuss operations.", count: "418", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7z"/></svg>` }, { name: "Feature Requests", desc: "Suggest and vote on features. Our product team reviews the top-voted requests every month.", count: "276", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` }, { name: "Nairobi Transit Discussion", desc: "Big-picture conversations about Nairobi mobility, city planning, BRT, and the future of transport.", count: "210", lbl: "Posts", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>` }] as c}
-              <a
-                href="/community/{c.name.toLowerCase().replace(/\s+/g, '-')}"
-                class="category-card"
-              >
+            {#each data.categories as c}
+              <a href="/community/{c.slug}" class="category-card">
                 <div class="cat-icon">{@html c.icon}</div>
                 <div class="cat-info">
                   <div class="cat-name">{c.name}</div>
                   <p class="cat-desc">{c.desc}</p>
                 </div>
                 <div class="cat-meta">
-                  <div class="cat-count">{c.count}</div>
-                  <div class="cat-lbl">{c.lbl}</div>
+                  <div class="cat-count">{c.count ?? ''}</div>
+                  <div class="cat-lbl">Posts</div>
                 </div>
               </a>
             {/each}
           </div>
 
           <!-- Recent discussions -->
-          <h3
-            style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--text-1);margin:48px 0 16px;letter-spacing:-0.02em;"
-          >
+          <h3 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;color:var(--text-1);margin:48px 0 16px;letter-spacing:-0.02em;">
             Recent Discussions
           </h3>
           <div class="discussions-list">
-            {#each [{ title: "Thika Road completely blocked after accident at Survey — avoid until 9am", tag: "report", tagLabel: "Report", author: "K.M.", color: "#e06030", replies: 24, time: "12 min ago" }, { title: "Route 46 tip: board at Kangemi terminus not mid-route — saves 20min and KES 20", tag: "tip", tagLabel: "Tip", author: "P.W.", color: "#009b88", replies: 8, time: "1 hr ago" }, { title: "Is the Rongai route covered on weekends? Can't see any vehicles after 7pm", tag: "question", tagLabel: "Question", author: "S.N.", color: "#d95618", replies: 5, time: "2 hr ago" }, { title: "New tracking partnership — Githurai 45 matatus now live on the platform", tag: "announce", tagLabel: "Announce", author: "MP Team", color: "#7c3aed", replies: 41, time: "Yesterday" }, { title: "Feature request: show fare comparison between parallel routes (e.g. Westlands via Uhuru vs via Museum)", tag: "question", tagLabel: "Request", author: "A.O.", color: "#d95618", replies: 12, time: "Yesterday" }] as d}
-              <a href="/community/thread" class="discussion">
-                <div class="discussion-avatar" style="background:{d.color};">
-                  {d.author.charAt(0)}
+            {#each data.posts as p}
+              <a href="/community/{p.category}/{p.slug}" class="discussion">
+                <div class="discussion-avatar" style="background:{authorColor(p.author)};">
+                  {p.author.charAt(0)}
                 </div>
                 <div class="discussion-body">
                   <div class="discussion-title">
-                    <span class="discussion-tag tag-{d.tag}">{d.tagLabel}</span
-                    >{d.title}
+                    <span class="discussion-tag tag-{p.tag}">{tagLabels[p.tag]}</span
+                    >{p.title}
                   </div>
-                  <div class="discussion-meta">{d.author} · {d.time}</div>
+                  <div class="discussion-meta">{p.author} · {timeAgo(p.date)}</div>
                 </div>
                 <div class="discussion-replies">
-                  <div class="reply-count">{d.replies}</div>
+                  <div class="reply-count">{p.replies ?? 0}</div>
                   <div class="reply-lbl">replies</div>
                 </div>
               </a>
@@ -113,9 +125,7 @@
             <div class="members-list">
               {#each [{ name: "John Mwangi", posts: "847 posts", color: "#e06030", init: "JM", badge: "Verified Rider" }, { name: "Grace Achieng", posts: "634 posts", color: "#009b88", init: "GA", badge: "Operator" }, { name: "David Kamau", posts: "521 posts", color: "#7c3aed", init: "DK", badge: null }, { name: "Fatuma Hassan", posts: "412 posts", color: "#d95618", init: "FH", badge: null }, { name: "Peter Njoroge", posts: "388 posts", color: "#2563eb", init: "PN", badge: "Verified Rider" }] as m}
                 <div class="member">
-                  <div class="member-avatar" style="background:{m.color};">
-                    {m.init}
-                  </div>
+                  <div class="member-avatar" style="background:{m.color};">{m.init}</div>
                   <div>
                     <div class="member-name">{m.name}</div>
                     <div class="member-posts">{m.posts}</div>
@@ -139,25 +149,16 @@
             </div>
           </div>
 
-          <div
-            class="sidebar-card"
-            style="background:rgba(242,101,34,0.04);border-color:rgba(242,101,34,0.2);"
-          >
-            <div class="sidebar-card-title" style="color:var(--orange);">
-              Your Input Shapes the App
-            </div>
-            <p
-              style="font-size:0.82rem;color:var(--text-2);line-height:1.65;margin-bottom:16px;"
-            >
+          <div class="sidebar-card" style="background:rgba(242,101,34,0.04);border-color:rgba(242,101,34,0.2);">
+            <div class="sidebar-card-title" style="color:var(--orange);">Your Input Shapes the App</div>
+            <p style="font-size:0.82rem;color:var(--text-2);line-height:1.65;margin-bottom:16px;">
               Route tips shared in the community are reviewed by our data team
               and used to improve ETA accuracy and coverage decisions. Every
               post matters.
             </p>
-            <a
-              href="/community/join"
-              style="display:flex;align-items:center;gap:7px;font-size:0.82rem;font-weight:700;color:var(--orange);text-decoration:none;"
-              >Join and start contributing →</a
-            >
+            <a href="/community/join" style="display:flex;align-items:center;gap:7px;font-size:0.82rem;font-weight:700;color:var(--orange);text-decoration:none;">
+              Join and start contributing →
+            </a>
           </div>
         </div>
       </div>
