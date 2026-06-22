@@ -1,20 +1,50 @@
 import type { RequestHandler } from "@sveltejs/kit"
 import * as sitemap from "super-sitemap"
 import { WebsiteBaseUrl } from "../../../config"
+import { categories } from "$lib/content/community-categories"
+import { flatLinks } from "$lib/docs/docs-nav"
 
 export const prerender = false
 
 export const GET: RequestHandler = async () => {
+
+  const docSlugs = flatLinks().map(
+    (link) => link.href.replace(/^\/docs\//, "")
+  )
+
   return sitemap.response({
+
     origin: WebsiteBaseUrl,
 
-    // Routes that should NEVER be included in the sitemap
+    paramValues: {
+
+      // /community/[category]
+      "/community/[category]": categories.map(
+        (c) => c.slug
+      ),
+
+      // /docs/[...slug]
+      "/docs/[...slug]": docSlugs
+
+    },
+
     excludeRoutePatterns: [
-      ".*\\(auth\\).*",                    // exclude all routes inside (auth) group
-      ".*\\(marketing\\)/auth.*",          // exclude marketing auth routes
-      "^/verify(/.*)?$",                   // /verify and subroutes
-      "^/login(/.*)?$",                    // /login and all subroutes
-      ".*\\[token\\].*",                   // ← This is the most reliable fix
-    ],
+
+      // auth
+      ".*\\(auth\\).*",
+      ".*\\(marketing\\)/auth.*",
+
+      // private routes
+      "^/verify(/.*)?$",
+      "^/login(/.*)?$",
+
+      // tokens
+      ".*\\[token\\].*",
+
+      // DO NOT put posts into sitemap
+      ".*\\[category\\]/\\[post\\].*"
+
+    ]
+
   })
 }
