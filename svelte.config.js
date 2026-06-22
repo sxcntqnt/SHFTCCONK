@@ -1,8 +1,18 @@
-import adapter from "@sveltejs/adapter-node"
-import { vitePreprocess } from "@sveltejs/vite-plugin-svelte"
+import adapter from "@sveltejs/adapter-node";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import { mdsvex } from "mdsvex";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
+	extensions: [".svelte", ".md"],
+
+	preprocess: [
+		vitePreprocess(),
+		mdsvex({
+			extensions: [".md"]
+		})
+	],
+
 	kit: {
 		adapter: adapter(),
 
@@ -11,32 +21,30 @@ const config = {
 
 		// Required for PostHog session replay to work correctly with SSR
 		paths: {
-			relative: false,
+			relative: false
 		},
 
 		prerender: {
 			handleHttpError: ({ path, referrer, message }) => {
-				console.error("PRERENDER ERROR")
+				console.error("PRERENDER ERROR");
 				console.error({
 					path,
 					referrer,
-					message,
-				})
-			},
+					message
+				});
+			}
 		},
 
 		experimental: {
 			tracing: {
-				server: true,
+				server: true
 			},
 
 			instrumentation: {
-				server: true,
-			},
-		},
-	},
+				server: true
+			}
+		}
+	}
+};
 
-	preprocess: vitePreprocess(),
-}
-
-export default config
+export default config;

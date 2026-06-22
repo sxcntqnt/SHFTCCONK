@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite dev",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=6092 vite build && node scripts/patch-build.mjs",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=6092 vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -17,7 +17,7 @@
     "prod-dev": "svelte-kit dev",
     "prod-build": "svelte-kit build",
     "prod-preview": "svelte-kit preview",
-    "prod-start": "dotenv -e .env -- node server.js"
+    "prod-start": "dotenv -e .env -- node build"
   },
   "type": "module",
   "devDependencies": {
@@ -43,6 +43,7 @@
     "glob": "^13.0.6",
     "html-to-text": "^10.0.0",
     "jsdom": "^29.1.1",
+    "mdsvex": "^0.12.7",
     "postcss": "^8.5.15",
     "prettier": "^3.8.4",
     "prettier-plugin-svelte": "^4.1.1",
@@ -69,7 +70,7 @@
     "@supabase/auth-ui-svelte": "^0.2.9",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
-    "@sveltejs/adapter-node": "^5.5.5",
+    "@sveltejs/adapter-node": "^5.5.4",
     "@threlte/core": "^8.5.16",
     "@threlte/extras": "^9.21.0",
     "@upstash/redis": "^1.38.0",
