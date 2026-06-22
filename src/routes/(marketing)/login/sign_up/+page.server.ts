@@ -7,8 +7,20 @@
  *   1. Validate form fields
  *   2. POST /auth/register → Go auth service (creates account)
  *   3. POST /auth/login    → Go auth service (auto-login, same creds)
- *   4. Set HttpOnly cookies
+ *   4. Set access_token cookie + forward the Go service's own refresh
+ *      cookie (Set-Cookie header) verbatim
  *   5. Redirect → /auth/callback
+ *
+ * CONTRACT CHANGE FROM THE JWT-ERA VERSION:
+ *   login() and register() now return { body, setCookie } instead of the
+ *   bare JSON body. body no longer has a refresh_token field — the Go
+ *   service sets the refresh token as its own HttpOnly cookie via
+ *   Set-Cookie, and that header must be forwarded onto this response with
+ *   event.setHeaders rather than reconstructed from a JSON value. See the
+ *   module doc comment in $lib/server/auth-client.ts for the full
+ *   rationale; this was the source of a real bug where setAuthCookies was
+ *   called with tokens.refresh_token === undefined, silently writing a
+ *   broken refresh cookie on every sign-up.
  *
  * WHY /auth/callback AND NOT /app/dashboard:
  *   New users have no profile row and no actors. Redirecting to
@@ -61,7 +73,8 @@ import type { Actions, PageServerLoad } from "./$types"
 import {
   register,
   login,
-  setAuthCookies,
+  setAccessTokenCookie,
+  forwardAuthServiceCookie,
   AuthError,
 }                                      from "$lib/server/auth-client"
 import { getPostHogClient }            from "$lib/server/posthog"
@@ -85,7 +98,8 @@ function deriveNickname(firstName: string, lastName: string): string {
 }
 
 export const actions: Actions = {
-  default: async ({ request, cookies, url }) => {
+  default: async (event) => {
+    const { request, url } = event
     const form      = await request.formData()
     const email     = form.get("email")?.toString().trim()      ?? ""
     const password  = form.get("password")?.toString()          ?? ""
@@ -117,7 +131,11 @@ export const actions: Actions = {
         nickname,
         country,
       })
-      userId = result.user.id
+      userId = result.body.user.id
+      // register() does not mint a session — the Go service's
+      // POST /auth/register never sets a refresh cookie, so there is
+      // nothing to forward from result.setCookie here (it will be
+      // undefined). The actual session is opened by the login() call below.
     } catch (err) {
       if (err instanceof AuthError) {
         switch (err.status) {
@@ -138,8 +156,9 @@ export const actions: Actions = {
 
     // ── Auto-login ───────────────────────────────────────────────
     try {
-      const tokens = await login({ email, password })
-      setAuthCookies(cookies, tokens)
+      const result = await login({ email, password })
+      setAccessTokenCookie(event.cookies, result.body)
+      forwardAuthServiceCookie(event.cookies, result.setCookie)
     } catch (err) {
       console.error("[sign_up] auto-login after register failed:", err)
       throw redirect(303, "/login/sign_in?registered=true")

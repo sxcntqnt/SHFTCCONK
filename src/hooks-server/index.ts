@@ -14,3 +14,4 @@ export { locationHandle }     from './Location'
 export { cloudflareHttpsFix } from './Cloudflare'
 export { posthogProxy }       from './Posthog'
 export { createCsrfHandle } from   './csrf_handle'                                                    
+export { requestLogger } from "./requestLogger";

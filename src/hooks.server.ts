@@ -44,6 +44,7 @@ import {
   createCsrfHandle,
   authGuardHandle,
   userStateHandle,
+  requestLogger,
 } from './hooks-server'
 
 // ─── csrf handle ──────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ const csrfHandle = createCsrfHandle({
 
 export const handle = sequence(
   Sentry.sentryHandle(),
+  requestLogger,
   cloudflareHttpsFix,
   locationHandle,
   posthogProxy,

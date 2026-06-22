@@ -6,13 +6,24 @@
  * FLOW:
  *   1. Validate form fields
  *   2. POST /auth/login → Go auth service
- *   3. Set HttpOnly cookies (access_token + refresh_token)
+ *   3. Set access_token cookie + forward the Go service's own refresh
+ *      cookie (Set-Cookie header) verbatim
  *   4. Redirect → /auth/callback
+ *
+ * CONTRACT CHANGE FROM THE JWT-ERA VERSION:
+ *   login() now returns { body, setCookie } instead of the bare JSON
+ *   body, and body has no refresh_token field. See the module doc comment
+ *   in $lib/server/auth-client.ts for the full rationale — the refresh
+ *   token is now an HttpOnly cookie set directly by the Go service, and
+ *   must be forwarded with event.setHeaders rather than read out of the
+ *   response body.
  *
  * WHY /auth/callback AND NOT /app/dashboard:
  *   The callback route is the single routing authority for all auth
  *   paths.  For AUTH_PROVIDER=internal it:
- *     a. Confirms locals.auth.user (authHandle reads the new cookies)
+ *     a. Confirms locals.auth.user (authHandle reads the new cookies via
+ *        InternalAuthProvider.getSession, which now calls the real
+ *        GET /auth/verify endpoint — see internal.ts)
  *     b. Syncs internal identity → Supabase users row
  *     c. Creates a user-scoped Supabase client (auth.uid() in Postgres)
  *     d. Redeems any pending invite token
@@ -34,13 +45,19 @@
  */
 import { fail, redirect }             from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
-import { login, setAuthCookies, AuthError } from "$lib/server/auth-client"
-import { getPostHogClient }                from "$lib/server/posthog"
+import {
+  login,
+  setAccessTokenCookie,
+  forwardAuthServiceCookie,
+  AuthError,
+}                                      from "$lib/server/auth-client"
+import { getPostHogClient }           from "$lib/server/posthog"
 
 export const load: PageServerLoad = async () => ({ })
 
 export const actions: Actions = {
-  default: async ({ request, cookies, url }) => {
+  default: async (event) => {
+    const { request, url } = event
     const form     = await request.formData()
     const email    = form.get("email")?.toString().trim() ?? ""
     const password = form.get("password")?.toString()     ?? ""
@@ -52,8 +69,9 @@ export const actions: Actions = {
 
     // ── Call Go auth service ──────────────────────────────────────
     try {
-      const tokens = await login({ email, password })
-      setAuthCookies(cookies, tokens)
+      const result = await login({ email, password })
+      setAccessTokenCookie(event.cookies, result.body)
+      forwardAuthServiceCookie(event.cookies, result.setCookie)
     } catch (err) {
       if (err instanceof AuthError) {
         switch (err.status) {
