@@ -180,7 +180,7 @@
           type="text"
           class="field-input"
           autocomplete="given-name"
-          placeholder="Adrian"
+          placeholder="Kijana"
           value={actionFirst ?? ""}
           required
           disabled={submitting}
@@ -194,7 +194,7 @@
           type="text"
           class="field-input"
           autocomplete="family-name"
-          placeholder="Mwicigi"
+          placeholder="Barubaru"
           value={actionLast ?? ""}
           required
           disabled={submitting}

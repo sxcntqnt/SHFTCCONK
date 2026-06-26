@@ -6,7 +6,7 @@ export async function GET() {
   return json({
     status: 'ok',
     service: 'root',
-    message: 'ongeza mpaka...'
+    message: 'ongeza mpaka...',
     timestamp: new Date().toISOString()
   });
 }
