@@ -1,210 +1,263 @@
 <svelte:head>
-  <title>Download Matatu Pulse — Get the App</title>
-  <meta
-    name="description"
-    content="Download Matatu Pulse and track matatus in real time across Nairobi. Get live arrival alerts, route intelligence, and more."
-  />
-  <meta property="og:title" content="Download — Matatu Pulse" />
-  <meta
-    property="og:description"
-    content="Get the app and start tracking matatus live."
-  />
-  <link
-    rel="canonical"
-    href="https://sxcntcnqunts.org/download"
-  />
+	<title>Download Matatu Pulse | Real-Time Matatu Tracking</title>
+
+	<meta
+		name="description"
+		content="Download Matatu Pulse and experience live matatu tracking, intelligent route planning, arrival predictions, and smarter commuting across Nairobi."
+	/>
+
+	<meta
+		name="keywords"
+		content="matatu,nairobi,transport,kenya,live tracking,transit,commute,ETA,routes"
+	/>
+
+	<meta property="og:title" content="Download Matatu Pulse" />
+
+	<meta
+		property="og:description"
+		content="Real-time public transport intelligence for Nairobi."
+	/>
+
+	<meta property="og:type" content="website" />
+
+	<meta
+		property="og:image"
+		content="https://sxcntcnqunts.org/og-download.jpg"
+	/>
+
+	<meta
+		property="theme-color"
+		content="#050505"
+	/>
+
+	<meta
+		name="color-scheme"
+		content="dark"
+	/>
+
+	<link
+		rel="canonical"
+		href="https://sxcntcnqunts.org/download"
+	/>
 </svelte:head>
 
-<div class="page">
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hero-inner">
-      <h1>Download the App.<br /><em>Start Moving Smarter</em></h1>
-      <p class="sub">
-        Get real-time matatu tracking, arrival alerts, and smarter route
-        decisions — all in your pocket.
-      </p>
+<script lang="ts">
+	import BackgroundEffects from "./ui/BackgroundEffects.svelte";
+	import ScrollProgress from "./ui/ScrollProgress.svelte";
+	import CursorGlow from "./ui/CursorGlow.svelte";
 
-      <div class="store-buttons">
-        <!-- Replace with real links -->
-        <a href="#" class="store primary">Download for Android</a>
-        <a href="#" class="store secondary">Download for iPhone</a>
-      </div>
-    </div>
-  </section>
+	import Hero from "./Hero.svelte";
+	import TrustStats from "./TrustStats.svelte";
+	import FeatureGrid from "./FeatureGrid.svelte";
+	import ScreenshotCarousel from "./ScreenshotCarousel.svelte";
+	import PlatformGrid from "./PlatformGrid.svelte";
+	import FAQ from "./FAQ.svelte";
+	import CTA from "./CTA.svelte";
+</script>
 
-  <!-- HOW IT WORKS -->
-  <section class="section">
-    <div class="inner">
-      <h2 class="section-title">Get Started in 3 Steps</h2>
+<!-- Global ambient effects -->
 
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-title">Install the App</div>
-          <p class="step-desc">
-            Download Matatu Pulse from your app store in seconds.
-          </p>
-        </div>
+<ScrollProgress /> 
 
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-title">Choose Your Route</div>
-          <p class="step-desc">
-            Search your route or nearby stage to see live vehicles.
-          </p>
-        </div>
+ <BackgroundEffects /> 
 
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-title">Track & Ride</div>
-          <p class="step-desc">Get notified and board at the perfect time.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-</div>
+ <CursorGlow /> 
+
+<main class="download-page">
+
+	<Hero />
+
+	<TrustStats />
+
+	<FeatureGrid />
+
+	<ScreenshotCarousel />
+
+
+	<PlatformGrid />
+
+	<FAQ />
+
+	<CTA />
+
+</main>
 
 <style>
-  .page {
-    background: var(--ink);
-  }
 
-  .hero {
-    padding: 110px 2rem 90px;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-  }
-  .hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      ellipse 55% 65% at 50% -10%,
-      rgba(242, 101, 34, 0.15),
-      transparent 60%
-    );
-  }
-  .hero-inner {
-    position: relative;
-    max-width: 680px;
-    margin: 0 auto;
-  }
+:global(html){
 
-  h1 {
-    font-family: var(--font-display);
-    font-size: clamp(2.4rem, 6vw, 3.6rem);
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    color: var(--text-1);
-    margin-bottom: 18px;
-  }
-  h1 em {
-    color: var(--orange);
-    font-style: normal;
-  }
+	/* -------------------------------- */
+	/* Design tokens — Urban Precision  */
+	/* -------------------------------- */
 
-  .sub {
-    font-size: 1.05rem;
-    color: var(--text-2);
-    line-height: 1.7;
-    margin-bottom: 40px;
-  }
+	--ink:#050505;
+	--ink-2:#0a0a0a;
 
-  .store-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
+	--orange:#f26522;
+	--orange-light:#ff8b42;
+	--orange-dark:#c94d14;
 
-  .store {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 26px;
-    border-radius: 100px;
-    text-decoration: none;
-    font-weight: 700;
-    font-size: 0.9rem;
-    transition:
-      transform 0.15s,
-      box-shadow 0.2s;
-  }
+	--text-1:#ffffff;
+	--text-2:#a3a3ab;
+	--text-3:#6b6b72;
 
-  .store.primary {
-    background: var(--orange);
-    color: #fff;
-    box-shadow: 0 4px 20px rgba(242, 101, 34, 0.35);
-  }
-  .store.primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(242, 101, 34, 0.45);
-  }
+	--surface:rgba(255,255,255,.045);
+	--surface-2:rgba(255,255,255,.025);
+	--border:rgba(255,255,255,.08);
+	--border-hover:rgba(242,101,34,.4);
 
-  .store.secondary {
-    border: 1px solid var(--rim-2);
-    color: var(--text-2);
-  }
-  .store.secondary:hover {
-    transform: translateY(-2px);
-    border-color: var(--rim);
-    color: var(--text-1);
-  }
+	background:var(--ink);
 
-  .section {
-    padding: 80px 2rem;
-    border-top: 1px solid var(--rim);
-  }
-  .inner {
-    max-width: 900px;
-    margin: 0 auto;
-    text-align: center;
-  }
+	scroll-behavior:smooth;
 
-  .steps {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-top: 40px;
-  }
+}
 
-  .step {
-    background: var(--surface);
-    border: 1px solid var(--rim);
-    border-radius: 18px;
-    padding: 26px 22px;
-  }
+:global(body){
 
-  .step-num {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    background: rgba(242, 101, 34, 0.12);
-    color: var(--orange);
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 14px;
-  }
+	margin:0;
 
-  .step-title {
-    font-weight: 700;
-    color: var(--text-1);
-    margin-bottom: 6px;
-  }
+	background:#050505;
 
-  .step-desc {
-    font-size: 0.85rem;
-    color: var(--text-2);
-    line-height: 1.6;
-  }
+	color:var(--text-1);
 
-  @media (max-width: 700px) {
-    .steps {
-      grid-template-columns: 1fr;
-    }
-  }
+	overflow-x:hidden;
+
+}
+
+/* Selection */
+
+:global(::selection){
+
+	background:rgba(242,101,34,.35);
+
+	color:white;
+
+}
+
+/* Scrollbar */
+
+:global(::-webkit-scrollbar){
+
+	width:12px;
+
+}
+
+:global(::-webkit-scrollbar-track){
+
+	background:#070707;
+
+}
+
+:global(::-webkit-scrollbar-thumb){
+
+	background:#262626;
+
+	border-radius:999px;
+
+	border:3px solid #070707;
+
+}
+
+:global(::-webkit-scrollbar-thumb:hover){
+
+	background:var(--orange);
+
+}
+
+/* -------------------------------- */
+
+.download-page{
+
+	position:relative;
+
+	isolation:isolate;
+
+	min-height:100vh;
+
+	color:var(--text-1);
+
+	overflow:hidden;
+
+}
+
+/* Every section sits above the background */
+
+.download-page :global(section){
+
+	position:relative;
+
+	z-index:2;
+
+}
+
+/* Vertical rhythm */
+
+.download-page :global(section + section){
+
+	margin-top:clamp(3rem,5vw,6rem);
+
+}
+
+/* Container utility */
+
+.download-page :global(.container){
+
+	width:min(1280px,calc(100% - 3rem));
+
+	margin-inline:auto;
+
+}
+
+/* Typography */
+
+.download-page{
+
+	text-rendering:optimizeLegibility;
+
+	-webkit-font-smoothing:antialiased;
+
+	-moz-osx-font-smoothing:grayscale;
+
+}
+
+/* Images */
+
+.download-page :global(img:not(.fill-image)){
+    display:block;
+    max-width:100%;
+    height:auto;
+}
+
+/* Links */
+
+.download-page :global(a){
+
+	-webkit-tap-highlight-color:transparent;
+
+}
+
+/* Focus */
+
+.download-page :global(:focus-visible){
+
+	outline:2px solid var(--orange);
+
+	outline-offset:4px;
+
+	border-radius:8px;
+
+}
+
+/* Motion */
+
+@media (prefers-reduced-motion: reduce){
+
+	:global(html){
+
+		scroll-behavior:auto;
+
+	}
+
+}
+
 </style>

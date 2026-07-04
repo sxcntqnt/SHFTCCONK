@@ -172,7 +172,7 @@
   const steps = ["01", "02", "03"]
 
   /* ── City rotator state ── */
-  const regions = [
+  const cities = [
     "Nairobi",
     "Mombasa",
     "Kisumu",
