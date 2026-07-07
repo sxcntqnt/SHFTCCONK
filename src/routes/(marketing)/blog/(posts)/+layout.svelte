@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state"
   import { error } from "@sveltejs/kit"
-  import { sortedBlogPosts, type BlogPost } from "./../posts"
+  import { sortedBlogPosts, getSeoTitle, type BlogPost } from "./../posts"
   import { WebsiteName } from "../../../../config"
 
   interface Props {
@@ -58,8 +58,9 @@
 </script>
 
 <svelte:head>
-  <title>{currentPost.title} — {WebsiteName}</title>
+  <title>{getSeoTitle(currentPost)} — {WebsiteName}</title>
   <meta name="description" content={currentPost.description} />
+  <link rel="canonical" href={pageUrl} />
   <meta property="og:title" content={currentPost.title} />
   <meta property="og:description" content={currentPost.description} />
   <meta property="og:site_name" content={WebsiteName} />

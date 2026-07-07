@@ -482,7 +482,7 @@
             at:
           </p>
           <a
-            href="https://edpb.ec.europa.eu/about-edpb/members_en"
+            href="https://gdpr-info.eu/"
             target="_blank"
             rel="noopener"
           >

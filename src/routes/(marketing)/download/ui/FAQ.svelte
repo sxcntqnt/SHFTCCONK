@@ -1,7 +1,7 @@
 <script lang="ts">
-    import AnimatedSection from "./ui/AnimatedSection.svelte";
-    import GlowCard from "./ui/GlowCard.svelte";
-    import SectionHeading from "./ui/SectionHeading.svelte";
+    import AnimatedSection from "./AnimatedSection.svelte";
+    import GlowCard from "./GlowCard.svelte";
+    import SectionHeading from "./SectionHeading.svelte";
     import { slide } from "svelte/transition";
 
     interface FAQ {

@@ -6,7 +6,7 @@ section: "Getting Started"
 
 ## Before you start
 
-You will need an API key. Obtain one from your [developer dashboard](/account). Keys are prefixed `mp_live_` for production and `mp_test_` for sandbox.
+You will need an API key. Obtain one from your [developer dashboard](/login). Keys are prefixed `mp_live_` for production and `mp_test_` for sandbox.
 
 ## Step 1 — Authenticate
 

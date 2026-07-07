@@ -24,7 +24,7 @@
         you're never caught short.
       </p>
       <div class="hero-actions">
-        <a href="/app/dashboard" class="btn-primary"
+        <a href="/login" class="btn-primary"
           >Check Fares Now<svg
             width="14"
             height="14"
@@ -177,7 +177,7 @@
             stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7" /></svg
           ></a
         >
-        <a href="/app/dashboard" class="btn-ghost">Check Fares in Browser →</a>
+        <a href="/login" class="btn-ghost">Check Fares in Browser →</a>
       </div>
       <p class="final-note">
         Free for all riders. Fare data updated daily from partner saccos.

@@ -13,6 +13,7 @@
     PlatformActor,
     IconKey,
   } from "./../../lib/types"
+  import IconGlyph from "./IconGlyph.svelte"
 
   const ldJson = {
     "@context": "https://schema.org",
@@ -21,13 +22,6 @@
     url: WebsiteBaseUrl,
   }
   const jsonldScript = `<script type="application/ld+json">${JSON.stringify(ldJson) + "<"}/script>`
-
-  const ICONS: Record<IconKey, string> = {
-    tracking: "/icons/marker.png",
-    routes: "/icons/out.png",
-    notifications: "/icons/star.png",
-    analytics: "/icons/point.png",
-  }
 
   export const MATATU_PARTNERS: readonly MatatuPartner[] = [
     { name: "SUPERMETRO", logo: "vehicles/ptrns/super-metro.svg" },
@@ -226,16 +220,17 @@
   ];
   let cityIndex = 0
   let cityFading = false
-
-  const GREENS = ["#00ff88", "#00ffaa", "#33ff99", "#00ffcc"]
-  let dotColor = GREENS[0]
+  let heroVideo: HTMLVideoElement
 
   onMount(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      heroVideo?.pause()
+    }
+
     const interval = setInterval(() => {
       cityFading = true
       setTimeout(() => {
         cityIndex = (cityIndex + 1) % cities.length
-        dotColor = GREENS[Math.floor(Math.random() * GREENS.length)]
         cityFading = false
       }, 500)
     }, 9000)
@@ -258,7 +253,15 @@
 
 <!-- ═══════════ HERO ═══════════ -->
 <section class="hero">
-  <video autoplay muted loop playsinline>
+  <video
+    bind:this={heroVideo}
+    autoplay
+    muted
+    loop
+    playsinline
+    poster="/vehicles/custom/hero-poster.jpg"
+    aria-hidden="true"
+  >
     <source src="/vehicles/custom/GenjeSana.mp4" type="video/mp4" />
   </video>
   <div class="hero-overlay"></div>
@@ -266,10 +269,7 @@
   <div class="hero-inner">
     <!-- Live city beacon -->
     <div class="hero-eyebrow">
-      <span
-        class="hero-eyebrow-dot"
-        style="background:{dotColor}; box-shadow:0 0 8px {dotColor}, 0 0 20px {dotColor}44;"
-      ></span>
+      <span class="hero-eyebrow-dot"></span>
       <span class="eyebrow-label">Now Live in</span>
       <span class="dynamic-city" class:city-exit={cityFading}>
         {cities[cityIndex]}
@@ -345,14 +345,30 @@
     </div>
 
     <div class="steps-grid">
+
+      <svg
+        class="route-connector"
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <path
+          class="connector-line"
+          d="M16.67,30 L33.3,10 L50,30 L66.6,20 L83.33,30"
+        />
+        <circle class="connector-pulse" r="1.6" />
+        <circle class="stop" cx="16.67" cy="30" r="2.2" />
+        <circle class="stop" cx="50" cy="30" r="2.2" />
+        <circle class="stop" cx="83.33" cy="30" r="2.2" />
+      </svg>
+
       {#each commuterWorkflows as step, i}
-        {@const Icon = ICONS[step.icon]}
         <div class="step-card">
           <div class="step-num">Step {steps[i]}</div>
           <div class="step-icon-ring">
-            <img src={Icon} alt={step.title} />
+            <IconGlyph key={step.icon} />
           </div>
-          <div class="step-title">{step.title}</div>
+          <h3 class="step-title">{step.title}</h3>
           <p class="step-desc">{step.description}</p>
         </div>
       {/each}
@@ -374,12 +390,11 @@
 
     <div class="features-grid">
       {#each commuterFeatures as feature}
-        {@const Icon = ICONS[feature.icon]}
         <div class="feature-card">
           <div class="feature-icon">
-            <img src={Icon} alt={feature.name} />
+            <IconGlyph key={feature.icon} />
           </div>
-          <div class="feature-name">{feature.name}</div>
+          <h3 class="feature-name">{feature.name}</h3>
           <p class="feature-desc">{feature.description}</p>
           <div class="feature-audience">
             {#each feature.audience as a}
@@ -577,6 +592,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    background: var(--ink, #050505);
   }
   .hero video {
     position: absolute;
@@ -941,19 +957,48 @@
     gap: 2px;
     position: relative;
   }
-  .steps-grid::before {
-    content: "";
+  .route-connector {
     position: absolute;
-    top: 84px;
-    left: calc(16.6% + 1px);
-    right: calc(16.6% + 1px);
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      rgba(242, 101, 34, 0.8),
-      rgba(242, 101, 34, 0.15)
-    );
+    top: 64px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 44px;
     z-index: 0;
+    overflow: visible;
+  }
+  .connector-line {
+    fill: none;
+    stroke: rgba(242, 101, 34, 0.35);
+    stroke-width: 0.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .stop {
+    fill: var(--orange);
+    stroke: none;
+  }
+  .connector-pulse {
+    fill: var(--orange);
+    offset-path: path("M16.67,30 L33.3,10 L50,30 L66.6,20 L83.33,30");
+    offset-rotate: 0deg;
+    animation: travel-route 5s linear infinite;
+    filter: drop-shadow(0 0 3px rgba(242, 101, 34, 0.9));
+  }
+  @keyframes travel-route {
+    from {
+      offset-distance: 0%;
+    }
+    to {
+      offset-distance: 100%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .connector-pulse {
+      animation: none;
+      opacity: 0;
+    }
   }
   .step-card {
     padding: 44px 36px;
@@ -994,17 +1039,16 @@
     background: rgba(242, 101, 34, 0.08);
     transform: translateY(-3px);
   }
-  .step-icon-ring img {
+  .step-icon-ring :global(svg) {
     width: 28px;
     height: 28px;
-    object-fit: contain;
   }
   .step-title {
     font-family: var(--font-display);
     font-size: 1.15rem;
     font-weight: 700;
     color: var(--text-1);
-    margin-bottom: 12px;
+    margin: 0 0 12px;
     letter-spacing: -0.02em;
   }
   .step-desc {
@@ -1083,17 +1127,16 @@
     background: rgba(242, 101, 34, 0.16);
     border-color: rgba(242, 101, 34, 0.4);
   }
-  .feature-icon img {
+  .feature-icon :global(svg) {
     width: 22px;
     height: 22px;
-    object-fit: contain;
   }
   .feature-name {
     font-family: var(--font-display);
     font-size: 1.02rem;
     font-weight: 700;
     color: var(--text-1);
-    margin-bottom: 10px;
+    margin: 0 0 10px;
     letter-spacing: -0.01em;
   }
   .feature-desc {
@@ -1419,7 +1462,7 @@
       grid-template-columns: 1fr;
       gap: 0;
     }
-    .steps-grid::before {
+    .route-connector {
       display: none;
     }
     .step-card {

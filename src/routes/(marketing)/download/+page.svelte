@@ -46,13 +46,13 @@
 	import ScrollProgress from "./ui/ScrollProgress.svelte";
 	import CursorGlow from "./ui/CursorGlow.svelte";
 
-	import Hero from "./Hero.svelte";
-	import TrustStats from "./TrustStats.svelte";
-	import FeatureGrid from "./FeatureGrid.svelte";
-	import ScreenshotCarousel from "./ScreenshotCarousel.svelte";
-	import PlatformGrid from "./PlatformGrid.svelte";
-	import FAQ from "./FAQ.svelte";
-	import CTA from "./CTA.svelte";
+	import Hero from "./ui/Hero.svelte";
+	import TrustStats from "./ui/TrustStats.svelte";
+	import FeatureGrid from "./ui/FeatureGrid.svelte";
+	import ScreenshotCarousel from "./ui/ScreenshotCarousel.svelte";
+	import PlatformGrid from "./ui/PlatformGrid.svelte";
+	import FAQ from "./ui/FAQ.svelte";
+	import CTA from "./ui/CTA.svelte";
 </script>
 
 <!-- Global ambient effects -->

@@ -1,0 +1,53 @@
+-- =========================================================
+-- contact_requests_hardening.sql
+-- =========================================================
+-- Database-level constraints backing up your Zod validation.
+-- Defense in depth: even if someone bypasses the SvelteKit
+-- action (e.g., via a compromised service_role key), the
+-- database itself enforces data integrity.
+--
+-- Run AFTER 01_tables.sql (requires contact_requests table).
+-- Safe to run on an existing table — ALTER TABLE ADD CONSTRAINT
+-- will fail if data already violates the constraint, so run on
+-- a clean table or clean existing data first.
+-- =========================================================
+
+
+-- Email must look like an email (matches Zod's z.string().email())
+alter table contact_requests
+  add constraint contact_requests_email_format
+  check (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+
+-- Message must not be empty or whitespace-only
+-- Column name: message (not message_body)
+alter table contact_requests
+  add constraint contact_requests_message_not_empty
+  check (message is not null and char_length(trim(message)) > 0);
+
+-- First name must be present and non-empty
+-- Column name: first (not first_name)
+alter table contact_requests
+  add constraint contact_requests_first_name_not_empty
+  check (first is not null and char_length(trim(first)) > 0);
+
+-- Reasonable length limits to prevent abuse
+alter table contact_requests
+  add constraint contact_requests_email_length
+  check (char_length(email) <= 320);  -- RFC 5321 max
+
+alter table contact_requests
+  add constraint contact_requests_message_length
+  check (char_length(message) <= 10000);  -- ~2500 words
+
+-- Column names: first / last (not first_name / last_name)
+alter table contact_requests
+  add constraint contact_requests_name_length
+  check (char_length(first) <= 200 and char_length(coalesce(last, '')) <= 200);
+
+alter table contact_requests
+  add constraint contact_requests_phone_length
+  check (char_length(coalesce(phone, '')) <= 30);
+
+-- Index for admin dashboard queries (order by newest)
+create index if not exists idx_contact_requests_created_at
+  on contact_requests (created_at desc);

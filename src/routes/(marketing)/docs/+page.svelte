@@ -104,7 +104,7 @@
             >Authorization</code
           >
           header. Obtain your API key from the
-          <a href="/account" style="color:var(--orange);text-decoration:none;"
+          <a href="/login" style="color:var(--orange);text-decoration:none;"
             >developer dashboard</a
           >.
         </p>

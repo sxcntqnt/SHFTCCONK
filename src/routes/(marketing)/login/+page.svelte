@@ -1,5 +1,15 @@
 <svelte:head>
   <title>Get Started — Matatu Pulse</title>
+
+    <meta
+    name="description"
+    content="Choose the appropriate Matatu Pulse sign in or account setup option based on your role."
+    />
+
+    <link rel="canonical" href="https://matatupulse.com/login" />
+
+    <meta name="robots" content="noindex,follow" />
+
 </svelte:head>
 
 <div class="intent-wrap">

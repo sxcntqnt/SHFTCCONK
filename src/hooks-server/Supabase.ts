@@ -28,6 +28,7 @@ export const supabaseHandle: Handle = async ({ event, resolve }) => {
   // authHandle is the authoritative writer for event.locals.auth.
   event.locals.auth             = { session: null, user: null, amr: [] }
   event.locals.supabaseUserId   = null
+  event.locals.supabaseUserEmail = null
   event.locals.userState        = null
   event.locals.activeContext    = null
 

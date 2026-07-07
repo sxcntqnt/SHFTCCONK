@@ -10,7 +10,7 @@ All requests must include a valid API key as a Bearer token in the `Authorizatio
 
 Authorization: Bearer mp_live_YOUR_API_KEY
 
-Keys are available from your [developer dashboard](/account). Two key types exist:
+Keys are available from your [developer dashboard](/login). Two key types exist:
 
 | Type | Prefix | Use |
 |---|---|---|

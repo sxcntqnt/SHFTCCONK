@@ -42,8 +42,8 @@ export const GET: RequestHandler = async () => {
       ".*\\[token\\].*",
 
       // DO NOT put posts into sitemap
-      ".*\\[category\\]/\\[post\\].*"
-
+      ".*\\[category\\]/\\[post\\].*",
+      "^/login/invite/\\[token\\]$",
     ]
 
   })

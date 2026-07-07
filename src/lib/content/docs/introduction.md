@@ -20,7 +20,7 @@ The Matatu Pulse API provides programmatic access to Nairobi's matatu network da
 
 All REST endpoints are served from:
 
-https://api.matatupulse.co.ke/v1
+[Matatu Pulse API Base URL](https://api.matatupulse.co.ke/v1)
 
 The WebSocket feed is available at:
 wss://stream.matatupulse.co.ke/v1

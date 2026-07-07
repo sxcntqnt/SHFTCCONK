@@ -3,8 +3,6 @@
 // Ambient type declarations for SvelteKit
 // Enterprise Actor Model Edition
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "./DatabaseDefinitions";
 import type { AuthUser, AuthSession } from '$lib/server/auth/types';
 import type { UserState } from '$lib/features/auth/services/userState.server';
 
@@ -80,23 +78,26 @@ declare global {
     // Locals — available via event.locals in server hooks / load fns
     // ──────────────────────────────────────────────────────────
     interface Locals {
-      // ── Supabase clients ───────────────────────────────────
-      // Created by supabaseHandle. Still required for data access
-      // (resolveUserState, service-role operations) even though
-      // session resolution has moved to authHandle + AuthProvider.
-      // These are DATA clients, not auth clients.
-      supabase: SupabaseClient<Database>;
-      supabaseServiceRole: SupabaseClient<Database>;
-
       // ── Auth / session (unified source of truth) ───────────
-      // Set by authHandle via AuthProvider (internal or supabase).
-      // All downstream handles read ONLY from here — never from
-      // raw cookies or the supabase client directly.
+      // Set by authHandle via auth-service's opaque-token verification
+      // (/auth/verify or local session lookup). All downstream handles
+      // read ONLY from here — never from raw cookies directly.
       auth: {
         session: AuthSession | null;
         user: AuthUser | null;
         amr: Array<{ method: string }>;
       };
+
+      // ── Profile resolution ──────────────────────────────────
+      // Set by sessionSyncHandle via resolveProfileId. This is the ONLY
+      // identity value RLS trusts — see pg.ts's withProfileContext, which
+      // sets app.current_profile_id from this value on every query.
+      // Null does not mean "not logged in" — auth.user above is the
+      // source of truth for that; null here means Postgres-side profile
+      // resolution hasn't succeeded yet (e.g. Neon unreachable), and
+      // routes/load functions that need Postgres data must check for
+      // null explicitly rather than assuming it's always set.
+      profileId: string | null;
 
       // ── Actor Model & User State ───────────────────────────
       userState: UserState | null;
@@ -127,9 +128,6 @@ declare global {
 
       /** Active runtime context for permission checks and UI gating */
       activeContext: ActiveContext | null;
-
-      /** Forwarded cookies for client-side Supabase initialization */
-      cookies: Array<{ name: string; value: string }>;
 
       /** CSRF token forwarded from locals — inject into forms as a hidden field */
       csrfToken?: string;

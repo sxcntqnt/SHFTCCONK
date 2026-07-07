@@ -27,7 +27,7 @@
         moving.
       </p>
       <div class="hero-actions">
-        <a href="/app/dashboard" class="btn-primary"
+        <a href="/login" class="btn-primary"
           >Open Route Planner<svg
             width="14"
             height="14"
@@ -152,7 +152,7 @@
         needed to compare routes and check live ETAs.
       </p>
       <div class="hero-actions" style="justify-content:center;">
-        <a href="/app/dashboard" class="btn-primary"
+        <a href="/login" class="btn-primary"
           >Open Route Planner<svg
             width="14"
             height="14"

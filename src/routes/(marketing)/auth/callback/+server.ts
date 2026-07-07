@@ -11,16 +11,24 @@
 //
 // AUTH_PROVIDER=internal:
 //   1. User already validated — locals.auth.user set by authHandle in hooks
-//   2. Sync internal identity → Supabase users row (via supabaseAdmin)
+//   2. Sync already ran in sessionSyncHandle (hooks) — read locals.supabaseUserId
+//      rather than calling getOrCreateSupabaseUser again. Calling it twice per
+//      request caused a race: the second call's identity_accounts lookup could
+//      run before the first call's insert was visible, leading it to fall into
+//      the "first login" branch, create a duplicate stub profile, and then fail
+//      on auth.admin.createUser() with "already registered" — because the first
+//      call had already created the Supabase auth user under the deterministic
+//      email. sessionSyncHandle is the single source of truth for this value.
 //   3. Create user-scoped Supabase client so RPCs see correct auth.uid()
 //   4. Redeem invite token if present
 //   5. Bootstrap session via RPC
 //   6. Route to correct landing page
 //
 // CLIENT SELECTION RATIONALE:
-//   supabaseAdmin              — service role, bypasses RLS
-//                                used for: sync (getOrCreateSupabaseUser),
-//                                          admin.createSession()
+//   locals.supabaseServiceRole — service role, bypasses RLS
+//                                used for: admin.createSession()
+//                                (sync itself now happens exclusively in
+//                                sessionSyncHandle, not here)
 //   locals.supabase            — anon key + request cookies, respects RLS
 //                                used for: Supabase provider RPC calls
 //                                (session in cookies after code exchange)
@@ -32,8 +40,7 @@ import { redirect } from "@sveltejs/kit"
 import { isAuthApiError } from "@supabase/supabase-js"
 import type { RequestHandler } from "./$types"
 import { env } from "$env/dynamic/private"
-import { supabaseAdmin, createSupabaseUserScopedClient } from "$lib/server/db"
-import { getOrCreateSupabaseUser } from "$lib/features/auth/services/sync"
+import { createSupabaseUserScopedClient, createSupabaseAnonClient } from "$lib/server/db"
 
 
 export const GET: RequestHandler = async ({ url, locals }) => {
@@ -106,9 +113,12 @@ async function handleSupabaseCallback(
 /* ============================================================
    INTERNAL PROVIDER PATH
    User authenticated via internal auth service — no Supabase
-   session cookie exists. We use supabaseAdmin for privileged
-   operations, then derive a user-scoped client so RPC calls
-   have the correct auth.uid() in Postgres.
+   session cookie exists. sessionSyncHandle (in hooks.server.ts,
+   which runs on every request BEFORE this route handler) already
+   performed the sync and set locals.supabaseUserId. This handler
+   never calls getOrCreateSupabaseUser — doing so again here was
+   the root cause of the duplicate-stub-profile / "already
+   registered" failure loop.
 ============================================================ */
 
 async function handleInternalCallback(
@@ -129,55 +139,89 @@ async function handleInternalCallback(
     redirect(303, "/login/sign_in?error=session_missing")
   }
 
-  // ── 2. Sync internal identity → Supabase users row ────────
-  // supabaseAdmin bypasses RLS so we can upsert the users table
-  // even when the user has no row yet (which is always true on
-  // first login). Never use locals.supabase here — RLS blocks it.
-  const syncResult = await getOrCreateSupabaseUser(
-    supabaseAdmin,
-    internalUser.id,
-    internalUser.email,
-  )
+  // ── 2. Read the sync result set by sessionSyncHandle ──────
+  // sessionSyncHandle runs earlier in the hooks chain and is the single
+  // point that calls getOrCreateSupabaseUser. If sync failed there, and
+  // /auth/callback is listed in PROTECTED_PREFIXES, the hook itself
+  // already returned a 503 and this handler never runs. This check is a
+  // defensive fallback for cases where /auth/callback is reached with a
+  // stale or missing value (e.g. PROTECTED_PREFIXES misconfigured).
+  const { supabaseUserId } = locals
 
-  if (syncResult.supabaseUserId === null) {
+  if (!supabaseUserId) {
     console.error(
-      "[auth/callback:internal] Sync failed for internal user:",
+      "[auth/callback:internal] No supabaseUserId on locals — " +
+      "sessionSyncHandle did not run or failed silently for user:",
       internalUser.id,
-      syncResult.error.message,
     )
     redirect(303, "/auth/auth-code-error")
-  }
-
-  const { supabaseUserId } = syncResult
-
-  // Persist to locals so downstream load functions have it
-  locals.supabaseUserId = supabaseUserId
-
-  if (syncResult.created) {
-    console.info(
-      "[auth/callback:internal] New Supabase user created:",
-      supabaseUserId,
-      "← internal:",
-      internalUser.id,
-    )
   }
 
   // ── 3. Derive user-scoped client for RPC calls ────────────
   // RPCs (bootstrap_session, redeem_invite) rely on auth.uid() in
   // Postgres. Without a Supabase session cookie, auth.uid() is null
-  // and all user-scoped queries fail. We request a short-lived
-  // admin session for the synced user and pass its access_token as
-  // the Authorization header — Postgres sees the correct auth.uid()
-  // without any changes to RPC signatures or RLS policies.
-  const {
-    data: { session: adminSession },
-    error: adminSessionError,
-  } = await supabaseAdmin.auth.admin.createSession({ userId: supabaseUserId })
+  // and all user-scoped queries fail.
+  //
+  // NOTE: supabase-js has no admin.createSession(userId) method — the
+  // GoTrue Admin API only exposes createUser, deleteUser, listUsers,
+  // getUserById, updateUserById, generateLink, inviteUserByEmail,
+  // signOut, and mfa. To mint a real session for an already-known
+  // user without their password, we use the generateLink + verifyOtp
+  // workaround: generateLink('magiclink') issues a hashed_token server
+  // -side, and verifyOtp redeems it for a genuine session — the same
+  // mechanism Supabase's own magic-link email flow uses under the hood.
+  //
+  // supabaseUserEmail comes straight from locals — sessionSyncHandle
+  // (hooks) already resolved it via sync.ts's resolveEmail(), which is
+  // a pure function of internalUserId. No getUserById round-trip needed.
 
-  if (adminSessionError || !adminSession) {
+  const { supabaseUserEmail } = locals
+
+  if (!supabaseUserEmail) {
     console.error(
-      "[auth/callback:internal] Failed to create admin Supabase session:",
-      adminSessionError,
+      "[auth/callback:internal] No supabaseUserEmail on locals for user:",
+      supabaseUserId,
+    )
+    redirect(303, "/auth/auth-code-error")
+  }
+
+  const {
+    data: linkData,
+    error: linkError,
+  } = await locals.supabaseServiceRole.auth.admin.generateLink({
+    type:  "magiclink",
+    email: supabaseUserEmail,
+  })
+
+  const hashedToken = linkData?.properties?.hashed_token
+
+  if (linkError || !hashedToken) {
+    console.error(
+      "[auth/callback:internal] Failed to generate session link for user:",
+      supabaseUserId,
+      linkError?.message,
+    )
+    redirect(303, "/auth/auth-code-error")
+  }
+
+  // verifyOtp must run on a plain anon-key client (not the admin client,
+  // and not locals.supabase — we don't want this written to cookies for
+  // the internal provider). It exchanges the hashed_token for a real
+  // access_token + refresh_token pair.
+  const anonClient = createSupabaseAnonClient()
+  const {
+    data: otpData,
+    error: otpError,
+  } = await anonClient.auth.verifyOtp({
+    type:       "magiclink",
+    token_hash: hashedToken,
+  })
+
+  if (otpError || !otpData.session) {
+    console.error(
+      "[auth/callback:internal] Failed to verify session token for user:",
+      supabaseUserId,
+      otpError?.message,
     )
     redirect(303, "/auth/auth-code-error")
   }
@@ -185,7 +229,7 @@ async function handleInternalCallback(
   // createSupabaseUserScopedClient injects the token as an
   // Authorization header — auth.uid() = supabaseUserId in Postgres.
   const userScopedClient = createSupabaseUserScopedClient(
-    adminSession.access_token,
+    otpData.session.access_token,
   )
 
   // ── 4 & 5. Redeem invite + bootstrap (userScopedClient has auth.uid()) ─

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import AnimatedSection from "./ui/AnimatedSection.svelte";
+    import AnimatedSection from "./AnimatedSection.svelte";
     import DownloadButtons from "./DownloadButtons.svelte";
 
     const platforms = [

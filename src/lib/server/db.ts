@@ -80,6 +80,19 @@ export function createSupabaseUserScopedClient(accessToken: string) {
   );
 }
 
+export function createSupabaseAnonClient() {
+  return createClient<Database>(
+    PUBLIC_SUPABASE_URL,
+    PUBLIC_SUPABASE_ANON_KEY,
+    {
+      auth: {
+        persistSession:    false,
+        autoRefreshToken:  false,
+        detectSessionInUrl: false
+      }
+    }
+  );
+}
 // ─────────────────────────────────────────────────────────────
 // 4. BROWSER / CLIENT-SIDE CLIENT (for .svelte components)
 // ─────────────────────────────────────────────────────────────
