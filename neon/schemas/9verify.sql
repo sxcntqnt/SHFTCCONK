@@ -4,9 +4,9 @@
 -- Post-deployment verification. Run each query and check the
 -- expected result. DO NOT deploy this file — run manually.
 --
--- After running: ensure the auth-service sets the app.current_profile_id
--- session variable on every connection (withProfileContext) before any
--- RLS-dependent query runs.
+-- After running: confirm the auth-service is setting
+--   app.current_profile_id per-transaction before any query
+--   runs (app_backend role/grants: see 00_extensions_domains.sql & 08_privileges.sql).
 -- =========================================================
 
 
@@ -33,7 +33,7 @@ where table_schema = 'public'
     'compliance_events', 'reconciliation_events',
     'actor_requests', 'invite_tokens', 'audit_logs',
     'access_denied_log',
-    'contact_requests'
+    'stripe_customers', 'contact_requests'
   );
 
 
@@ -63,16 +63,18 @@ order by p.proname;
 
 
 -- ─────────────────────────────────────────────────────────
--- 4. NO SECURITY FUNCTIONS EXPOSED TO PUBLIC/ANON
+-- 4. NO SECURITY FUNCTIONS EXPOSED TO PUBLIC
 -- ─────────────────────────────────────────────────────────
 -- PASS: 0 rows
+-- (There is no Supabase anon role on Neon — public is the only
+-- catch-all principal left to check.)
 
 select p.proname as exposed_function, r.rolname as exposed_to
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 cross join pg_roles r
 where n.nspname = 'public'
-  and r.rolname in ('anon')
+  and r.rolname in ('public')
   and has_function_privilege(r.oid, p.oid, 'execute')
   and p.proname in (
     'can_actor_perform', 'can_actor_perform_on_resource',
@@ -85,7 +87,8 @@ where n.nspname = 'public'
     'get_my_effective_permissions', 'redeem_invite',
     'enforce_federal_only', 'enforce_federal_only_in_group',
     'cascade_revoke_delegations', 'log_permission_change',
-    'set_updated_at', 'create_default_org_policy_groups'
+    'set_updated_at', 'create_default_org_policy_groups',
+    'current_user_is_platform_admin', 'current_user_manages_profile'
   )
 order by p.proname;
 
@@ -105,7 +108,7 @@ where schemaname = 'public'
     'fleet_ownership', 'organization_members',
     'compliance_events', 'reconciliation_events',
     'actor_requests', 'invite_tokens', 'audit_logs',
-    'access_denied_log', 'contact_requests'
+    'access_denied_log', 'stripe_customers', 'contact_requests'
   )
 order by tablename;
 
@@ -251,9 +254,9 @@ where schemaname = 'public'
   and tablename = 'identity_accounts'
   and indexdef ilike '%provider%provider_subject%';
 
--- 14c. profiles.id has NO foreign key to auth.users
+-- 14c. profiles.id has NO foreign key to any auth-provider table
 -- PASS: 0 rows
--- (any row here means the old FK was not dropped)
+-- (any row here means an old auth-provider FK was not dropped)
 select
   tc.constraint_name,
   kcu.column_name,
@@ -267,20 +270,36 @@ join information_schema.constraint_column_usage ccu
 where tc.table_schema = 'public'
   and tc.table_name = 'profiles'
   and tc.constraint_type = 'FOREIGN KEY'
-  and ccu.table_name = 'users'
-  and ccu.table_schema = 'auth';
+  and ccu.table_schema <> 'public';
 
--- 14e. After a test registration: verify the auth-service wired identity
--- correctly. Replace '<subject>' with the provider subject the auth-service
--- used. PASS: 1 row with provider='internal', profile_id resolved correctly.
+-- 14d. stripe_customers references profiles, not an auth-provider table
+-- PASS: 1 row with foreign_table = 'profiles'
+select
+  tc.constraint_name,
+  kcu.column_name,
+  ccu.table_name as foreign_table
+from information_schema.table_constraints tc
+join information_schema.key_column_usage kcu
+  on kcu.constraint_name = tc.constraint_name
+join information_schema.constraint_column_usage ccu
+  on ccu.constraint_name = tc.constraint_name
+where tc.table_schema = 'public'
+  and tc.table_name = 'stripe_customers'
+  and tc.constraint_type = 'FOREIGN KEY';
+
+-- 14e. After a test signup via the auth-service: verify identity_accounts
+-- was wired correctly. Replace '<provider-subject>' with the actual
+-- provider_subject the auth-service created for your test account.
+-- PASS: 1 row with provider='internal', profile_id != provider_subject
 /*
 select
   ia.provider,
-  ia.provider_subject   as provider_subject,
-  ia.profile_id         as canonical_profile_id
+  ia.provider_subject   as auth_service_subject,
+  ia.profile_id         as canonical_profile_id,
+  ia.profile_id::text != ia.provider_subject as ids_are_decoupled
 from identity_accounts ia
 where ia.provider = 'internal'
-  and ia.provider_subject = '<subject>';
+  and ia.provider_subject = '<provider-subject>';
 */
 
 -- 14f. get_current_profile_id() function exists
@@ -291,6 +310,12 @@ join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
   and p.proname = 'get_current_profile_id';
 
+-- 14g. app.current_profile_id resolves for the current session
+-- PASS (with the GUC set): a UUID matching profiles.id
+-- PASS (with the GUC unset): NULL
+-- Run with: set local app.current_profile_id = '<a real profiles.id>';
+select public.get_current_profile_id();
+
 
 -- ─────────────────────────────────────────────────────────
 -- DEPLOYMENT COMPLETE CHECKLIST
@@ -298,17 +323,20 @@ where n.nspname = 'public'
 --
 -- After all queries pass:
 --
---  [ ] Confirm the auth-service sets app.current_profile_id per connection
---      (withProfileContext) before any RLS-dependent query.
+--  [ ] Confirm the auth-service sets app.current_profile_id on the
+--      connection (pg.ts's withProfileContext) before any query runs
+--      in a request's transaction — this is a hard runtime dependency
+--      now, not a DB-internal fallback.
 --
---  [ ] Test registration/login flow end-to-end:
---      Register → auth-service creates profile + identity_accounts
---      (provider='internal') + PASSENGER actor → bootstrap_session returns data
---      → frontend renders correctly
+--  [ ] Test login flow end-to-end:
+--      Sign up via auth-service → profile created → identity_accounts
+--      row inserted (provider='internal') → PASSENGER actor created
+--      → bootstrap_session returns data → frontend renders correctly
 --
 --  [ ] Verify identity resolution:
+--      set local app.current_profile_id = '<a real profiles.id>';
 --      select public.get_current_profile_id();
---      -- must return a UUID that matches profiles.id (set by the auth-service)
+--      -- must return that same UUID
 --
 --  [ ] Test invite flow:
 --      Create invite_token → sign up with ?invite= param
@@ -322,5 +350,9 @@ where n.nspname = 'public'
 --
 --  [ ] Verify EXPLAIN ANALYZE on my_permissions shows Index Scans
 --      (not Seq Scans) on permission tables
+--
+--  [ ] Assign a test actor type='ADMIN' (or 'SUPER_ADMIN') and confirm
+--      current_user_is_platform_admin() returns true and
+--      app_backend_admin_select permits the row (03_functions.sql & 06_rls.sql)
 --
 --  [ ] Monitor access_denied_log for first 24h after deploy

@@ -13,7 +13,7 @@
     PlatformActor,
     IconKey,
   } from "./../../lib/types"
-  import IconGlyph from "./IconGlyph.svelte"
+  import IconGlyph from "$lib/components/IconGlyph.svelte"
 
   const ldJson = {
     "@context": "https://schema.org",

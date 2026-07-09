@@ -19,7 +19,7 @@ create table roles (
 );
 
 -- User profiles: canonical domain identity.
--- No FK to auth.users — profile outlives any auth credential.
+-- No FK to any auth-provider table — profile outlives any auth credential.
 -- Provider accounts are mapped via identity_accounts.
 create table profiles (
   id uuid primary key default gen_random_uuid(),
@@ -57,13 +57,15 @@ create table profiles (
 
 -- Provider identity accounts.
 -- Maps external auth providers to a canonical profile.
--- The auth-service maps the canonical profile here (provider='internal').
--- Future providers: 'internal' (Dgraph), 'google', 'mpesa'.
+-- The auth-service (opaque atk_/rtk_ session tokens, Dgraph-backed)
+-- resolves the caller and sets app.current_profile_id per-transaction;
+-- this table remains the provider mapping layer for that resolution.
+-- Providers: 'internal' (Dgraph/auth-service) | 'google' | 'mpesa'.
 create table identity_accounts (
   id               uuid primary key default gen_random_uuid(),
   profile_id       uuid not null references profiles(id) on delete cascade,
   provider         text not null,        -- 'internal' | 'google' | 'mpesa'
-  provider_subject text not null,        -- provider-specific subject (oauth sub, phone, Dgraph UID, etc.)
+  provider_subject text not null,        -- Dgraph UID, oauth sub, phone, etc.
   created_at       timestamptz default now(),
   unique (provider, provider_subject)    -- one account per provider identity
 );
@@ -357,11 +359,17 @@ create table access_denied_log (
 
 
 -- ═══════════════════════════════════════════════════════════
--- CONTACT
+-- STRIPE / CONTACT
 -- ═══════════════════════════════════════════════════════════
 
--- profile_id is the canonical identity (resolved via identity_accounts /
--- the app.current_profile_id session variable — no auth.users dependency).
+-- profile_id is canonical — no direct auth-provider table dependency.
+-- Resolve Supabase user → profile via identity_accounts.
+create table stripe_customers (
+  profile_id uuid references profiles(id) on delete cascade not null primary key,
+  stripe_customer_id text unique,
+  updated_at timestamptz default now()
+);
+
 create table contact_requests (
   id uuid primary key default gen_random_uuid(),
   first text NOT NULL,

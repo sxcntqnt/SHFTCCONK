@@ -22,6 +22,12 @@ create trigger profiles_updated_at
   before update on profiles
   for each row execute function public.set_updated_at();
 
+-- NOTE: profile + PASSENGER-actor bootstrap on signup used to be a
+-- trigger on auth.users (Supabase). Under Neon there is no auth.users
+-- table — the auth-service (Dgraph-backed) owns signup and creates
+-- the profiles/identity_accounts/actors rows directly via its own
+-- transaction. See 00_extensions_domains.sql (app_backend role).
+
 -- Auto-update updated_at on org_news
 create trigger on_org_news_update
   before update on public.org_news
@@ -46,12 +52,12 @@ create trigger audit_delegated_authority
 
 
 -- ═══════════════════════════════════════════════════════════
--- C. VERSION BUMPING
+-- C. VERSION BUMPING (cache-invalidation signal)
 -- ═══════════════════════════════════════════════════════════
 -- Bumps profiles.permissions_version whenever the user's
--- permission landscape changes. Retained as a generic cache /
--- invalidation signal after Supabase was dropped; session
--- revocation is now handled server-side by the auth-service.
+-- permission landscape changes. This is now a vestigial signal
+-- (the old JWT kill-switch read is gone) — kept as a potential
+-- future cache-invalidation key for the auth-service.
 
 create trigger bump_version_on_actor_permissions
   after insert or update or delete on actor_permissions

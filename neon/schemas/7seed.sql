@@ -21,7 +21,20 @@ insert into roles (id, display_name, description) values
   ('STAGE_OPERATOR', 'Stage Operator',  'Stage management'),
   ('REGULATOR',      'Regulator',       'Read-only / audit access'),
   ('PLANNER',        'Planner',         'Data consumer'),
-  ('ADMIN',          'Admin',           'Platform administrator')
+  ('ADMIN',          'Admin',           'Platform administrator'),
+  -- Required by current_user_is_platform_admin() / current_user_manages_profile()
+  -- in 03_functions.sql (used by the recursion-safe profiles RLS policies
+  -- in 06_rls.sql). Without these rows, actors.type's FK to roles(id)
+  -- means no actor could ever be assigned these types, and both
+  -- functions would permanently match nobody — not a data bug, but
+  -- confirm your onboarding/admin-assignment flow actually grants
+  -- these types before relying on them.
+  ('SUPER_ADMIN',        'Super Admin',        'Platform super administrator (federal)'),
+  ('GENERAL_MANAGER',    'General Manager',    'Org-level manager'),
+  ('FLEET_MANAGER',      'Fleet Manager',      'Org-level fleet manager'),
+  ('OPERATIONS_MANAGER', 'Operations Manager', 'Org-level operations manager'),
+  ('BRANCH_MANAGER',     'Branch Manager',     'Branch-level manager'),
+  ('ORG_CHAIR',          'Org Chair',          'Org-level chairperson')
 on conflict do nothing;
 
 

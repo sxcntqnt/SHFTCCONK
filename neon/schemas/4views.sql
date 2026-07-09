@@ -11,6 +11,14 @@
 --          Federal jurisdiction (level='federal', scope_id=NULL) matched
 --          NONE of the conditions → admins got 0 permissions.
 --          FIX: Added explicit federal handling in the scope join.
+--   NEON MIGRATION: Removed the JWT-version kill-switch gate. There is
+--          no client JWT under the auth-service opaque session-token
+--          model, so auth.jwt() does not exist as a function here and
+--          the old db_version = jwt_version comparison would either
+--          error or (if defaulted) permanently return zero rows.
+--          Instant revocation is now handled by the auth-service
+--          revoking the session token directly — permissions_version
+--          is a vestigial cache-invalidation signal, not a gate.
 --
 -- Must run AFTER 03_functions.sql (depends on get_cached_actor_ids,
 --   get_current_profile_id).
@@ -90,6 +98,8 @@ with current_user_state as (
     p.permissions_version as db_version,
     public.get_cached_actor_ids() as actor_ids
   from profiles p
+  -- p.id is matched against the session-scoped canonical profile_id
+  -- resolved by the auth-service (app.current_profile_id GUC).
   where p.id = public.get_current_profile_id()
 ),
 
@@ -216,7 +226,7 @@ aggregated as (
   group by actor_id, action, scope_id, level
 )
 
--- Step 4: Return (profile-scoped, no JWT version gate)
+-- Step 4: Return
 select
   ag.actor_id,
   ag.action,
@@ -224,5 +234,4 @@ select
   ag.level,
   ag.scope_id,
   ag.source
-from aggregated ag
-join current_user_state cus on true;
+from aggregated ag;

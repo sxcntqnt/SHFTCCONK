@@ -66,15 +66,13 @@
 --   profiles (self + admin.users + org.manage), actors (same)
 --   actor_requests (own path + admin), invite_tokens (creator + org.manage)
 --
--- Tables that are server-side only (service_role writes):
---   contact_requests (SvelteKit action)
+-- Tables that are server-side only (app_backend writes):
+--   stripe_customers (webhook handler), contact_requests (SvelteKit action)
 --
 -- IDENTITY NOTE:
---   The execution identity is the resolved profile_id from the
---   app.current_profile_id session variable (set by the auth-service),
---   NOT a Supabase auth id. All policies resolve identity via
---   get_current_profile_id(). Bare null-checks on it are used only as
---   an authentication guard.
+--   Self-owned fast-paths resolve identity via get_current_profile_id(),
+--   which reads the app.current_profile_id session GUC set per-transaction
+--   by the auth-service. There is no client JWT and no auth.uid().
 -- =========================================================
 
 
@@ -86,15 +84,23 @@
 --
 -- Pattern:
 --   SELECT self     → get_current_profile_id() = id (instant)
---   SELECT admin    → admin.users at federal (platform admins)
---   SELECT org-mgr  → org.manage at org (see profiles of their org's actors)
---   INSERT          → self only (auth-service creates profiles)
+--   SELECT admin    → current_user_is_platform_admin() (platform admins)
+--   SELECT org-mgr  → current_user_manages_profile(id) (org's own actors)
+--   INSERT          → self only (auth-service creates the row on signup)
 --   UPDATE self     → get_current_profile_id() = id (instant)
---   UPDATE admin    → admin.users at federal (deactivate, edit names, etc.)
+--   UPDATE admin    → current_user_is_platform_admin()
+--
+-- profiles_select_admin / profiles_select_org_manager / profiles_update_admin
+-- deliberately do NOT use public.my_permissions here: that view reads
+-- `profiles` (via get_current_profile_id()) to resolve the caller, so a
+-- profiles policy calling it recurses infinitely (42P17 — a policy on
+-- table T cannot call anything that itself reads T). current_user_is_
+-- platform_admin() / current_user_manages_profile() are SECURITY DEFINER
+-- and read only actors/organization_members instead — no recursion.
 
 alter table profiles enable row level security;
 
--- Self-owned: resolve Supabase execution identity → canonical profile
+-- Self-owned: identity resolved via the session-scoped canonical profile
 create policy "profiles_select_self" on profiles
   for select using (id = public.get_current_profile_id());
 
@@ -104,43 +110,33 @@ create policy "profiles_insert_self" on profiles
 create policy "profiles_update_self" on profiles
   for update using (id = public.get_current_profile_id());
 
--- Platform admins see all profiles
+-- Platform admins see all profiles (recursion-safe — see note above)
 create policy "profiles_select_admin" on profiles
-  for select using (
-    exists (
-      select 1 from public.my_permissions mp
-      where mp.effect = 'allow'
-        and mp.action = 'admin.users'
-        and mp.level = 'federal'
-    )
-  );
+  for select using (public.current_user_is_platform_admin());
 
--- Org managers see profiles of actors in their org
--- Join path: profiles → actors → organization_members
+-- Org managers see profiles of actors in their org (recursion-safe)
 create policy "profiles_select_org_manager" on profiles
-  for select using (
-    exists (
-      select 1
-      from actors a
-      join organization_members om on om.actor_id = a.id
-      join public.my_permissions mp on mp.effect = 'allow'
-        and mp.action = 'org.manage'
-        and mp.level = 'org'
-        and mp.scope_id = om.organization_id
-      where a.profile_id = profiles.id
-    )
-  );
+  for select using (public.current_user_manages_profile(profiles.id));
 
--- Platform admins can update any profile
+-- Platform admins can update any profile (recursion-safe)
 create policy "profiles_update_admin" on profiles
-  for update using (
-    exists (
-      select 1 from public.my_permissions mp
-      where mp.effect = 'allow'
-        and mp.action = 'admin.users'
-        and mp.level = 'federal'
-    )
-  );
+  for update using (public.current_user_is_platform_admin());
+
+-- No org-manager UPDATE policy: managers only get read access to
+-- profiles in their org by design. Add one explicitly (mirroring
+-- profiles_update_admin, using current_user_manages_profile(id))
+-- if managers should also be able to edit them.
+
+-- identity_accounts: internal provider-mapping table, never queried
+-- directly by end users — full access for the one role that writes
+-- it (app_backend, via the auth-service) is appropriate here.
+alter table identity_accounts enable row level security;
+
+create policy "identity_accounts_app_backend" on identity_accounts
+  for all
+  to app_backend
+  using (true)
+  with check (true);
 
 
 -- ═══════════════════════════════════════════════════════════
@@ -159,7 +155,7 @@ create policy "profiles_update_admin" on profiles
 
 alter table actors enable row level security;
 
--- Self-owned: resolve Supabase execution identity → canonical profile
+-- Self-owned: identity resolved via the session-scoped canonical profile
 create policy "actors_select_own" on actors
   for select using (profile_id = public.get_current_profile_id());
 
@@ -779,8 +775,9 @@ alter table actor_policy_groups enable row level security;
 alter table actor_jurisdictions enable row level security;
 alter table delegated_authority enable row level security;
 
--- Permissions catalog: readable by any authenticated caller
--- get_current_profile_id() is not null guards authentication only — not used as a profile FK
+-- Permissions catalog: readable by all authenticated users
+-- get_current_profile_id() is not null guards authentication only —
+-- not used as a profile FK here.
 create policy "permissions_select" on permissions
   for select using (public.get_current_profile_id() is not null);
 
@@ -792,7 +789,7 @@ create policy "policy_groups_select" on policy_groups
       where om.organization_id = policy_groups.organization_id
         and om.actor_id = any(public.get_cached_actor_ids())
     )
-    -- Federal/global groups (no org) visible to any authenticated caller
+    -- Federal/global groups (no org) visible to all authenticated
     or (policy_groups.organization_id is null and public.get_current_profile_id() is not null)
   );
 
@@ -837,6 +834,31 @@ create policy "delegated_authority_select" on delegated_authority
 
 
 -- ═══════════════════════════════════════════════════════════
+-- STRIPE CUSTOMERS (server-side writes, self-select)
+-- ═══════════════════════════════════════════════════════════
+-- INSERT/UPDATE/DELETE: app_backend only (Stripe webhook handler).
+-- SELECT: users see their own record (for billing UI).
+-- NOTE: column is profile_id (renamed from user_id in 01_tables.sql).
+--
+-- NEON MIGRATION: Supabase's service_role bypassed RLS automatically
+-- (bypassrls=true). app_backend was deliberately created with
+-- NOBYPASSRLS (see 00_extensions_domains.sql), so it is
+-- subject to RLS like any other role — an explicit write policy is
+-- required or every webhook write is silently default-denied.
+
+alter table stripe_customers enable row level security;
+
+create policy "stripe_customers_select_own" on stripe_customers
+  for select using (profile_id = public.get_current_profile_id());
+
+create policy "stripe_customers_write_backend" on stripe_customers
+  for all
+  to app_backend
+  using (true)
+  with check (true);
+
+
+-- ═══════════════════════════════════════════════════════════
 -- CONTACT REQUESTS (server-side insert only)
 -- ═══════════════════════════════════════════════════════════
 -- SECURITY FIX: Removed WITH CHECK (true) which allowed anyone
@@ -846,24 +868,24 @@ create policy "delegated_authority_select" on delegated_authority
 --   - Rate limiting
 --   - IP address logging
 --
--- The SvelteKit contact form action uses the server-side app_backend
--- role for the insert, which is the only role with write access.
--- Therefore NO client-facing INSERT policy is needed.
+-- The SvelteKit contact form action writes via the app_backend
+-- server role. Therefore no client-facing INSERT policy is needed.
 --
--- By enabling RLS with zero INSERT policies for anon/authenticated,
--- Postgres default-denies all client-side inserts. Only
--- service_role (your SvelteKit server) can write.
+-- NEON MIGRATION: Supabase's service_role bypassed RLS automatically.
+-- app_backend does NOT (NOBYPASSRLS — see 00_extensions_domains.sql),
+-- so an explicit policy scoped `to app_backend` is required, or every
+-- server-side insert is silently default-denied.
 --
--- The explicit service_role policy below is for documentation —
--- service_role bypasses RLS regardless, but this makes the
--- intent clear to anyone reading the schema.
+-- By enabling RLS with zero INSERT policies for any other role,
+-- Postgres default-denies all client-side inserts. Only app_backend
+-- (your SvelteKit server) can write.
 
 alter table contact_requests enable row level security;
 
--- Explicit: only service_role can insert (documentation policy)
-create policy "contact_requests_insert_service_only" on contact_requests
+-- Explicit: only app_backend can insert
+create policy "contact_requests_insert_backend" on contact_requests
   for insert
-  to service_role
+  to app_backend
   with check (true);
 
 -- Admin read access for managing contact submissions
@@ -879,13 +901,15 @@ create policy "contact_requests_select_admin" on contact_requests
 
 
 -- ═══════════════════════════════════════════════════════════
--- GEOFENCES
+-- GEOFENCES (personal or org-scoped; was missing RLS entirely)
 -- ═══════════════════════════════════════════════════════════
--- Personal geofences: owner only (profile_id = current profile).
--- Org geofences: any actor of that org can see / manage them.
--- Identity resolved via get_current_profile_id(); org membership
--- via get_cached_actor_ids() (matches the rest of the schema, no
--- Supabase auth.uid() — see 03_functions.sql / 04_views.sql).
+-- scope='personal' → owned by profile_id, visible/writable by that
+--   profile only.
+-- scope='org'      → owned by org_id, visible/writable by any active
+--   actor who is a member of that organization.
+--
+-- No geofences_update policy: geofences are write-once/delete per the
+-- original design intent. Add one explicitly if updates are needed.
 
 alter table geofences enable row level security;
 

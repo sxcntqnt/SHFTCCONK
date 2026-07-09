@@ -44,6 +44,7 @@ export default defineConfig({
       "games.sxcntcnqunts.org",
       "sentry.io",
       "eu.posthog.com",
+      "late-hands-roll.loca.lt",
     ],
     fs: {
       allow: [".."],
@@ -51,7 +52,7 @@ export default defineConfig({
   },
   preview: {
     host: true,
-    allowedHosts: ["sxcntcnqunts.org"],
+    allowedHosts: ["sxcntcnqunts.org", "late-hands-roll.loca.lt"],
   },
   optimizeDeps: {
     exclude: [

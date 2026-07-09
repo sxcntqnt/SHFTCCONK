@@ -6,9 +6,9 @@
 --
 -- Dependency chain:
 --   scope_covers_resource (leaf — no deps)
---   get_cached_actor_ids (leaf — resolves actor IDs for current profile)
---   get_actor_ids_for_user (fallback — reads actors by profile_id)
---   get_current_profile_id (leaf — resolves app.current_profile_id session var → profile)
+--   get_current_profile_id (leaf — resolves app.current_profile_id session GUC)
+--   get_cached_actor_ids (reads actors via get_current_profile_id)
+--   get_actor_ids_for_user (fallback — reads actors by profile_id directly)
 --   log_access_denied (writes access_denied_log via get_current_profile_id)
 --   can_actor_perform (uses my_permissions view + log_access_denied)
 --   can_actor_perform_on_resource (wraps can_actor_perform)
@@ -16,7 +16,7 @@
 --   current_user_can_in_scope (wraps can_actor_perform)
 --   bootstrap_session (reads many tables + my_permissions via get_current_profile_id)
 --   get_my_effective_permissions (reads my_permissions)
---   create_profile (updates profiles — ownership via get_current_profile_id)
+--   create_profile (updates profiles, ownership check via get_current_profile_id)
 --   redeem_invite (writes actors, org_members, jurisdictions, etc.)
 --   set_updated_at (trigger helper)
 --   log_permission_change (audit trigger)
@@ -24,6 +24,12 @@
 --   enforce_federal_only (validation trigger)
 --   enforce_federal_only_in_group (validation trigger)
 --   cascade_revoke_delegations (cascade trigger)
+--
+-- REMOVED (Neon/auth-service migration):
+--   is_jwt_version_current, handle_new_user, custom_access_token_hook.
+--   Profile creation and Supabase JWT claims are no longer part of this
+--   schema; the auth-service (Dgraph-backed) owns signup and session
+--   issuance, and sets app.current_profile_id per-transaction.
 -- =========================================================
 
 
@@ -53,52 +59,16 @@ $$;
 
 
 -- ─────────────────────────────────────────────────────────
--- ACTOR ID RESOLUTION
--- ─────────────────────────────────────────────────────────
-
--- Resolves the current profile's active actor IDs.
--- In the Neon / auth-service model the identity is resolved from the
--- app.current_profile_id session variable (set per request by the
--- auth-service's withProfileContext), not from a JWT claim.
-create or replace function public.get_cached_actor_ids()
-returns uuid[]
-language sql
-stable
-security invoker
-set search_path = public
-as $$
-  select coalesce(
-    array_agg(a.id),
-    '{}'::uuid[]
-  )
-  from actors a
-  where a.profile_id = public.get_current_profile_id()
-    and a.status = 'active';
-$$;
-
--- Resolves actor IDs for a given profile UUID (used by tooling / tests).
-create or replace function public.get_actor_ids_for_user(user_uuid uuid)
-returns uuid[]
-language sql
-security definer
-set search_path = public
-stable
-as $$
-  select coalesce(array_agg(a.id), '{}')
-  from actors a
-  where a.profile_id = user_uuid
-    and a.status = 'active';
-$$;
-
-
--- ─────────────────────────────────────────────────────────
 -- CANONICAL PROFILE RESOLUTION
 -- ─────────────────────────────────────────────────────────
--- Resolves the current execution identity to the canonical domain
--- profile_id from the app.current_profile_id session variable.
--- This is set per request by the auth-service (withProfileContext),
--- the system of record for identity after Supabase was dropped as
--- the auth provider. Returns NULL if unset.
+-- Resolves the caller's canonical domain profile_id from the
+-- app.current_profile_id session GUC, set per-transaction by
+-- the auth-service (pg.ts's withProfileContext) after it has
+-- validated the caller's opaque session token. Returns NULL if
+-- the GUC is unset — RLS then denies by default (no identity).
+--
+-- No auth.uid()/identity_accounts lookup here: the auth-service
+-- has already done that resolution before opening the transaction.
 
 create or replace function public.get_current_profile_id()
 returns uuid
@@ -111,14 +81,103 @@ $$;
 
 
 -- ─────────────────────────────────────────────────────────
--- JWT VERSION CHECK — REMOVED
+-- PROFILES-RLS-RECURSION-SAFE ADMIN/MANAGER CHECKS
 -- ─────────────────────────────────────────────────────────
--- The permissions_version kill-switch compared a JWT claim to the
--- DB value. With Supabase dropped, tokens are opaque and revoked
--- server-side by the auth-service, so there is no client JWT to
--- compare. my_permissions is now gated only by the resolved profile
--- (see 04_views.sql). profiles.permissions_version is retained as a
--- generic cache-invalidation signal but is no longer JWT-driven.
+-- Used only by the profiles_select_admin / profiles_select_org_manager /
+-- profiles_update_admin policies in 06_rls.sql. A policy on `profiles`
+-- cannot call anything that itself reads `profiles` — my_permissions
+-- does (via get_current_profile_id() -> profiles), so using it inside
+-- a profiles policy is a guaranteed infinite loop (42P17). These two
+-- functions are SECURITY DEFINER and read only actors /
+-- organization_members — never profiles — so they're safe to call
+-- from a profiles policy.
+--
+-- Depends on the actor-type roles seeded in 07_seed.sql
+-- (SUPER_ADMIN, GENERAL_MANAGER, FLEET_MANAGER, OPERATIONS_MANAGER,
+-- BRANCH_MANAGER, ORG_CHAIR — ADMIN already existed). Until an actor
+-- is actually assigned one of these types, these functions match
+-- nobody (fails closed, not open).
+
+create or replace function public.current_user_is_platform_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from actors a
+    where a.profile_id = public.get_current_profile_id()
+      and a.type in ('SUPER_ADMIN', 'ADMIN')
+      and a.status = 'active'
+  );
+$$;
+
+create or replace function public.current_user_manages_profile(target_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from actors caller_actor
+    join organization_members caller_om
+      on caller_om.actor_id = caller_actor.id
+    join organization_members target_om
+      on target_om.organization_id = caller_om.organization_id
+    join actors target_actor
+      on target_actor.id = target_om.actor_id
+      and target_actor.profile_id = target_profile_id
+    where caller_actor.profile_id = public.get_current_profile_id()
+      and caller_actor.status = 'active'
+      and caller_actor.type in (
+        'GENERAL_MANAGER', 'FLEET_MANAGER', 'OPERATIONS_MANAGER',
+        'BRANCH_MANAGER', 'ORG_CHAIR'
+      )
+  );
+$$;
+
+
+-- ─────────────────────────────────────────────────────────
+-- ACTOR ID RESOLUTION
+-- ─────────────────────────────────────────────────────────
+
+-- Primary: resolves the caller's active actor IDs from the
+-- session-scoped profile. Replaces the old JWT-claim lookup —
+-- there is no client JWT under the auth-service token model.
+create or replace function public.get_cached_actor_ids()
+returns uuid[]
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(array_agg(a.id), '{}'::uuid[])
+  from actors a
+  where a.profile_id = public.get_current_profile_id()
+    and a.status = 'active';
+$$;
+
+-- Fallback: resolves an arbitrary canonical profile_id → actor IDs.
+-- Used by call sites that already have a profile_id in hand (e.g.
+-- admin tooling looking up another user) rather than the caller's
+-- own session. Does not touch identity_accounts — providers are
+-- irrelevant once you have the canonical profile_id.
+create or replace function public.get_actor_ids_for_user(profile_uuid uuid)
+returns uuid[]
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(array_agg(a.id), '{}'::uuid[])
+  from actors a
+  where a.profile_id = profile_uuid
+    and a.status = 'active';
+$$;
 
 
 -- ─────────────────────────────────────────────────────────
@@ -343,8 +402,7 @@ $$;
 -- BOOTSTRAP SESSION (single RPC for frontend hydration)
 -- ─────────────────────────────────────────────────────────
 -- Resolves canonical profile once at the top via
--- get_current_profile_id() (the auth-service session variable), then
--- uses it throughout.
+-- get_current_profile_id(), then uses it throughout.
 
 create or replace function public.bootstrap_session()
 returns jsonb
@@ -453,20 +511,18 @@ $$;
 
 
 -- ─────────────────────────────────────────────────────────
--- NEW USER PROFILE CREATION — MOVED TO AUTH-SERVICE
--- ─────────────────────────────────────────────────────────
--- The handle_new_user() trigger on auth.users was removed when
--- Supabase was dropped as the auth provider. The auth-service now
--- owns profile + identity_accounts + initial PASSENGER actor creation
--- during registration / login, so no database trigger is needed.
-
-
--- ─────────────────────────────────────────────────────────
 -- CLIENT-FACING PROFILE ENRICHMENT
 -- ─────────────────────────────────────────────────────────
 -- Authorization check: caller must own the profile being updated.
--- Ownership is confirmed via the resolved profile identity, not by
--- comparing a raw auth id to the profile ID.
+-- Ownership is confirmed via get_current_profile_id() (the
+-- session-scoped identity the auth-service resolved and set for
+-- this transaction) — not by comparing a raw execution UUID
+-- directly to the profile ID.
+--
+-- NOTE: profile + PASSENGER-actor bootstrap on signup is now owned
+-- by the auth-service (Dgraph-backed), not a Postgres trigger. See
+-- 00_extensions_domains.sql & 08_privileges.sql for the identity model
+-- function participates in.
 
 create or replace function public.create_profile(
   p_profile_id uuid,
@@ -536,8 +592,8 @@ grant execute on function public.create_profile(uuid, jsonb) to app_backend;
 -- ─────────────────────────────────────────────────────────
 -- INVITE REDEMPTION
 -- ─────────────────────────────────────────────────────────
--- The resolved profile identity (app.current_profile_id) is the
--- canonical profile_id for all writes below.
+-- All profile FK writes use get_current_profile_id() to get
+-- the caller's canonical profile_id from the session GUC.
 
 create or replace function public.redeem_invite(invite_token uuid)
 returns jsonb
@@ -621,16 +677,6 @@ begin
     'actor_type', tok.actor_type, 'organization_id', tok.organization_id);
 end;
 $$;
-
-
--- ─────────────────────────────────────────────────────────
--- JWT HOOK (Supabase custom access token) — REMOVED
--- ─────────────────────────────────────────────────────────
--- custom_access_token_hook embedded actor_ids + permissions_version
--- into Supabase JWTs. With Supabase dropped, tokens are opaque and
--- resolved server-side by the auth-service; there is no JWT to hook
--- into. Authorization is enforced via my_permissions + the
--- app.current_profile_id session variable instead.
 
 
 -- ─────────────────────────────────────────────────────────
