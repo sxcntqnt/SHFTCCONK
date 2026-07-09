@@ -6,31 +6,82 @@
 // NEVER import this in +page.server.ts or +layout.svelte.
 // Pages consume the result via event.locals.userState — never re-resolve.
 //
-// CHANGES FROM v2:
-//   - Fixed source string matching to match actual view output:
-//       direct     → 'direct'                   (unchanged)
-//       group      → 'group:<name>'              (was 'policy_group')
-//       delegated  → 'delegated_from:<actorId>'  (was 'delegated')
-//   - Replaced stripe_customers with mpesa_customers
-//   - hasPaidPlan now checks mpesa_customers.subscription_status = 'active'
-//   - Added onboarding_status + kyc_intent to ProfileRow (via migration)
-//   - isGuest now also checks onboarding_status = 'GUEST' as belt-and-braces
-//   - Guest early-return now preserves onboarding_status for hook redirects
+// CHANGES FROM SUPABASE VERSION:
+//   - Takes a postgres.js transaction (already scoped via withProfileContext)
+//     instead of a SupabaseClient. Caller (UserState.ts hook) is responsible
+//     for wrapping the call: withProfileContext(profileId, tx => resolveUserState(tx, profileId))
+//   - Supabase's nested-select syntax (`vehicles(reg_number, id)`,
+//     `organizations(name)`) doesn't exist over a raw connection — those
+//     become explicit JOINs below, reshaped into the same output types so
+//     nothing downstream (ActorContext, EnrichedOrgMember) needs to change.
+//   - .in("col", ids) becomes `col = ANY(${ids})`.
+//   - Row types (ProfileRow, ActorRow, etc.) are hand-defined below instead
+//     of imported from DatabaseDefinitions (Supabase-generated, now gone).
+//     Only the columns actually used by this file are typed — if you add a
+//     new column reference, add it to the relevant type first. Consider a
+//     proper codegen tool (kysely-codegen, zapatos) against Neon if this
+//     file's manual types become a maintenance burden.
+//
+// PREREQUISITE — READ BEFORE DEPLOYING THIS FILE:
+//   Every table queried here needs an app_backend RLS policy, or every
+//   query below silently returns zero rows (not an error). That would make
+//   hasActiveNonGuestActor false for every real user, permanently, with
+//   isGuest = true for everyone — a silent correctness bug, not a crash.
+//   Confirm policies exist on: actors, effective_permissions_raw,
+//   actor_policy_groups, actor_jurisdictions, driver_assignments,
+//   conductor_assignments, organization_members, organizations,
+//   fleet_ownership, stage_assignments, delegated_authority, mpesa_customers.
 
-import type { SupabaseClient } from "@supabase/supabase-js"
-import type { Database, Tables } from "../../../../DatabaseDefinitions"
+import type { Sql } from '$lib/server/pg'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Derived row types
+// Hand-defined row types — replaces DatabaseDefinitions' Tables<'...'>.
+// Only fields this file actually reads are typed; extend as needed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ProfileRow = Tables<"profiles">
-type ActorRow = Tables<"actors">
-type DriverAssignmentRow = Tables<"driver_assignments">
-type ConductorAssignmentRow = Tables<"conductor_assignments">
-type FleetOwnershipRow = Tables<"fleet_ownership">
-type StageAssignmentRow = Tables<"stage_assignments">
-type JurisdictionRow = Tables<"actor_jurisdictions">
+export type ProfileRow = {
+  id: string
+  onboarding_status: string | null
+  [key: string]: unknown
+}
+
+export type ActorRow = {
+  id: string
+  profile_id: string
+  type: string
+  status: string | null
+  [key: string]: unknown
+}
+
+export type DriverAssignmentRow = {
+  actor_id: string
+  vehicle_id: string
+  vehicles: { id: string; reg_number: string } | null
+}
+
+export type ConductorAssignmentRow = {
+  actor_id: string
+  [key: string]: unknown
+}
+
+export type FleetOwnershipRow = {
+  actor_id: string
+  [key: string]: unknown
+}
+
+export type StageAssignmentRow = {
+  operator_id: string
+  [key: string]: unknown
+}
+
+export type JurisdictionRow = {
+  id: string
+  actor_id: string
+  level: string
+  scope_id: string | null
+  max_vehicles: number | null
+  created_at: string
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Source string helpers
@@ -51,8 +102,6 @@ const isDirectOrGroupSource = (source: string | null): boolean =>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MpesaCustomerRow — mpesa_customers query result shape
-// Defined locally because mpesa_customers was added after DatabaseDefinitions
-// was last regenerated — Tables<'mpesa_customers'> does not exist yet.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type MpesaCustomerRow = {
@@ -84,10 +133,10 @@ export type EnrichedOrgMember = {
 
 export type PermissionEntry = {
   action: string
-  effect: string | null // 'allow' | 'deny'
-  level: string | null // 'federal' | 'org' | 'branch' | 'department'
-  scope_id: string | null // orgId | branchId | deptId | null (federal)
-  source: string | null // 'direct' | 'group:<name>' | 'delegated_from:<id>'
+  effect: string | null
+  level: string | null
+  scope_id: string | null
+  source: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,36 +147,15 @@ export type ActorContext = {
   actorId: string
   type: string
   status: string | null
-
-  /** Direct + policy_group permissions (effect: allow/deny) */
   permissions: PermissionEntry[]
-
-  /**
-   * Delegated/temporary permissions.
-   * Source starts with 'delegated_from:' — expiry + revoke already
-   * filtered by the effective_permissions_raw view.
-   */
   delegatedPermissions: PermissionEntry[]
-
-  /** Policy group IDs this actor belongs to */
   policyGroupIds: string[]
-
-  /**
-   * Jurisdiction entries for this actor.
-   * level: 'federal' | 'org' | 'branch' | 'department'
-   * scope_id: the org/branch/dept UUID, null for federal.
-   * Used by context activate() functions to scope permission checks.
-   */
   jurisdictions: JurisdictionRow[]
-
-  /** Org memberships — enriched with org_name from organizations join */
   orgMemberships: EnrichedOrgMember[]
-
   driverAssignment: DriverAssignmentRow | null
   conductorAssignment: ConductorAssignmentRow | null
   fleetOwnership: FleetOwnershipRow[]
   stageAssignments: StageAssignmentRow[]
-
   outboundDelegations: {
     to_actor_id: string
     permission_id: string
@@ -149,7 +177,6 @@ export type AssignmentBundle = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MpesaGoProfile — minor/guardian M-PESA GO account details
-// Moved here from contexts/index.ts so passenger.context.ts can import it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type MpesaGoProfile = {
@@ -160,8 +187,7 @@ export type MpesaGoProfile = {
   sendMoneyEnabled: boolean
   lipaNaMpesaEnabled: boolean
   documentsSubmitted: boolean
-  documentsDueBy: string | null // ISO timestamp
-  /** True if 30-day document window has expired without submission */
+  documentsDueBy: string | null
   documentsOverdue: boolean
 }
 
@@ -171,32 +197,11 @@ export type MpesaGoProfile = {
 
 export type UserState = {
   profile: ProfileRow
-
-  /** All actors (active + pending + inactive) */
   actors: ActorRow[]
-
-  /**
-   * True when the user has zero active actors OR onboarding_status = 'GUEST'.
-   * hooks.server.ts redirects to /onboarding on this flag.
-   */
   isGuest: boolean
-
-  /**
-   * True when the user has at least one active actor AND
-   * onboarding_status = 'ACTIVE'.
-   */
   isVerified: boolean
-
-  /** Per-actor resolved contexts — consumed by activateXContext() */
   activeContexts: ActorContext[]
-
-  /** Flat assignment bundle — consumed by the Context Switcher */
   assignments: AssignmentBundle
-
-  /**
-   * True when mpesa_customers row exists with
-   * subscription_status = 'active'.
-   */
   hasPaidPlan: boolean
   mpesaGo: MpesaGoProfile | null
 }
@@ -204,59 +209,37 @@ export type UserState = {
 // ─────────────────────────────────────────────────────────────────────────────
 // resolveUserState()
 //
-// Call ONLY from hooks.server.ts — never from pages or layouts.
+// Call ONLY from hooks.server.ts, wrapped in withProfileContext:
+//   const userState = await withProfileContext(profileId, (tx) =>
+//     resolveUserState(tx, profileId)
+//   )
 //
-// Query strategy:
-//   Step 1  — Profile                           (1 query, throws if missing)
-//   Step 2  — Actors                            (1 query, all statuses)
-//   Step 3  — Early return for guests           (skips all downstream queries)
-//   Step 4  — Parallel fetch                    (9 queries, 1 round trip)
-//             effective_permissions_raw view
-//             actor_policy_groups
-//             actor_jurisdictions
-//             driver_assignments
-//             conductor_assignments
-//             organization_members + org name join
-//             fleet_ownership
-//             stage_assignments
-//             mpesa_customers
-//   Step 5  — Unwrap null-safe
-//   Step 6  — Normalise org members + split permission sources
-//   Step 7  — Build per-actor ActorContext[]
-//   Step 8  — Return sealed UserState
+// tx already has app.current_profile_id set for its duration — every query
+// below runs under RLS scoped to that profile (plus admin/manager policy
+// branches where applicable). Never call this with a raw `sql` handle that
+// hasn't gone through withProfileContext first.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function resolveUserState(
-  supabase: SupabaseClient<Database>,
-  userId: string,
+  tx: Sql,
+  profileId: string,
 ): Promise<UserState> {
   // ── 1. Profile ─────────────────────────────────────────────────────────────
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single()
+  const profileRows = await tx<ProfileRow[]>`
+    SELECT * FROM profiles WHERE id = ${profileId}
+  `
+  const profile = profileRows[0]
 
-  if (profileError || !profile) {
+  if (!profile) {
     throw new Error(
-      `[resolveUserState] Profile not found for userId=${userId}. ` +
-        `Supabase error: ${profileError?.message ?? "null result"}`,
+      `[resolveUserState] Profile not found for profileId=${profileId}.`,
     )
   }
 
   // ── 2. Actors ──────────────────────────────────────────────────────────────
-  const { data: actorRows, error: actorsError } = await supabase
-    .from("actors")
-    .select("*")
-    .eq("profile_id", userId)
-
-  if (actorsError) {
-    throw new Error(
-      `[resolveUserState] Failed to fetch actors for userId=${userId}: ${actorsError.message}`,
-    )
-  }
-
-  const actors = actorRows ?? []
+  const actors = await tx<ActorRow[]>`
+    SELECT * FROM actors WHERE profile_id = ${profileId}
+  `
   const actorIds = actors.map((a) => a.id)
 
   // A user is a guest if they have no active non-GUEST actors.
@@ -270,11 +253,9 @@ export async function resolveUserState(
   )
   const isGuest = !hasActiveNonGuestActor
   const isVerified =
-    hasActiveNonGuestActor && (profile as any).onboarding_status === "ACTIVE"
+    hasActiveNonGuestActor && profile.onboarding_status === "ACTIVE"
 
   // ── 3. Early return for guests ─────────────────────────────────────────────
-  // hooks.server.ts reads isGuest and profile.onboarding_status to decide
-  // whether to redirect to /onboarding or /onboarding/[kyc_intent].
   if (isGuest) {
     return {
       profile,
@@ -295,105 +276,102 @@ export async function resolveUserState(
   }
 
   // ── 4. Parallel fetch ──────────────────────────────────────────────────────
+  // Same connection under the hood (tx is scoped to one), but postgres.js
+  // pipelines queued statements — this still avoids serial round-trip
+  // latency even though it's not literally concurrent network I/O.
   const [
-    permissionsResult,
-    policyGroupsResult,
-    jurisdictionsResult,
-    driverResult,
-    conductorResult,
-    orgMemberResult,
-    fleetResult,
-    stageResult,
-    outboundResult,
-    mpesaResult,
+    allPermissions,
+    actorPolicyGroups,
+    jurisdictionRows,
+    driverRows,
+    conductorAssigns,
+    rawOrgMembers,
+    fleetOwnership,
+    stageAssignments,
+    outboundRows,
+    mpesaRows,
   ] = await Promise.all([
-    // effective_permissions_raw view handles:
-    //   - direct actor_permissions (source = 'direct')
-    //   - policy_group_permissions (source = 'group:<name>')
-    //   - delegated_authority filtered by revoked + expiry (source = 'delegated_from:<id>')
-    // No separate delegated fetch needed — view already gates it.
-    supabase
-      .from("effective_permissions_raw")
-      .select("actor_id, action, effect, level, scope_id, source")
-      .in("actor_id", actorIds),
+    tx<PermissionEntry & { actor_id: string }[]>`
+      SELECT actor_id, action, effect, level, scope_id, source
+      FROM effective_permissions_raw
+      WHERE actor_id = ANY(${actorIds})
+    `,
 
-    // Needed to build policyGroupIds per actor.
-    // The view gives permissions but not the group membership list itself.
-    supabase
-      .from("actor_policy_groups")
-      .select("actor_id, group_id")
-      .in("actor_id", actorIds),
+    tx<{ actor_id: string; group_id: string }[]>`
+      SELECT actor_id, group_id
+      FROM actor_policy_groups
+      WHERE actor_id = ANY(${actorIds})
+    `,
 
-    // Jurisdiction entries — drive all org/branch scope resolution.
-    // Used by every context activate() function.
-    supabase
-      .from("actor_jurisdictions")
-      .select("id, actor_id, level, scope_id, max_vehicles, created_at")
-      .in("actor_id", actorIds),
+    tx<JurisdictionRow[]>`
+      SELECT id, actor_id, level, scope_id, max_vehicles, created_at
+      FROM actor_jurisdictions
+      WHERE actor_id = ANY(${actorIds})
+    `,
 
-    // Add to Promise.all in resolveUserState:
-    supabase
-      .from("driver_assignments")
-      .select("actor_id, vehicle_id, vehicles(reg_number, id)")
-      .in("actor_id", actorIds),
+    // Explicit JOIN replaces Supabase's vehicles(reg_number, id) nested
+    // select — reshaped below into the same { vehicles: {...} } shape.
+    tx<{ actor_id: string; vehicle_id: string; reg_number: string }[]>`
+      SELECT da.actor_id, da.vehicle_id, v.reg_number
+      FROM driver_assignments da
+      JOIN vehicles v ON v.id = da.vehicle_id
+      WHERE da.actor_id = ANY(${actorIds})
+    `,
 
-    supabase.from("conductor_assignments").select("*").in("actor_id", actorIds),
+    tx<ConductorAssignmentRow[]>`
+      SELECT * FROM conductor_assignments WHERE actor_id = ANY(${actorIds})
+    `,
 
-    // Join organizations to get org_name in one query rather than N+1.
-    // Supabase returns organizations as a nested object: { name: string } | null
-    supabase
-      .from("organization_members")
-      .select("actor_id, organization_id, role, organizations(name)")
-      .in("actor_id", actorIds),
+    // Explicit JOIN replaces Supabase's organizations(name) nested select.
+    tx<{ actor_id: string; organization_id: string; role: string; org_name: string }[]>`
+      SELECT om.actor_id, om.organization_id, om.role, o.name AS org_name
+      FROM organization_members om
+      JOIN organizations o ON o.id = om.organization_id
+      WHERE om.actor_id = ANY(${actorIds})
+    `,
 
-    supabase.from("fleet_ownership").select("*").in("actor_id", actorIds),
+    tx<FleetOwnershipRow[]>`
+      SELECT * FROM fleet_ownership WHERE actor_id = ANY(${actorIds})
+    `,
 
-    supabase.from("stage_assignments").select("*").in("operator_id", actorIds),
+    tx<StageAssignmentRow[]>`
+      SELECT * FROM stage_assignments WHERE operator_id = ANY(${actorIds})
+    `,
 
-    supabase
-      .from("delegated_authority")
-      .select("from_actor_id, to_actor_id, permission_id, expires_at")
-      .in("from_actor_id", actorIds)
-      .eq("revoked", false)
-      .gt("expires_at", new Date().toISOString()),
+    tx<{ from_actor_id: string; to_actor_id: string; permission_id: string; expires_at: string }[]>`
+      SELECT from_actor_id, to_actor_id, permission_id, expires_at
+      FROM delegated_authority
+      WHERE from_actor_id = ANY(${actorIds})
+        AND revoked = false
+        AND expires_at > now()
+    `,
 
-    // M-Pesa subscription check — replaces stripe_customers.
-    // maybeSingle — row may not exist for non-paying users.
-    // In resolveUserState() — replace the mpesa_customers query:
-    supabase
-      .from("mpesa_customers")
-      .select(
-        `
-    subscription_status,
-    is_minor_account,
-    guardian_phone,
-    daily_limit,
-    per_transaction_limit,
-    send_money_enabled,
-    lipa_na_mpesa_enabled,
-    documents_submitted,
-    documents_due_by
-  `,
-      )
-      .eq("user_id", userId)
-      .maybeSingle(),
+    tx<MpesaCustomerRow[]>`
+      SELECT
+        subscription_status, is_minor_account, guardian_phone,
+        daily_limit, per_transaction_limit, send_money_enabled,
+        lipa_na_mpesa_enabled, documents_submitted, documents_due_by
+      FROM mpesa_customers
+      WHERE user_id = ${profileId}
+      LIMIT 1
+    `,
   ])
 
-  // ── 5. Unwrap results (null-safe) ──────────────────────────────────────────
-  const allPermissions = permissionsResult.data ?? []
-  const actorPolicyGroups = policyGroupsResult.data ?? []
-  const jurisdictionRows = jurisdictionsResult.data ?? []
-  const driverAssignments = driverResult.data ?? []
-  const conductorAssigns = conductorResult.data ?? []
-  const rawOrgMembers = orgMemberResult.data ?? []
-  const fleetOwnership = fleetResult.data ?? []
-  const stageAssignments = stageResult.data ?? []
-  const outboundRows = outboundResult.data ?? []
+  // Reshape driver_assignments back into the nested shape ActorContext expects.
+  const driverAssignments: DriverAssignmentRow[] = driverRows.map((d) => ({
+    actor_id: d.actor_id,
+    vehicle_id: d.vehicle_id,
+    vehicles: { id: d.vehicle_id, reg_number: d.reg_number },
+  }))
 
-  // Build MpesaGoProfile from mpesa_customers row (null if row absent)
-  const mpesaRaw = mpesaResult.data as MpesaCustomerRow | null
+  const orgMemberships: EnrichedOrgMember[] = rawOrgMembers.map((m) => ({
+    actor_id: m.actor_id,
+    organization_id: m.organization_id,
+    role: m.role,
+    org_name: m.org_name ?? "",
+  }))
 
-  // Paid plan: M-Pesa subscription must be explicitly 'active'
+  const mpesaRaw = mpesaRows[0] ?? null
   const hasPaidPlan = mpesaRaw?.subscription_status === "active"
 
   const mpesaGo: MpesaGoProfile | null = mpesaRaw
@@ -413,21 +391,11 @@ export async function resolveUserState(
       }
     : null
 
-  // ── 6. Normalise org members ───────────────────────────────────────────────
-  // Supabase returns organizations as { name: string } | null from the join.
-  const orgMemberships: EnrichedOrgMember[] = rawOrgMembers.map((m) => ({
-    actor_id: m.actor_id,
-    organization_id: m.organization_id,
-    role: m.role,
-    org_name: (m.organizations as { name: string } | null)?.name ?? "",
-  }))
-
   // ── 7. Build per-actor ActorContext[] ──────────────────────────────────────
   const activeContexts: ActorContext[] = actors.map((actor) => {
-    const actorPerms = allPermissions.filter((p) => p.actor_id === actor.id)
+    const actorPerms = (allPermissions as unknown as (PermissionEntry & { actor_id: string })[])
+      .filter((p) => p.actor_id === actor.id)
 
-    // Split using source string helpers — view emits 'group:<name>' and
-    // 'delegated_from:<id>', never the plain strings the old code assumed.
     const permissions: PermissionEntry[] = actorPerms
       .filter((p) => isDirectOrGroupSource(p.source))
       .map((p) => ({

@@ -31,7 +31,7 @@
 <div class="quickstart-grid">
 	{#each helpCategories as cat}
 		<a href={`/help/${cat.id}`} class="qs-card">
-			<div class="qs-icon"><IconGlyph name={cat.icon} size={18} /></div>
+			<div class="qs-icon"><IconGlyph key={cat.icon} /></div>
 			<div class="qs-title">{cat.label}</div>
 			<p class="qs-desc">{cat.description}</p>
 		</a>

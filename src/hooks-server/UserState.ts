@@ -12,21 +12,29 @@
  *                          with cookie preference + org-id binding
  *   - Context fallback   → always sets activeContext, never leaves it null
  *
- * Identity source: event.locals.auth.user (set by authHandle — provider-agnostic).
+ * Identity source: event.locals.auth.user (set by authHandle).
+ * Profile query ID: event.locals.profileId, set by sessionSyncHandle via
+ * resolveProfileId. This is the ONLY identity value Postgres/RLS trusts —
+ * see pg.ts's withProfileContext, which sets app.current_profile_id from it.
  *
- * Profile query ID: event.locals.supabaseUserId ?? user.id
- *   When AUTH_PROVIDER=internal, sessionSyncHandle resolves the Supabase row UUID
- *   and writes it to supabaseUserId. All profile queries and RLS policies anchor
- *   on that UUID. For the Supabase provider, user.id is already the Supabase UUID.
+ * DELIBERATE CHANGE FROM THE SUPABASE VERSION:
+ *   The old version always attempted resolveUserState using
+ *   supabaseUserId ?? user.id, meaning a failed sync fell back to the raw
+ *   auth-service user id — which was never a valid profiles.id and would
+ *   just fail differently. Now, if profileId is null (sessionSyncHandle's
+ *   Postgres-side resolution didn't succeed), we skip resolution entirely
+ *   and leave userState null — the same graceful-degradation posture
+ *   sessionSyncHandle already takes, rather than guessing with a bad id.
  *
- * This handle knows NOTHING about requestContext / location / geo / auth providers.
- * It only runs for authenticated users on non-public paths.
+ * This handle knows NOTHING about requestContext / location / geo / auth
+ * providers. It only runs for authenticated users on non-public paths.
  *
  * Placement: LAST in the sequence, after authGuardHandle.
  */
 
 import { redirect, type Handle } from '@sveltejs/kit'
 import type { App }               from '../../app'
+import { withProfileContext }     from '$lib/server/pg'
 import { resolveUserState }       from '$lib/features/auth/services/userState.server'
 import { activateXContext }       from '$lib/features/auth/contexts/context.template'
 
@@ -46,13 +54,25 @@ export const userStateHandle: Handle = async ({ event, resolve }) => {
 
   if (!user || isPublicPath(pathname)) return resolve(event)
 
-  // Resolve the Supabase row UUID to use for all profile queries.
-  // Internal provider: sessionSyncHandle has already populated supabaseUserId.
-  // Supabase provider: user.id is already the Supabase UUID.
-  const resolveId = event.locals.supabaseUserId ?? user.id
+  const { profileId } = event.locals
+
+  if (!profileId) {
+    // sessionSyncHandle already logged the underlying failure — this is
+    // just the downstream consequence. Don't crash the request; userState
+    // stays null and route-level code decides how to degrade. Redirecting
+    // to /onboarding here would be WRONG — that implies "you're a guest,"
+    // but this is "we don't know yet," a different state entirely.
+    console.error(
+      '[hooks:userStateHandle] Skipping resolution — no profileId for user:',
+      user.id,
+    )
+    return resolve(event)
+  }
 
   try {
-    const state = await resolveUserState(event.locals.supabase, resolveId)
+    const state = await withProfileContext(profileId, (tx) =>
+      resolveUserState(tx, profileId),
+    )
     event.locals.userState = state
 
     // ── guest trap ──────────────────────────────────────────────────────────

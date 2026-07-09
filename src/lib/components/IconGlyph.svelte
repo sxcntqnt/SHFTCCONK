@@ -45,6 +45,28 @@
     <rect class="bar bar-3" x="21" y="6" width="4" height="20" rx="1.4" />
   </svg>
 
+{:else if key === "getting-started"}
+
+  <svg viewBox="0 0 32 32" class="glyph start">
+    <path
+      class="path-line"
+      pathLength="1"
+      d="M6 16h16"
+    />
+    <path
+      class="arrow-head"
+      d="M17 10l6 6-6 6"
+    />
+  </svg>
+
+{:else if key === "billing"}
+
+  <svg viewBox="0 0 32 32" class="glyph card">
+    <rect class="card-body" x="5" y="9" width="22" height="15" rx="2.4" />
+    <rect class="card-stripe" x="5" y="13.5" width="22" height="3.4" />
+    <circle class="card-dot" cx="21" cy="20" r="1.6" />
+  </svg>
+
 {/if}
 
 <style>
@@ -84,7 +106,8 @@
 }
 
 :global(.step-icon-ring:hover) .pin .ring,
-:global(.feature-card:hover) .pin .ring{
+:global(.feature-card:hover) .pin .ring,
+:global(.qs-card:hover) .pin .ring{
 
     animation:pulseRing 1.8s ease-out infinite;
 
@@ -118,7 +141,8 @@
 }
 
 :global(.step-icon-ring:hover) .route .path-line,
-:global(.feature-card:hover) .route .path-line{
+:global(.feature-card:hover) .route .path-line,
+:global(.qs-card:hover) .route .path-line{
 
     stroke-dashoffset:0;
 
@@ -143,7 +167,8 @@
 }
 
 :global(.step-icon-ring:hover) .bell .bell-body,
-:global(.feature-card:hover) .bell .bell-body{
+:global(.feature-card:hover) .bell .bell-body,
+:global(.qs-card:hover) .bell .bell-body{
 
     animation:ring 1s ease-in-out;
 
@@ -184,9 +209,94 @@
 .bars .bar-3{ transition-delay:.16s; }
 
 :global(.step-icon-ring:hover) .bars .bar,
-:global(.feature-card:hover) .bars .bar{
+:global(.feature-card:hover) .bars .bar,
+:global(.qs-card:hover) .bars .bar{
 
     transform:scaleY(1);
+
+}
+
+/* Getting started — arrow draws in and nudges forward */
+
+.start .path-line{
+
+    stroke-dasharray:1;
+
+    stroke-dashoffset:1;
+
+    transition:stroke-dashoffset .6s cubic-bezier(.22,1,.36,1);
+
+}
+
+.start .arrow-head{
+
+    transition:transform .3s cubic-bezier(.22,1,.36,1) .3s;
+
+}
+
+:global(.step-icon-ring:hover) .start .path-line,
+:global(.feature-card:hover) .start .path-line,
+:global(.qs-card:hover) .start .path-line{
+
+    stroke-dashoffset:0;
+
+}
+
+:global(.step-icon-ring:hover) .start .arrow-head,
+:global(.feature-card:hover) .start .arrow-head,
+:global(.qs-card:hover) .start .arrow-head{
+
+    transform:translateX(3px);
+
+}
+
+/* Billing — card stripe slides, coin pulses */
+
+.card .card-body{
+
+    fill:rgba(242,101,34,.1);
+
+}
+
+.card .card-stripe{
+
+    fill:var(--orange);
+
+    stroke:none;
+
+    transform:scaleX(0);
+
+    transform-origin:left;
+
+    transition:transform .5s cubic-bezier(.22,1,.36,1);
+
+}
+
+.card .card-dot{
+
+    fill:var(--orange);
+
+    stroke:none;
+
+    opacity:0;
+
+    transition:opacity .3s ease .2s;
+
+}
+
+:global(.step-icon-ring:hover) .card .card-stripe,
+:global(.feature-card:hover) .card .card-stripe,
+:global(.qs-card:hover) .card .card-stripe{
+
+    transform:scaleX(1);
+
+}
+
+:global(.step-icon-ring:hover) .card .card-dot,
+:global(.feature-card:hover) .card .card-dot,
+:global(.qs-card:hover) .card .card-dot{
+
+    opacity:1;
 
 }
 
