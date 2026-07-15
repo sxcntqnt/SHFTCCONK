@@ -32,6 +32,25 @@
 -- Unfiltered union of all permission sources.
 -- NOT exposed to any user role — only read by my_permissions
 -- and by SECURITY DEFINER functions.
+--
+-- SECURITY_INVOKER: deliberately NOT set (checked, not assumed —
+-- confirm via `select relname, reloptions from pg_class where
+-- relname = 'effective_permissions_raw'`). This view is owned by
+-- the schema-owning/migration role, not app_backend, and is
+-- revoked from app_backend/public entirely (08_privileges.sql) —
+-- nobody can query it directly. Without security_invoker, it runs
+-- under the owner's privileges, which (as the table owner, with no
+-- FORCE ROW LEVEL SECURITY set on actor_permissions/
+-- policy_group_permissions/delegated_authority) bypasses RLS on
+-- those tables and returns the full unfiltered permission set.
+-- The actual per-user security boundary is NOT that bypassed RLS —
+-- it's the explicit `join current_user_state cus on ep.actor_id =
+-- any(cus.actor_ids)` inside my_permissions below, which restricts
+-- results to only the calling profile's own actor_ids. Setting
+-- security_invoker = true here would NOT tighten security (the
+-- explicit join already scopes correctly); it would instead
+-- require additional broad-read RLS policies on the underlying
+-- permission tables for app_backend, which isn't otherwise needed.
 
 create or replace view public.effective_permissions_raw as
 

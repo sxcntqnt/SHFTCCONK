@@ -67,7 +67,8 @@
 --   actor_requests (own path + admin), invite_tokens (creator + org.manage)
 --
 -- Tables that are server-side only (app_backend writes):
---   stripe_customers (webhook handler), contact_requests (SvelteKit action)
+--   mpesa_customers (M-PESA webhook/callback handler), contact_requests
+--   (SvelteKit action)
 --
 -- IDENTITY NOTE:
 --   Self-owned fast-paths resolve identity via get_current_profile_id(),
@@ -102,25 +103,25 @@ alter table profiles enable row level security;
 
 -- Self-owned: identity resolved via the session-scoped canonical profile
 create policy "profiles_select_self" on profiles
-  for select using (id = public.get_current_profile_id());
+  for select to app_backend using (id = public.get_current_profile_id());
 
 create policy "profiles_insert_self" on profiles
-  for insert with check (id = public.get_current_profile_id());
+  for insert to app_backend with check (id = public.get_current_profile_id());
 
 create policy "profiles_update_self" on profiles
-  for update using (id = public.get_current_profile_id());
+  for update to app_backend using (id = public.get_current_profile_id());
 
 -- Platform admins see all profiles (recursion-safe — see note above)
 create policy "profiles_select_admin" on profiles
-  for select using (public.current_user_is_platform_admin());
+  for select to app_backend using (public.current_user_is_platform_admin());
 
 -- Org managers see profiles of actors in their org (recursion-safe)
 create policy "profiles_select_org_manager" on profiles
-  for select using (public.current_user_manages_profile(profiles.id));
+  for select to app_backend using (public.current_user_manages_profile(profiles.id));
 
 -- Platform admins can update any profile (recursion-safe)
 create policy "profiles_update_admin" on profiles
-  for update using (public.current_user_is_platform_admin());
+  for update to app_backend using (public.current_user_is_platform_admin());
 
 -- No org-manager UPDATE policy: managers only get read access to
 -- profiles in their org by design. Add one explicitly (mirroring
@@ -157,14 +158,14 @@ alter table actors enable row level security;
 
 -- Self-owned: identity resolved via the session-scoped canonical profile
 create policy "actors_select_own" on actors
-  for select using (profile_id = public.get_current_profile_id());
+  for select to app_backend using (profile_id = public.get_current_profile_id());
 
 create policy "actors_insert_own" on actors
-  for insert with check (profile_id = public.get_current_profile_id());
+  for insert to app_backend with check (profile_id = public.get_current_profile_id());
 
 -- Platform admins see all actors
 create policy "actors_select_admin" on actors
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -176,7 +177,7 @@ create policy "actors_select_admin" on actors
 -- Org managers see actors in their org
 -- Join path: actors → organization_members
 create policy "actors_select_org_manager" on actors
-  for select using (
+  for select to app_backend using (
     exists (
       select 1
       from organization_members om
@@ -190,7 +191,7 @@ create policy "actors_select_org_manager" on actors
 
 -- Platform admins can update any actor (deactivate, reactivate, etc.)
 create policy "actors_update_admin" on actors
-  for update using (
+  for update to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -201,7 +202,7 @@ create policy "actors_update_admin" on actors
 
 -- Org managers can update actors in their org (deactivate members, etc.)
 create policy "actors_update_org_manager" on actors
-  for update using (
+  for update to app_backend using (
     exists (
       select 1
       from organization_members om
@@ -222,7 +223,7 @@ alter table organizations enable row level security;
 
 -- Members see their orgs (fast-path via organization_members)
 create policy "orgs_select_member" on organizations
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from organization_members om
       where om.organization_id = organizations.id
@@ -232,7 +233,7 @@ create policy "orgs_select_member" on organizations
 
 -- Federal admins can also see all orgs
 create policy "orgs_select_admin" on organizations
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -243,7 +244,7 @@ create policy "orgs_select_admin" on organizations
 
 -- Org creation requires federal-scoped org.create
 create policy "orgs_insert_admin" on organizations
-  for insert with check (
+  for insert to app_backend with check (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -260,7 +261,7 @@ create policy "orgs_insert_admin" on organizations
 alter table branches enable row level security;
 
 create policy "branches_select" on branches
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from organization_members om
       where om.organization_id = branches.organization_id
@@ -276,7 +277,7 @@ create policy "branches_select" on branches
 alter table departments enable row level security;
 
 create policy "departments_select" on departments
-  for select using (
+  for select to app_backend using (
     exists (
       select 1
       from branches b
@@ -299,13 +300,13 @@ alter table organization_members enable row level security;
 
 -- You always see your own memberships
 create policy "org_members_select_own" on organization_members
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
   );
 
 -- You see other members of orgs you can view
 create policy "org_members_select_org" on organization_members
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -327,7 +328,7 @@ create policy "org_members_select_org" on organization_members
 alter table vehicles enable row level security;
 
 create policy "vehicles_select" on vehicles
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -342,7 +343,7 @@ create policy "vehicles_select" on vehicles
   );
 
 create policy "vehicles_update" on vehicles
-  for update using (
+  for update to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -357,7 +358,7 @@ create policy "vehicles_update" on vehicles
   );
 
 create policy "vehicles_insert" on vehicles
-  for insert with check (
+  for insert to app_backend with check (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -372,7 +373,7 @@ create policy "vehicles_insert" on vehicles
   );
 
 create policy "vehicles_delete" on vehicles
-  for delete using (
+  for delete to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -396,7 +397,7 @@ alter table bookings enable row level security;
 -- Passengers see their own bookings (fast-path)
 -- + scoped booking.view for org/branch/dept staff
 create policy "bookings_select" on bookings
-  for select using (
+  for select to app_backend using (
     passenger_actor_id = any(public.get_cached_actor_ids())
     or exists (
       select 1 from public.my_permissions mp
@@ -412,7 +413,7 @@ create policy "bookings_select" on bookings
   );
 
 create policy "bookings_update" on bookings
-  for update using (
+  for update to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -427,7 +428,7 @@ create policy "bookings_update" on bookings
   );
 
 create policy "bookings_insert" on bookings
-  for insert with check (
+  for insert to app_backend with check (
     passenger_actor_id = any(public.get_cached_actor_ids())
     or exists (
       select 1 from public.my_permissions mp
@@ -450,7 +451,7 @@ create policy "bookings_insert" on bookings
 alter table stage_assignments enable row level security;
 
 create policy "stage_assignments_select" on stage_assignments
-  for select using (
+  for select to app_backend using (
     operator_id = any(public.get_cached_actor_ids())
     or exists (
       select 1 from public.my_permissions mp
@@ -473,7 +474,7 @@ create policy "stage_assignments_select" on stage_assignments
 alter table driver_assignments enable row level security;
 
 create policy "driver_assignments_select" on driver_assignments
-  for select using (
+  for select to app_backend using (
     -- Fast-path: drivers see their own assignment
     actor_id = any(public.get_cached_actor_ids())
     or exists (
@@ -501,7 +502,7 @@ create policy "driver_assignments_select" on driver_assignments
 alter table conductor_assignments enable row level security;
 
 create policy "conductor_assignments_select" on conductor_assignments
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
     or exists (
       select 1
@@ -527,7 +528,7 @@ create policy "conductor_assignments_select" on conductor_assignments
 alter table fleet_ownership enable row level security;
 
 create policy "fleet_ownership_select" on fleet_ownership
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
     or exists (
       select 1
@@ -553,7 +554,7 @@ create policy "fleet_ownership_select" on fleet_ownership
 alter table compliance_events enable row level security;
 
 create policy "compliance_select" on compliance_events
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -566,7 +567,7 @@ create policy "compliance_select" on compliance_events
   );
 
 create policy "compliance_update" on compliance_events
-  for update using (
+  for update to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -579,7 +580,7 @@ create policy "compliance_update" on compliance_events
   );
 
 create policy "compliance_insert" on compliance_events
-  for insert with check (
+  for insert to app_backend with check (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -599,7 +600,7 @@ create policy "compliance_insert" on compliance_events
 alter table reconciliation_events enable row level security;
 
 create policy "reconciliation_select" on reconciliation_events
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -630,15 +631,15 @@ alter table actor_requests enable row level security;
 
 -- Users see their own requests
 create policy "actor_requests_select_own" on actor_requests
-  for select using (profile_id = public.get_current_profile_id());
+  for select to app_backend using (profile_id = public.get_current_profile_id());
 
 -- Users create their own requests
 create policy "actor_requests_insert_own" on actor_requests
-  for insert with check (profile_id = public.get_current_profile_id());
+  for insert to app_backend with check (profile_id = public.get_current_profile_id());
 
 -- Admins see all requests (federal-level)
 create policy "actor_requests_admin_select" on actor_requests
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -649,7 +650,7 @@ create policy "actor_requests_admin_select" on actor_requests
 
 -- Admins can update requests (approve/reject)
 create policy "actor_requests_admin_update" on actor_requests
-  for update using (
+  for update to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -667,11 +668,11 @@ alter table invite_tokens enable row level security;
 
 -- Creators see their own invites (fast-path)
 create policy "invite_tokens_select_creator" on invite_tokens
-  for select using (created_by = public.get_current_profile_id());
+  for select to app_backend using (created_by = public.get_current_profile_id());
 
 -- Org managers can view org invites
 create policy "invite_tokens_select_org" on invite_tokens
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -703,7 +704,7 @@ create policy "invite_tokens_select_org" on invite_tokens
 alter table audit_logs enable row level security;
 
 create policy "audit_logs_select" on audit_logs
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -731,7 +732,7 @@ alter table access_denied_log enable row level security;
 
 -- Federal auditors see all denied access attempts
 create policy "access_denied_log_select_federal" on access_denied_log
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -742,7 +743,7 @@ create policy "access_denied_log_select_federal" on access_denied_log
 
 -- Org managers see denied attempts scoped to their org
 create policy "access_denied_log_select_org" on access_denied_log
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -779,11 +780,24 @@ alter table delegated_authority enable row level security;
 -- get_current_profile_id() is not null guards authentication only —
 -- not used as a profile FK here.
 create policy "permissions_select" on permissions
-  for select using (public.get_current_profile_id() is not null);
+  for select to app_backend using (public.get_current_profile_id() is not null);
+
+-- Permissions catalog writes: platform admins only. Deliberately no
+-- "manage your own permissions" branch — that would let a user grant
+-- themselves elevated access, a privilege-escalation path, not a
+-- convenience. In normal operation this catalog is seeded via
+-- migrations (07_seed.sql, run by the schema-owning role, which
+-- bypasses RLS); this policy exists for any admin-tooling path that
+-- adds a new permission type at runtime through app_backend.
+create policy "permissions_admin_write" on permissions
+  for all
+  to app_backend
+  using (public.current_user_is_platform_admin())
+  with check (public.current_user_is_platform_admin());
 
 -- Policy groups: org members can see their org's groups
 create policy "policy_groups_select" on policy_groups
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from organization_members om
       where om.organization_id = policy_groups.organization_id
@@ -795,22 +809,22 @@ create policy "policy_groups_select" on policy_groups
 
 -- Own bindings: actors see their own jurisdiction/permission/group assignments
 create policy "actor_jurisdictions_select_own" on actor_jurisdictions
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
   );
 
 create policy "actor_permissions_select_own" on actor_permissions
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
   );
 
 create policy "actor_policy_groups_select_own" on actor_policy_groups
-  for select using (
+  for select to app_backend using (
     actor_id = any(public.get_cached_actor_ids())
   );
 
 create policy "policy_group_permissions_select" on policy_group_permissions
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from policy_groups pg
       where pg.id = policy_group_permissions.group_id
@@ -827,31 +841,39 @@ create policy "policy_group_permissions_select" on policy_group_permissions
 
 -- Delegated authority: both parties can see the delegation
 create policy "delegated_authority_select" on delegated_authority
-  for select using (
+  for select to app_backend using (
     from_actor_id = any(public.get_cached_actor_ids())
     or to_actor_id = any(public.get_cached_actor_ids())
   );
 
 
 -- ═══════════════════════════════════════════════════════════
--- STRIPE CUSTOMERS (server-side writes, self-select)
+-- MPESA CUSTOMERS (server-side writes, self-select)
 -- ═══════════════════════════════════════════════════════════
--- INSERT/UPDATE/DELETE: app_backend only (Stripe webhook handler).
--- SELECT: users see their own record (for billing UI).
--- NOTE: column is profile_id (renamed from user_id in 01_tables.sql).
+-- (stripe_customers dropped — this replaces it as the billing/
+-- payments table with an app_backend policy.)
 --
--- NEON MIGRATION: Supabase's service_role bypassed RLS automatically
--- (bypassrls=true). app_backend was deliberately created with
--- NOBYPASSRLS (see 00_extensions_domains.sql), so it is
--- subject to RLS like any other role — an explicit write policy is
--- required or every webhook write is silently default-denied.
+-- This table was previously missing RLS entirely — enabled by
+-- default-deny, it silently returned zero rows for every query,
+-- which userState.server.ts treats as "no subscription/M-PESA
+-- status", contributing to the same guest-detection failure mode
+-- as the other 12 tables audited in the RLS migration checklist.
+--
+-- INSERT/UPDATE/DELETE: app_backend only (M-PESA webhook/callback
+-- handler). SELECT: users see their own record (subscription +
+-- M-PESA GO minor-account status, for account/billing UI).
+-- Column is user_id (not profile_id — matches 01_tables.sql as-is).
+--
+-- app_backend is NOBYPASSRLS (see 00_extensions_domains.sql), so an
+-- explicit write policy is required or every webhook write is
+-- silently default-denied.
 
-alter table stripe_customers enable row level security;
+alter table mpesa_customers enable row level security;
 
-create policy "stripe_customers_select_own" on stripe_customers
-  for select using (profile_id = public.get_current_profile_id());
+create policy "mpesa_customers_select_own" on mpesa_customers
+  for select to app_backend using (user_id = public.get_current_profile_id());
 
-create policy "stripe_customers_write_backend" on stripe_customers
+create policy "mpesa_customers_write_backend" on mpesa_customers
   for all
   to app_backend
   using (true)
@@ -890,7 +912,7 @@ create policy "contact_requests_insert_backend" on contact_requests
 
 -- Admin read access for managing contact submissions
 create policy "contact_requests_select_admin" on contact_requests
-  for select using (
+  for select to app_backend using (
     exists (
       select 1 from public.my_permissions mp
       where mp.effect = 'allow'
@@ -914,7 +936,7 @@ create policy "contact_requests_select_admin" on contact_requests
 alter table geofences enable row level security;
 
 create policy "geofences_select" on geofences
-  for select using (
+  for select to app_backend using (
     profile_id = public.get_current_profile_id()
     or org_id in (
       select om.organization_id
@@ -924,7 +946,7 @@ create policy "geofences_select" on geofences
   );
 
 create policy "geofences_insert" on geofences
-  for insert with check (
+  for insert to app_backend with check (
     profile_id = public.get_current_profile_id()
     or org_id in (
       select om.organization_id
@@ -934,7 +956,7 @@ create policy "geofences_insert" on geofences
   );
 
 create policy "geofences_delete" on geofences
-  for delete using (
+  for delete to app_backend using (
     profile_id = public.get_current_profile_id()
     or org_id in (
       select om.organization_id

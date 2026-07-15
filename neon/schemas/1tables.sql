@@ -359,16 +359,11 @@ create table access_denied_log (
 
 
 -- ═══════════════════════════════════════════════════════════
--- STRIPE / CONTACT
+-- CONTACT
 -- ═══════════════════════════════════════════════════════════
-
--- profile_id is canonical — no direct auth-provider table dependency.
--- Resolve Supabase user → profile via identity_accounts.
-create table stripe_customers (
-  profile_id uuid references profiles(id) on delete cascade not null primary key,
-  stripe_customer_id text unique,
-  updated_at timestamptz default now()
-);
+-- (stripe_customers dropped — mpesa_customers, defined earlier
+-- alongside mpesa_payouts/mpesa_settlements, is the retained
+-- billing/payments table.)
 
 create table contact_requests (
   id uuid primary key default gen_random_uuid(),

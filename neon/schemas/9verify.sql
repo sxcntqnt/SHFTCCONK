@@ -13,8 +13,8 @@
 -- ─────────────────────────────────────────────────────────
 -- 1. ALL TABLES EXIST
 -- ─────────────────────────────────────────────────────────
--- PASS: 29 rows
--- (28 original + identity_accounts)
+-- PASS: 28 rows
+-- (28 original + identity_accounts, minus stripe_customers which was dropped)
 
 select count(*) as table_count
 from information_schema.tables
@@ -33,7 +33,7 @@ where table_schema = 'public'
     'compliance_events', 'reconciliation_events',
     'actor_requests', 'invite_tokens', 'audit_logs',
     'access_denied_log',
-    'stripe_customers', 'contact_requests'
+    'contact_requests'
   );
 
 
@@ -94,6 +94,43 @@ order by p.proname;
 
 
 -- ─────────────────────────────────────────────────────────
+-- 4b. EVERY POLICY IS EXPLICITLY SCOPED TO app_backend
+-- ─────────────────────────────────────────────────────────
+-- PASS: 0 rows
+-- Postgres defaults a policy with no TO clause to PUBLIC (every
+-- role). Not functionally wrong right now (app_backend matches
+-- PUBLIC too), but a latent risk: any leftover/reintroduced role
+-- (authenticated, anon, etc.) would also match a PUBLIC-scoped
+-- policy. Every policy in this schema should list app_backend
+-- explicitly in pg_policies.roles.
+
+select schemaname, tablename, policyname, roles
+from pg_policies
+where schemaname = 'public'
+  and not ('app_backend' = any(roles));
+
+
+-- ─────────────────────────────────────────────────────────
+-- 4c. effective_permissions_raw SECURITY_INVOKER — CHECKED, NOT ASSUMED
+-- ─────────────────────────────────────────────────────────
+-- EXPECTED: reloptions does NOT contain 'security_invoker=true'.
+-- This is deliberate (see the comment above the view definition in
+-- 04_views.sql) — the view runs as its owner and the actual
+-- per-user filter is the explicit actor_id join inside
+-- my_permissions, not RLS on the underlying permission tables.
+-- If this ever shows security_invoker=true unexpectedly (or someone
+-- flips it without reading that comment), re-verify my_permissions
+-- still returns correct results for a non-admin actor — it may
+-- start silently under-returning if app_backend lacks broad-enough
+-- read policies on actor_permissions/policy_group_permissions/
+-- delegated_authority once RLS is actually re-evaluated per-caller.
+
+select relname, reloptions
+from pg_class
+where relname = 'effective_permissions_raw';
+
+
+-- ─────────────────────────────────────────────────────────
 -- 5. RLS ENABLED ON ALL TABLES
 -- ─────────────────────────────────────────────────────────
 -- PASS: all listed tables show rowsecurity = true
@@ -102,13 +139,15 @@ select tablename, rowsecurity
 from pg_tables
 where schemaname = 'public'
   and tablename in (
-    'profiles', 'actors', 'organizations', 'branches', 'departments',
+    'profiles', 'identity_accounts', 'actors',
+    'organizations', 'branches', 'departments',
     'vehicles', 'bookings', 'stage_assignments',
     'driver_assignments', 'conductor_assignments',
     'fleet_ownership', 'organization_members',
     'compliance_events', 'reconciliation_events',
     'actor_requests', 'invite_tokens', 'audit_logs',
-    'access_denied_log', 'stripe_customers', 'contact_requests'
+    'access_denied_log', 'permissions', 'geofences',
+    'mpesa_customers', 'contact_requests'
   )
 order by tablename;
 
@@ -272,7 +311,8 @@ where tc.table_schema = 'public'
   and tc.constraint_type = 'FOREIGN KEY'
   and ccu.table_schema <> 'public';
 
--- 14d. stripe_customers references profiles, not an auth-provider table
+-- 14d. mpesa_customers references profiles, not an auth-provider table
+-- (stripe_customers dropped — this replaces it as the billing table check)
 -- PASS: 1 row with foreign_table = 'profiles'
 select
   tc.constraint_name,
@@ -284,7 +324,7 @@ join information_schema.key_column_usage kcu
 join information_schema.constraint_column_usage ccu
   on ccu.constraint_name = tc.constraint_name
 where tc.table_schema = 'public'
-  and tc.table_name = 'stripe_customers'
+  and tc.table_name = 'mpesa_customers'
   and tc.constraint_type = 'FOREIGN KEY';
 
 -- 14e. After a test signup via the auth-service: verify identity_accounts

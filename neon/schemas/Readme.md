@@ -19,7 +19,7 @@ Run these files **in sequence** against a fresh Neon database (`psql` or any SQL
 ```
 
 The `app_backend` role is created early (`00_extensions_domains.sql`) because `06_rls.sql`
-creates policies scoped `to app_backend` (`stripe_customers`, `contact_requests`,
+creates policies scoped `to app_backend` (`mpesa_customers`, `contact_requests`,
 `identity_accounts`) — the role has to exist before those `CREATE POLICY` statements run.
 Its actual table/function grants happen later, in `08_privileges.sql`, once every object it
 needs access to has been created.
@@ -111,6 +111,18 @@ Every security hardening fix from the audit is baked in:
   an explicit policy (it does NOT bypass RLS)
 - **Profiles RLS recursion (42P17) fixed** — `current_user_is_platform_admin()` /
   `current_user_manages_profile()` read only `actors`/`organization_members`, never `profiles`
+- **Every `CREATE POLICY` explicitly scoped `TO app_backend`** — no policy relies on the
+  Postgres default (`PUBLIC`), which would also match any leftover/reintroduced Supabase role
+- **`mpesa_customers` RLS added** — was previously enabled-with-zero-policies (silent
+  default-deny), one of the 12 tables identified in the RLS migration audit as a cause of the
+  "every real user looks like a guest" failure mode
+- **`identity_accounts` RLS added** — was previously missing entirely
+- **`permissions` catalog write lockdown** — admin-only writes via `current_user_is_platform_admin()`,
+  deliberately no self-service branch (would be a privilege-escalation path)
+- **`effective_permissions_raw`'s `security_invoker` setting checked, not assumed** — confirmed
+  deliberate (see comment in `04_views.sql`); the real per-user filter is the explicit
+  `actor_id` join inside `my_permissions`, not RLS on the underlying permission tables
+- **`stripe_customers` dropped** — `mpesa_customers` is the retained billing/payments table
 - `SET search_path = public` on all SECURITY DEFINER functions
 - `REVOKE EXECUTE FROM public` on all security functions
 - Double-gate intersection (permission scope ∩ jurisdiction)
@@ -136,9 +148,8 @@ Every security hardening fix from the audit is baked in:
   nobody anything.
 - OK to drop `permissions_version` + `bump_permissions_version` in a follow-up (it's vestigial
   now that there's no JWT to gate), or keep it as a future cache-invalidation key?
-- Is `stripe_customers` still in scope, or should it actually be dropped (an earlier pass
-  described dropping it, but the table and its RLS policies are still present in this schema)?
 - Avatar storage: `00_extensions_domains.sql` no longer provisions a Supabase Storage bucket
   (that schema doesn't exist on Neon). `profiles.avatar_url` is still just a text column —
   confirm what object-storage backend (S3/R2/etc.) the app layer now writes avatars to and
   points that column at, since nothing does that provisioning at the DB level anymore.
+
