@@ -1,83 +1,104 @@
 <script lang="ts">
-	import { helpCategories } from '$lib/content/help/help-categories';
-	import { getArticlesByCategory } from '$lib/content/help/help-articles';
-	import IconGlyph from '$lib/components/IconGlyph.svelte';
+        import { helpCategories } from '$lib/content/help/help-categories';
+        import { getArticlesByCategory } from '$lib/content/help/help-articles';
+        import IconGlyph from '$lib/components/IconGlyph.svelte';
 </script>
 
 <svelte:head>
-	<title>Help Centre — Matatu Pulse | Support for Riders & Operators</title>
-	<meta
-		name="description"
-		content="Find answers to common questions about Matatu Pulse — tracking, arrival alerts, route coverage, account settings, operator dashboards, and technical issues."
-	/>
+        <title>Help Centre — Matatu Pulse | Support for Riders & Operators</title>
+        <meta
+                name="description"
+                content="Find answers to common questions about Matatu Pulse — tracking, arrival alerts, route coverage, account settings, operator dashboards, and technical issues."
+        />
 </svelte:head>
 
 <span class="section-tag">Help Centre</span>
 <h1 class="page-title">Frequently Asked Questions</h1>
 <p class="page-lead">
-	Browse common questions from riders and operators below, or use the sidebar to jump to a
-	specific topic.
+        Browse common questions from riders and operators below, or use the sidebar to jump to a
+        specific topic.
 </p>
 
 <div class="status-banner">
-	<div class="status-dot"></div>
-	<p class="status-text">
-		All systems operational — <strong>API, live tracking, and alerts running normally</strong>
-	</p>
-	<a href="/docs/status" class="status-link">View Status Page →</a>
+        <div class="status-dot"></div>
+        <p class="status-text">
+                All systems operational —
+                <strong>API, live tracking, and alerts running normally</strong>
+        </p>
+        <a href="/docs/status" class="status-link">View Status Page →</a>
 </div>
 
 <!-- Category quick-links: driven entirely by help-categories.ts -->
 <div class="quickstart-grid">
-	{#each helpCategories as cat}
-		<a href={`/help/${cat.id}`} class="qs-card">
-			<div class="qs-icon"><IconGlyph key={cat.icon} /></div>
-			<div class="qs-title">{cat.label}</div>
-			<p class="qs-desc">{cat.description}</p>
-		</a>
-	{/each}
+        {#each helpCategories as cat}
+                <a href={`/help/${cat.id}`} class="qs-card">
+                        <div class="qs-icon">
+                                <IconGlyph key={cat.icon} />
+                        </div>
+
+                        <div class="qs-title">{cat.label}</div>
+
+                        <p class="qs-desc">{cat.description}</p>
+                </a>
+        {/each}
 </div>
 
 <!-- One section per category, populated from whatever articles exist -->
 {#each helpCategories as cat}
-	{@const articles = getArticlesByCategory(cat.id)}
-	{#if articles.length}
-		<div class="faq-section">
-			<div class="faq-section-head">
-				<h2>{cat.label}</h2>
-				<a href={`/help/${cat.id}`} class="faq-section-link">View all →</a>
-			</div>
-			<div class="faq-list">
-				{#each articles.slice(0, 4) as article}
-					<a href={`/help/${article.slug}`} class="faq-item">
-						<span class="faq-item-title">{article.title}</span>
-						<p class="faq-item-excerpt">{article.excerpt}</p>
-					</a>
-				{/each}
-			</div>
-		</div>
-	{/if}
+        {@const articles = getArticlesByCategory(cat.id)}
+
+        {#if articles.length}
+                <div class="faq-section">
+                        <div class="faq-section-head">
+                                <h2>{cat.label}</h2>
+
+                                <a href={`/help/${cat.id}`} class="faq-section-link">
+                                        View all →
+                                </a>
+                        </div>
+
+                        <div class="faq-list">
+                                {#each articles.slice(0, 4) as article}
+                                        <a
+                                                href={`/help/${article.category}/${article.slug}`}
+                                                class="faq-item"
+                                        >
+                                                <span class="faq-item-title">
+                                                        {article.title}
+                                                </span>
+
+                                                <p class="faq-item-excerpt">
+                                                        {article.excerpt}
+                                                </p>
+                                        </a>
+                                {/each}
+                        </div>
+                </div>
+        {/if}
 {/each}
 
 <div class="faq-section">
-	<h2>Still Need Help?</h2>
-	<div class="contact-list">
-		<a href="mailto:support@matatupulse.co.ke" class="contact-row">
-			<span class="contact-tag">Email</span>
-			<span class="contact-title">support@matatupulse.co.ke</span>
-			<span class="contact-desc">Typically within 4 hours</span>
-		</a>
-		<a href="/community" class="contact-row">
-			<span class="contact-tag">Forum</span>
-			<span class="contact-title">Community Forum</span>
-			<span class="contact-desc">Community response in minutes</span>
-		</a>
-		<a href="tel:+254700000000" class="contact-row">
-			<span class="contact-tag">Phone</span>
-			<span class="contact-title">+254 700 000 000</span>
-			<span class="contact-desc">Operators, 6am–10pm EAT</span>
-		</a>
-	</div>
+        <h2>Still Need Help?</h2>
+
+        <div class="contact-list">
+                <a href="mailto:support@matatupulse.co.ke" class="contact-row">
+                        <span class="contact-tag">Email</span>
+                        <span class="contact-title">support@matatupulse.co.ke</span>
+                        <span class="contact-desc">Typically within 4 hours</span>
+                </a>
+
+                <a href="/community" class="contact-row">
+                        <span class="contact-tag">Forum</span>
+                        <span class="contact-title">Community Forum</span>
+                        <span class="contact-desc">Community response in minutes</span>
+                </a>
+
+                <a href="tel:+254700000000" class="contact-row">
+                        <span class="contact-tag">Phone</span>
+                        <span class="contact-title">+254 700 000 000</span>
+                        <span class="contact-desc">Operators, 6am–10pm EAT</span>
+                </a>
+        </div>
 </div>
 
 <style>

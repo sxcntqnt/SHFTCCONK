@@ -2,8 +2,15 @@
 <script lang="ts">
   import { enhance } from "$app/forms"
   import { fade, fly } from "svelte/transition"
+  import { page } from "$app/state"
+  let {
+    form,
+  } = $props<{
+    form?: { message?: string }
+  }>()
 
-  let { form } = $props<{ form?: { message?: string } }>()
+  const csrfToken = $derived(page.data.csrfToken)
+
 
   let loading = $state(false)
 
@@ -51,13 +58,6 @@
       icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="7" cy="12" r="2"/><circle cx="17" cy="12" r="2"/><path d="M7 8h10"/></svg>`,
     },
   ]
-  console.log({
-  host: request.headers.get('host'),
-  origin: request.headers.get('origin'),
-  referer: request.headers.get('referer'),
-  xfhost: request.headers.get('x-forwarded-host'),
-  xfproto: request.headers.get('x-forwarded-proto')
-});
 </script>
 
 <svelte:head>
@@ -99,6 +99,7 @@
       }
     }}
   >
+    <input   type="hidden"   name="csrf-token"   value={csrfToken} />
     <input type="hidden" name="intent" value="passenger" />
 
     <button type="submit" class="passenger-card" disabled={loading}>

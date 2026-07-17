@@ -13,7 +13,7 @@
 	{#if data.articles.length}
 		<div class="faq-list">
 			{#each data.articles as article}
-				<a href={`/help/${article.slug}`} class="faq-item">
+				<a href={`/help/${article.category}/${article.slug}`} class="faq-item">
 					<span class="faq-item-title">{article.title}</span>
 					<p class="faq-item-excerpt">{article.excerpt}</p>
 				</a>

@@ -8,10 +8,13 @@
 //   save → intentToDashboard(kyc_intent)?rebootstrap=1
 //
 // MIGRATION:
-//   locals.safeGetSession() → locals.user (hooks already validated)
+//   locals.safeGetSession() → locals.auth.user (hooks already validated)
 //   local hasFullProfile    → _hasFullProfile from profile.service
 //   redirect /app/select_plan → intentToDashboard(kyc_intent)
 //   role URL param          → removed (intent lives on profile now)
+//   supabase client         → withProfileContext(profileId, ...) via pg.ts;
+//                             loadProfileFormData/saveProfile now take
+//                             profileId directly (see profile.service.ts)
 
 import { fail, redirect } from "@sveltejs/kit"
 import type { Actions, PageServerLoad } from "./$types"
@@ -21,15 +24,16 @@ import {
   _hasFullProfile,
   type Organization,
 } from "$lib/features/profile/profile.service"
-import { profileCreateSchema } from "$lib/security/onboarding.schema" 
+import { profileCreateSchema } from "$lib/security/onboarding.schema"
 import { intentToDashboard } from "$lib/features/onboarding/intents"
+import { withProfileContext } from "$lib/server/pg"
 export type { Organization }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 
 export const load: PageServerLoad = async ({ locals, url, params }) => {
-  const { user, userState, supabase } = locals
-  if (!user) throw redirect(303, "/login")
+  const { auth, userState, profileId } = locals
+  if (!auth.user) throw redirect(303, "/login")
 
   // Already complete — go to role dashboard
   if (userState && _hasFullProfile(userState.profile)) {
@@ -45,8 +49,7 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
   }
 
   const { profile, organizations, linkedOrgIds } = await loadProfileFormData(
-    supabase,
-    user.id,
+    profileId,
   )
 
   return {
@@ -54,7 +57,7 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
     organizations,
     linkedOrgIds,
     returnTo: url.searchParams.get("next") ?? null,
-    user: { email: user.email ?? "" },
+    user: { email: auth.user.email ?? "" },
   }
 }
 
@@ -62,8 +65,8 @@ export const load: PageServerLoad = async ({ locals, url, params }) => {
 
 export const actions: Actions = {
   updateProfile: async ({ request, locals, params }) => {
-    const { user, supabase } = locals
-    if (!user) throw redirect(303, "/login")
+    const { auth, profileId } = locals
+    if (!auth.user) throw redirect(303, "/login")
 
     const formData = await request.formData()
     const returnTo = (formData.get("returnTo") as string | null) ?? null
@@ -100,7 +103,7 @@ export const actions: Actions = {
 
     const input = parsed.data
 
-    const result = await saveProfile(supabase, user.id, input)
+    const result = await saveProfile(profileId, input)
 
     if (result && "fields" in result) {
       return fail(400, {
@@ -125,11 +128,9 @@ export const actions: Actions = {
     }
 
     // Re-read intent — userState was resolved before this save
-    const { data: fresh } = await supabase
-      .from("profiles")
-      .select("kyc_intent")
-      .eq("id", user.id)
-      .single()
+    const [fresh] = await withProfileContext(profileId, (tx) =>
+      tx`SELECT kyc_intent FROM profiles WHERE id = ${profileId} LIMIT 1`,
+    )
 
     const intent = (fresh?.kyc_intent as string | null) ?? params.intent
     throw redirect(

@@ -3,54 +3,91 @@
  *
  * Server layout for all /login/* pages.
  *
- * Single responsibility: gate already-authenticated users away from
- * the login UI so they land on the correct dashboard immediately.
+ * Responsibility:
+ *   Keep authenticated users out of the login UI by routing them to the
+ *   correct next step based on the already-resolved domain state.
  *
- * IDENTITY SOURCE:
- *   locals.auth is populated by authHandle in hooks.server.ts —
- *   always present, never undefined.  locals.auth.user === null
- *   means unauthenticated.
+ * PIPELINE
+ *   authHandle
+ *     ↓
+ *   sessionSyncHandle
+ *     ↓
+ *   authGuardHandle
+ *     ↓
+ *   userStateHandle
+ *     ↓
+ *   this layout
  *
- * REDIRECT TARGET:
- *   /app/dashboard — neutral entry point.  userStateHandle resolves
- *   role + context on the next request and the app routes from there.
- *   This replaces the old bootstrap_session() → resolveRouteFromBootstrap()
- *   round-trip that was done client-side in +layout.ts.
+ * By the time this layout executes:
  *
- *   When a resolveRouteFromUserState() helper exists, swap the redirect
- *   target to resolveRouteFromUserState(locals.userState) for instant
- *   role-based routing without an extra RPC.
+ *   • locals.auth.user tells us whether a valid authenticated session exists.
+ *   • locals.userState represents the authoritative domain state for that
+ *     authenticated user.
  *
- * COOKIES:
- *   Forwarded for the SSR Supabase client in +layout.ts (still needed
- *   for GitHub OAuth flows and the bootstrap_session() compatibility shim).
+ * ROUTING CONTRACT
  *
- * CSRF:
- *   csrfToken forwarded from locals so child pages (+page.svelte) can
- *   inject it as a hidden field into their forms.  Issued by csrfHandle
- *   on every GET request before this layout runs.
+ *   Unauthenticated
+ *       → show login pages
+ *
+ *   Authenticated + guest
+ *       → onboarding flow
+ *
+ *   Authenticated + verified
+ *       → role dashboard
+ *
+ * We intentionally DO NOT route directly to /app/dashboard simply because
+ * an authenticated session exists. Authentication proves identity; it does
+ * not prove onboarding has completed.
  */
-import { redirect }              from "@sveltejs/kit"
-import type { LayoutServerLoad } from "./$types"
+
+import { redirect } from "@sveltejs/kit";
+import type { LayoutServerLoad } from "./$types";
+
+import { intentToDashboard } from "$lib/features/onboarding/intents";
 
 export const load: LayoutServerLoad = async ({
-  locals: { auth, csrfToken },
+  locals: { auth, userState, csrfToken },
   cookies,
   url,
 }) => {
-  // Already authenticated — bypass the login UI.
-  // authHandle guarantees locals.auth is always set; user being non-null
-  // is the single correct signal for an active session regardless of provider.
-  if (auth.user) {
-    throw redirect(303, "/app/dashboard")
+  // ─────────────────────────────────────────────────────────────────────
+  // No authenticated session.
+  // Stay on the login pages.
+  // ─────────────────────────────────────────────────────────────────────
+  if (!auth.user) {
+    return {
+      url: url.origin,
+      cookies: cookies.getAll(),
+      csrfToken,
+    };
   }
 
-  return {
-    url:       url.origin,
-    cookies:   cookies.getAll(),
-    csrfToken,
-    // user is null here — don't expose a typed null session to the client.
-    // Child pages that need to know "are we authed" use locals.auth on the
-    // server, or data.user (null) on the client.
+  // ─────────────────────────────────────────────────────────────────────
+  // Authenticated but onboarding is incomplete (or userState could not
+  // be resolved). Treat both as "continue onboarding".
+  //
+  // userStateHandle only skips resolution if profile resolution failed,
+  // so this is a defensive fallback rather than a normal code path.
+  // Never send these users into /app.
+  // ─────────────────────────────────────────────────────────────────────
+  if (!userState || userState.isGuest) {
+    const intent = (userState?.profile as any)?.kyc_intent as string | null;
+
+    throw redirect(
+      303,
+      intent ? `/onboarding/${intent}` : "/onboarding",
+    );
   }
-}
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Fully onboarded.
+  // userState.isVerified is the authoritative signal that the user may
+  // enter the application.
+  // ─────────────────────────────────────────────────────────────────────
+  const intent = (userState.profile as any).kyc_intent as string | null;
+
+  throw redirect(
+    303,
+    intentToDashboard((intent ?? "passenger") as any),
+  );
+};

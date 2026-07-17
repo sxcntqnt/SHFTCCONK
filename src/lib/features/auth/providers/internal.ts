@@ -1,5 +1,5 @@
 import type { AuthProvider, AuthRequest, AuthUser, AuthSession, SafeSessionResult } from '../types/types';
-
+import type { Cookies } from "@sveltejs/kit";
 /**
  * InternalAuthProvider
  *
@@ -117,8 +117,10 @@ export class InternalAuthProvider implements AuthProvider {
     }
   }
 
-  clearCookies(event: { cookies: { delete: (name: string) => void } }) {
-    event.cookies.delete('access_token');
+  clearCookies(event: { cookies: Cookies }) {
+    event.cookies.delete("access_token", {
+      path: "/",
+    });
     // The refresh cookie is owned by the Go service (Path=/auth/refresh,
     // set via its own Set-Cookie header) — this provider's clearCookies
     // cannot reach it with event.cookies.delete, since SvelteKit's cookie

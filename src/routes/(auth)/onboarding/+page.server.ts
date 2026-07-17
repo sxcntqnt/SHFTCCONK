@@ -29,70 +29,110 @@
 //   can grant that capability. Onboarding = identity completion, not
 //   role assignment.
 
-// src/routes/(auth)/onboarding/+page.server.ts
-
-import type { PageServerLoad, Actions } from "./$types"
-import { redirect, fail } from "@sveltejs/kit"
+import type { Actions, PageServerLoad } from "./$types";
+import { fail, redirect } from "@sveltejs/kit";
 
 import {
   SELF_SELECTABLE_INTENTS,
   type SelfSelectIntent,
   intentToDashboard,
-} from "$lib/features/onboarding/intents"
-import { setIntentSchema } from "$lib/security/onboarding.schema"
+} from "$lib/features/onboarding/intents";
+
+import { setIntentSchema } from "$lib/security/onboarding.schema";
+import { withProfileContext } from "$lib/server/pg";
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const { userState } = locals
+  const { userState } = locals;
 
-  // ── Already verified → send to the right dashboard ─────────────────────
-  if (userState && !userState.isGuest) {
-    const intent = (userState.profile as any).kyc_intent as string | null
-    throw redirect(303, intentToDashboard((intent ?? "passenger") as any))
+  // AuthGuard + UserStateHandle should already have populated this.
+  // If not, treat it as an invalid session.
+  if (!userState) {
+    throw redirect(303, "/login/sign_in");
   }
 
-  // ── Mid-flow (kyc_intent already set) → resume at [intent] ────────────
-  const kycIntent = (userState?.profile as any)?.kyc_intent as string | null
+  // ── Already verified → send to the correct dashboard ───────────────────
+  if (!userState.isGuest) {
+    const intent = (userState.profile as any).kyc_intent as string | null;
+
+    throw redirect(
+      303,
+      intentToDashboard((intent ?? "passenger") as any),
+    );
+  }
+
+  // ── Mid-flow → continue onboarding ─────────────────────────────────────
+  const kycIntent =
+    (userState.profile as any).kyc_intent as string | null;
+
   if (kycIntent) {
-    throw redirect(303, `/onboarding/${kycIntent}`)
+    throw redirect(303, `/onboarding/${kycIntent}`);
   }
 
-  // ── Fresh user — show passenger intent picker ──────────────────────────
-  return {}
-}
+  // ── Fresh signup ───────────────────────────────────────────────────────
+  return {};
+};
 
 export const actions: Actions = {
   setIntent: async ({ request, locals }) => {
-    const { supabase, user } = locals
+    const { auth, profileId } = locals;
 
-    if (!user) throw redirect(303, "/login")
+    if (!auth.user || !profileId) {
+      throw redirect(303, "/login/sign_in");
+    }
 
-    const formData = await request.formData()
-    const raw = { intent: formData.get("intent") }
-    const parsed = setIntentSchema.safeParse(raw)
-    if (!parsed.success) return fail(400, { error: parsed.error.flatten().fieldErrors })
-    const intent = parsed.data.intent
+    const formData = await request.formData();
 
-    // Only passengers can self-select
+    const raw = {
+      intent: formData.get("intent"),
+    };
+
+    const parsed = setIntentSchema.safeParse(raw);
+
+    if (!parsed.success) {
+      return fail(400, {
+        error: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const intent = parsed.data.intent;
+
+    // Only passengers can self-select.
     if (!SELF_SELECTABLE_INTENTS.includes(intent as SelfSelectIntent)) {
       return fail(400, {
         message:
           "Only passenger registration is available here. " +
           "Other roles require an invite from a registered organisation.",
-      })
+      });
     }
 
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        kyc_intent: intent,
-        onboarding_status: "AWAITING_KYC",
-      })
-      .eq("id", user.id)
+    try {
+      await withProfileContext(profileId, async (tx) => {
+        const rows = await tx`
+          UPDATE profiles
+          SET
+            kyc_intent = ${intent},
+            onboarding_status = 'AWAITING_KYC'
+          WHERE id = ${profileId}
+          RETURNING id
+        `;
 
-    if (updateError) {
-      return fail(500, { message: "Failed to save intent. Please try again." })
+        if (rows.length !== 1) {
+          throw new Error(
+            `Profile ${profileId} not found during onboarding.`,
+          );
+        }
+      });
+    } catch (err) {
+      console.error(
+        "[onboarding] Failed to persist onboarding intent:",
+        err,
+      );
+
+      return fail(500, {
+        message: "Failed to save intent. Please try again.",
+      });
     }
 
-    throw redirect(303, `/onboarding/${intent}`)
+    throw redirect(303, `/onboarding/${intent}`);
   },
-}
+};

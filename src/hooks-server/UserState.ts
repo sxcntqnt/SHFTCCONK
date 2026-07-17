@@ -4,122 +4,201 @@
  * THE BRAIN — resolves domain state for authenticated users.
  *
  * Responsibilities:
- *   - resolveUserState   → full profile + role membership
- *   - Guest trap         → redirect guests to /onboarding
- *   - KYC pending trap   → redirect to /onboarding/:intent while KYC is open
- *   - KYC rejected trap  → redirect to /onboarding/:intent?retry=true
- *   - activateXContext   → picks the correct active context (passenger, crew…)
- *                          with cookie preference + org-id binding
- *   - Context fallback   → always sets activeContext, never leaves it null
+ *   • Resolve the authenticated user's complete domain state.
+ *   • Keep users inside onboarding until onboarding is complete.
+ *   • Activate the user's operational context after verification.
  *
- * Identity source: event.locals.auth.user (set by authHandle).
- * Profile query ID: event.locals.profileId, set by sessionSyncHandle via
- * resolveProfileId. This is the ONLY identity value Postgres/RLS trusts —
- * see pg.ts's withProfileContext, which sets app.current_profile_id from it.
+ * ROUTING CONTRACT
  *
- * DELIBERATE CHANGE FROM THE SUPABASE VERSION:
- *   The old version always attempted resolveUserState using
- *   supabaseUserId ?? user.id, meaning a failed sync fell back to the raw
- *   auth-service user id — which was never a valid profiles.id and would
- *   just fail differently. Now, if profileId is null (sessionSyncHandle's
- *   Postgres-side resolution didn't succeed), we skip resolution entirely
- *   and leave userState null — the same graceful-degradation posture
- *   sessionSyncHandle already takes, rather than guessing with a bad id.
+ *   auth.user == null
+ *       → handled earlier by authGuardHandle
  *
- * This handle knows NOTHING about requestContext / location / geo / auth
- * providers. It only runs for authenticated users on non-public paths.
+ *   userState == null
+ *       → allow request to continue (profile resolution failed)
  *
- * Placement: LAST in the sequence, after authGuardHandle.
+ *   userState.isGuest
+ *       → onboarding
+ *
+ *   !userState.isVerified
+ *       → onboarding
+ *
+ *   userState.isVerified
+ *       → application
+ *
+ * resolveUserState() is the single authority that decides whether a user
+ * is considered a guest or fully verified. No other layer should attempt
+ * to infer onboarding completion independently.
+ *
+ * Identity source:
+ *   event.locals.auth.user
+ *
+ * Database identity:
+ *   event.locals.profileId
+ *
+ * Placement:
+ *   LAST in the request pipeline.
  */
 
-import { redirect, type Handle } from '@sveltejs/kit'
-import type { App }               from '../../app'
-import { withProfileContext }     from '$lib/server/pg'
-import { resolveUserState }       from '$lib/features/auth/services/userState.server'
-import { activateXContext }       from '$lib/features/auth/contexts/context.template'
+import {
+  redirect,
+  isRedirect,
+  type Handle,
+} from "@sveltejs/kit";
 
-// ─── path helpers ─────────────────────────────────────────────────────────────
+import type { App } from "../../app";
 
-const PUBLIC_PATHS      = ['/login', '/verify', '/auth/callback', '/auth/confirm']
-const ONBOARDING_PREFIX = '/onboarding'
+import { withProfileContext } from "$lib/server/pg";
+import { resolveUserState } from "$lib/features/auth/services/userState.server";
+import { activateXContext } from "$lib/features/auth/contexts/context.template";
 
-const isPublicPath     = (pathname: string) => PUBLIC_PATHS.some((p) => pathname.startsWith(p))
-const isOnboardingPath = (pathname: string) => pathname.startsWith(ONBOARDING_PREFIX)
+// ─────────────────────────────────────────────────────────────────────────────
+// Route helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── handle ───────────────────────────────────────────────────────────────────
+const PUBLIC_PATHS = [
+  "/login",
+  "/verify",
+  "/auth/callback",
+  "/auth/confirm",
+] as const;
+
+const ONBOARDING_PREFIX = "/onboarding";
+
+const isPublicPath = (pathname: string) =>
+  PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
+const isOnboardingPath = (pathname: string) =>
+  pathname.startsWith(ONBOARDING_PREFIX);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Handle
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const userStateHandle: Handle = async ({ event, resolve }) => {
-  const { pathname } = event.url
-  const user          = event.locals.auth.user  // ← unified source; never locals.user directly
+  const { pathname } = event.url;
+  const user = event.locals.auth.user;
 
-  if (!user || isPublicPath(pathname)) return resolve(event)
+  // Public pages never require domain resolution.
+  if (!user || isPublicPath(pathname)) {
+    return resolve(event);
+  }
 
-  const { profileId } = event.locals
+  const { profileId } = event.locals;
 
+  // sessionSyncHandle already logged the root cause.
+  // We deliberately do not guess a profile id or fabricate a userState.
   if (!profileId) {
-    // sessionSyncHandle already logged the underlying failure — this is
-    // just the downstream consequence. Don't crash the request; userState
-    // stays null and route-level code decides how to degrade. Redirecting
-    // to /onboarding here would be WRONG — that implies "you're a guest,"
-    // but this is "we don't know yet," a different state entirely.
     console.error(
-      '[hooks:userStateHandle] Skipping resolution — no profileId for user:',
+      "[hooks:userStateHandle] Skipping resolution — no profileId for user:",
       user.id,
-    )
-    return resolve(event)
+    );
+
+    return resolve(event);
   }
 
   try {
     const state = await withProfileContext(profileId, (tx) =>
       resolveUserState(tx, profileId),
-    )
-    event.locals.userState = state
+    );
 
-    // ── guest trap ──────────────────────────────────────────────────────────
+    event.locals.userState = state;
+
+    const profile = state.profile as any;
+
+    const kycIntent = profile.kyc_intent as string | null;
+    const kycStatus = profile.kyc_status as string | null;
+    const onboardingStatus =
+      profile.onboarding_status as string | null;
+
+    // ───────────────────────────────────────────────────────────────────
+    // Guest trap
+    //
+    // Guests are authenticated users who have not yet completed
+    // onboarding. They may never enter /app.
+    // ───────────────────────────────────────────────────────────────────
+
     if (state.isGuest && !isOnboardingPath(pathname)) {
-      const kycIntent = (state.profile as any).kyc_intent as string | null
-      if (kycIntent) throw redirect(303, `/onboarding/${kycIntent}`)
-      throw redirect(303, '/onboarding')
+      throw redirect(
+        303,
+        kycIntent
+          ? `/onboarding/${kycIntent}`
+          : "/onboarding",
+      );
     }
 
-    const onboardingStatus = (state.profile as any).onboarding_status as string | null
-    const kycIntent        = (state.profile as any).kyc_intent        as string | null
-    const kycStatus        = (state.profile as any).kyc_status        as string | null
+    // ───────────────────────────────────────────────────────────────────
+    // KYC still running
+    // ───────────────────────────────────────────────────────────────────
 
-    // ── KYC pending trap ────────────────────────────────────────────────────
     if (
-      onboardingStatus === 'AWAITING_KYC' &&
-      kycStatus        === 'pending'      &&
+      !state.isVerified &&
+      onboardingStatus === "AWAITING_KYC" &&
+      kycStatus === "pending" &&
       !isOnboardingPath(pathname)
     ) {
-      throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}`)
+      throw redirect(
+        303,
+        `/onboarding/${kycIntent ?? "passenger"}`,
+      );
     }
 
-    // ── KYC rejected trap ───────────────────────────────────────────────────
-    if (kycStatus === 'rejected' && !isOnboardingPath(pathname)) {
-      throw redirect(303, `/onboarding/${kycIntent ?? 'passenger'}?retry=true`)
+    // ───────────────────────────────────────────────────────────────────
+    // KYC rejected
+    // ───────────────────────────────────────────────────────────────────
+
+    if (
+      !state.isVerified &&
+      kycStatus === "rejected" &&
+      !isOnboardingPath(pathname)
+    ) {
+      throw redirect(
+        303,
+        `/onboarding/${kycIntent ?? "passenger"}?retry=true`,
+      );
     }
 
-    // ── context activation ──────────────────────────────────────────────────
-    const preferredContext = (
-      event.cookies.get('active_context') ?? 'passenger'
-    ) as App.ContextType
+    // ───────────────────────────────────────────────────────────────────
+    // Verified users only.
+    // Resolve their active operational context.
+    // ───────────────────────────────────────────────────────────────────
 
-    const preferredOrgId = event.cookies.get('active_org_id') ?? undefined
+    if (state.isVerified) {
+      const preferredContext = (
+        event.cookies.get("active_context") ?? "passenger"
+      ) as App.ContextType;
 
-    let activeContext = activateXContext(state, preferredContext, { orgId: preferredOrgId })
+      const preferredOrgId =
+        event.cookies.get("active_org_id") ?? undefined;
 
-    // Always fall back to passenger — never leave activeContext null
-    if (!activeContext) activeContext = activateXContext(state, 'passenger')
+      let activeContext = activateXContext(
+        state,
+        preferredContext,
+        {
+          orgId: preferredOrgId,
+        },
+      );
 
-    event.locals.activeContext = activeContext
+      // Never leave activeContext unset.
+      if (!activeContext) {
+        activeContext = activateXContext(
+          state,
+          "passenger",
+        );
+      }
 
+      event.locals.activeContext = activeContext;
+    }
   } catch (err) {
-    // Re-throw SvelteKit redirects — swallow everything else so a broken
-    // profile doesn't take down the whole request pipeline
-    if (err instanceof Error && 'status' in err && 'location' in err) throw err
-    console.error('[hooks:userStateHandle] Resolution failed:', err)
+    // Redirects are part of normal control flow.
+    if (isRedirect(err)) {
+      throw err;
+    }
+
+    console.error(
+      "[hooks:userStateHandle] Resolution failed:",
+      err,
+    );
   }
 
-  return resolve(event)
-}
+  return resolve(event);
+};
