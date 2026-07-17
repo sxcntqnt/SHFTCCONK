@@ -1,33 +1,39 @@
 <!-- src/routes/(auth)/onboarding/[intent]/+page.svelte -->
 <!--
-  Ballerine KYC page — serves all intents.
+  KYC page — serves all intents. Capture UI is the self-hosted, open-source
+  @ballerine/web-sdk (npm, bundled — no cdn.ballerine.io script tag, no
+  Ballerine cloud handshake, no case/token concept). It runs entirely
+  client-side to capture ID document photo(s), the applicant's declared ID
+  details, and a selfie/liveness check, then hands everything back via the
+  'finish' event as a context object.
 
-  PASSENGER:   kyc_light — basic ID + selfie
-  CREW:        kyc_full_ntsa — NTSA PSV licence + ID
-  OPERATOR:    kyc_full_ntsa — NTSA operator licence + ID
-  OWNER:       kyc_full_ntsa — vehicle ownership docs + ID
-  ORG:         kyc_full_ntsa — company registration + director ID
+  We take that context, build a FormData (Files + fields, matching
+  submitKycSchema in +page.server.ts), and POST it to ?/submitKyc, which
+  uploads to storage and forwards URLs + metadata to gatebill.
 
-  Ballerine SDK renders as a web component inside the card.
-  On completion, SDK fires a custom event — we capture caseId
-  and submit via the hidden form to ?/submitKyc.
+  TIER (from load(), not Ballerine's kyc_full_ntsa naming — gatebill only
+  knows kyc_light / kyc_full; see TIER_MAP in +page.server.ts):
+    passenger            → kyc_light — ID + selfie
+    crew/operator/owner/org → kyc_full — ID (+ back) + selfie + liveness check
+
+  ASSUMPTION — the exact shape of the 'finish' event payload isn't fully
+  documented for @ballerine/web-sdk; the extraction below is based on the
+  closest documented shape (Ballerine's workflow context: entity.data.*
+  for fields, documents[] for captured files). Console.log the raw event
+  once wired up and adjust extractFromFinishContext() if the real shape
+  differs.
 -->
 <script lang="ts">
   import { onMount } from "svelte"
-  import { enhance } from "$app/forms"
   import { fade, fly } from "svelte/transition"
 
   let { data, form } = $props<{
     data: {
       intent: string
-      workflowId: string
-      isRetry: boolean
+      tier: "kyc_light" | "kyc_full"
       isPassenger: boolean
       isProWorkflow: boolean
-      ballerine: {
-        workflowId: string
-        token: string
-      }
+      isRetry?: boolean
     }
     form?: { message?: string }
   }>()
@@ -106,73 +112,163 @@
 
   const meta = INTENT_META[data.intent] ?? INTENT_META.passenger
 
-  // ── Ballerine SDK state ───────────────────────────────────────────────────
+  const FLOW_NAME = "kyc-flow"
+  const MOUNT_ID = "ballerine-mount"
+
+  // ── SDK state ──────────────────────────────────────────────────────────
   let sdkReady = $state(false)
-  let sdkCompleted = $state(false)
   let sdkError = $state<string | null>(null)
-  let capturedCaseId = $state<string | null>(null)
   let submitting = $state(false)
-  let alreadySubmitted = false // 🔹 prevent double submission
+  let submitError = $state<string | null>(null)
+  let alreadySubmitted = false // guard against duplicate 'finish' firing
 
-  // Hidden form reference — submitted programmatically after SDK completes
-  let submitForm: HTMLFormElement
+  // kyc_light: ID + selfie only. kyc_full: adds document back + a
+  // liveness-style selfie confirmation step. Adjust step names/ids against
+  // whatever your installed @ballerine/web-sdk version actually ships —
+  // these match the documented example flow.
+  function buildFlowConfig() {
+    const steps: Record<string, unknown>[] = [
+      { name: "welcome", id: "welcome" },
+      {
+        name: "document-selection",
+        id: "document-selection",
+        documentOptions: ["id_card", "passport"],
+      },
+      { name: "document-photo", id: "document-photo" },
+      { name: "check-document", id: "check-document" },
+    ]
 
-  async function handleBallerineComplete(event: CustomEvent) {
-    if (alreadySubmitted) return // 🔹 skip if already submitted
-    alreadySubmitted = true // mark as submitted
-    const { caseId } = event.detail ?? {}
-    if (!caseId) return (sdkError = "No case ID returned")
+    if (data.tier === "kyc_full") {
+      steps.push({
+        name: "document-photo-back-start",
+        id: "document-photo-back-start",
+      })
+    }
 
-    capturedCaseId = caseId
-    sdkCompleted = true
+    steps.push(
+      { name: "selfie", id: "selfie" },
+      { name: "check-selfie", id: "check-selfie" },
+      { name: "loading", id: "loading" },
+      { name: "final", id: "final" },
+    )
+
+    return {
+      uiConfig: {
+        flows: {
+          [FLOW_NAME]: { steps },
+        },
+      },
+    }
+  }
+
+  // TODO(verify): the finish event's real payload shape isn't confirmed —
+  // this assumes a Ballerine-style context object (entity.data.* for
+  // fields, documents[] for files with a `type`/`kind` discriminator).
+  // console.log(context) on first real run and adjust the lookups below
+  // to match whatever actually comes back.
+  function extractFromFinishContext(context: any) {
+    const data_ = context?.entity?.data ?? context?.data ?? {}
+    const documents: any[] = context?.documents ?? []
+
+    const findDoc = (kind: string) =>
+      documents.find((d) => d?.type === kind || d?.kind === kind)
+
+    const idDoc = findDoc("id_card") ?? findDoc("passport") ?? documents[0]
+    const selfieDoc = findDoc("selfie") ?? findDoc("face")
+
+    const toFile = (doc: any): File | null => {
+      if (!doc) return null
+      if (doc.file instanceof File) return doc.file
+      if (doc.blob instanceof Blob) {
+        return new File([doc.blob], `${doc.type ?? "document"}.jpg`, {
+          type: doc.blob.type || "image/jpeg",
+        })
+      }
+      return null
+    }
+
+    return {
+      firstName: data_.firstName ?? data_.additionalInfo?.firstName ?? "",
+      lastName: data_.lastName ?? data_.additionalInfo?.lastName ?? "",
+      idNumber: data_.idNumber ?? data_.documentNumber ?? "",
+      idType: idDoc?.type ?? idDoc?.kind ?? "id_card",
+      countryCode: data_.country ?? data_.countryCode ?? "",
+      idImage: toFile(idDoc),
+      selfie: toFile(selfieDoc),
+    }
+  }
+
+  async function handleFinish(context: any) {
+    if (alreadySubmitted) return
+    alreadySubmitted = true
     submitting = true
+    submitError = null
+
+    const fields = extractFromFinishContext(context)
+
+    if (!fields.idImage || !fields.selfie) {
+      submitting = false
+      alreadySubmitted = false
+      submitError =
+        "Couldn't read the captured photos. Please retake and try again."
+      return
+    }
+
+    const body = new FormData()
+    body.set("firstName", fields.firstName)
+    body.set("lastName", fields.lastName)
+    body.set("idNumber", fields.idNumber)
+    body.set("idType", fields.idType)
+    body.set("countryCode", fields.countryCode)
+    body.set("idImage", fields.idImage)
+    body.set("selfie", fields.selfie)
 
     try {
-      const res = await fetch("?/submitKyc", {
-        method: "POST",
-        body: new URLSearchParams({ ballerineCaseId: caseId }),
-      })
-
+      const res = await fetch("?/submitKyc", { method: "POST", body })
       submitting = false
 
       if (res.ok) {
-        // Navigate to pending page after successful submission
         window.location.href = `/onboarding/${data.intent}/pending`
       } else {
-        sdkError = "Failed to submit verification. Try again."
+        alreadySubmitted = false
+        submitError = "Failed to submit verification. Try again."
       }
-    } catch (err) {
+    } catch {
       submitting = false
-      sdkError = "Verification submission failed. Try again."
+      alreadySubmitted = false
+      submitError = "Verification submission failed. Try again."
     }
   }
-  onMount(() => {
-    // Load Ballerine web component SDK
-    const script = document.createElement("script")
-    script.src = "https://cdn.ballerine.io/1.1.22/ballerine-sdk.umd.min.js"
-    script.onload = () => {
-      sdkReady = true
-    }
-    script.onerror = () => {
-      sdkError = "Failed to load verification service."
-    }
-    document.head.appendChild(script)
 
-    // Listen for Ballerine completion event
-    window.addEventListener("ballerine.complete", handleBallerineComplete)
-    window.addEventListener("ballerine.error", handleBallerineError)
+  onMount(() => {
+    let mounted = true
+
+    import("@ballerine/web-ui-sdk")
+      .then(async ({ flows }) => {
+        if (!mounted) return
+        await flows.init(buildFlowConfig())
+        if (!mounted) return
+
+        flows.on("finish", (context: any) => {
+          handleFinish(context)
+        })
+        flows.on("error", (err: any) => {
+          sdkError =
+            err?.message ?? "Verification encountered an error. Please try again."
+        })
+
+        flows.mount(FLOW_NAME, MOUNT_ID)
+        sdkReady = true
+      })
+      .catch((err) => {
+        console.error("[onboarding/[intent]] Failed to load @ballerine/web-sdk:", err)
+        sdkError = "Failed to load verification service."
+      })
 
     return () => {
-      window.removeEventListener("ballerine.complete", handleBallerineComplete)
-      window.removeEventListener("ballerine.error", handleBallerineError)
+      mounted = false
     }
   })
-
-  function handleBallerineError(event: CustomEvent) {
-    sdkError =
-      event.detail?.message ??
-      "Verification encountered an error. Please try again."
-  }
 </script>
 
 <svelte:head>
@@ -243,7 +339,7 @@
     </ul>
   </div>
 
-  <!-- ── Ballerine SDK embed ────────────────────────────────────────────── -->
+  <!-- ── KYC capture (self-hosted @ballerine/web-sdk, mounted in onMount) ─ -->
   <div class="sdk-wrapper">
     {#if sdkError}
       <div class="sdk-error" in:fly={{ y: 6, duration: 180 }}>
@@ -274,7 +370,7 @@
           </button>
         </div>
       </div>
-    {:else if sdkCompleted}
+    {:else if submitting}
       <div class="sdk-success" in:fade={{ duration: 200 }}>
         <div class="success-icon">
           <svg
@@ -293,41 +389,37 @@
         <div class="success-body">Submitting your application…</div>
         <span class="spinner" aria-hidden="true"></span>
       </div>
-    {:else if !sdkReady}
-      <div class="sdk-loading">
-        <span class="spinner" aria-hidden="true"></span>
-        <span>Loading verification…</span>
-      </div>
     {:else}
-      <!-- Ballerine web component — renders the KYC flow inline -->
-      <!-- svelte-ignore unknown-compiler-option -->
-      <ballerine-flows
-        flow-name={data.workflowId}
-        token={data.ballerine.token}
-        style="width: 100%; min-height: 480px;"
-      ></ballerine-flows>
+      <!-- @ballerine/web-sdk mounts its flow UI into this element by id.
+           Kept visible (not display:none) even while !sdkReady so the SDK
+           has a real, laid-out element to mount into once it loads. -->
+      {#if !sdkReady}
+        <div class="sdk-loading" in:fade={{ duration: 150 }}>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Loading verification…</span>
+        </div>
+      {/if}
+      <div id="ballerine-mount" style="width: 100%; min-height: 480px;"></div>
     {/if}
   </div>
 
-  <!-- ── Hidden submit form ─────────────────────────────────────────────── -->
-  <!-- Submitted programmatically by handleBallerineComplete -->
-  <form
-    method="POST"
-    action="?/submitKyc"
-    bind:this={submitForm}
-    use:enhance={() => {
-      return async ({ update }) => {
-        await update()
-        submitting = false
-      }
-    }}
-  >
-    <input
-      type="hidden"
-      name="ballerineCaseId"
-      value={capturedCaseId ?? ""}
-    />
-  </form>
+  {#if submitError}
+    <div class="error-banner" role="alert" in:fly={{ y: 6, duration: 180 }}>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      {submitError}
+    </div>
+  {/if}
 
   {#if form?.message}
     <div class="error-banner" role="alert" in:fly={{ y: 6, duration: 180 }}>
