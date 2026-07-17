@@ -184,6 +184,8 @@ export const actions: Actions = {
     })
 
     if (!parsed.success) {
+      console.error(parsed.error.flatten())
+      console.log([...formData.entries()])
       throw error(400, "Missing or invalid KYC submission fields.")
     }
 

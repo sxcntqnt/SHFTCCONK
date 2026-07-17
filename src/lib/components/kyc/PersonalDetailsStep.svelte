@@ -1,63 +1,79 @@
 <script lang="ts">
-  import { createFormField, createCombobox } from '@melt-ui/svelte';
-  import { UserRound, Calendar, MapPin } from '@lucide/svelte';
+  import { UserRound, Calendar, Globe2 } from '@lucide/svelte';
 
-  export let onNext: () => void;
+  let { onNext }: { onNext: () => void } = $props();
 
   let name = $state('');
   let dob = $state('');
   let country = $state('Kenya');
 
-  // Simple form validation
-  $effect(() => {
-    // Could integrate with superforms or melt form
-  });
+  const countries = [
+    { value: 'Kenya', flag: '🇰🇪' },
+    { value: 'Uganda', flag: '🇺🇬' },
+    { value: 'Tanzania', flag: '🇹🇿' },
+    { value: 'Rwanda', flag: '🇷🇼' }
+  ];
+
+  let isValid = $derived(name.trim().length > 1 && dob.length > 0);
 </script>
 
 <div class="space-y-8">
   <div class="text-center">
-    <div class="inline-flex w-20 h-20 bg-violet-100 dark:bg-violet-950 rounded-3xl items-center justify-center mb-6">
-      <UserRound size={40} class="text-violet-600" />
+    <div class="mx-auto mb-5 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[#f26522]/25 bg-[#f26522]/10">
+      <UserRound size={28} class="text-[#f26522]" strokeWidth={1.75} />
     </div>
-    <h2 class="text-3xl font-semibold tracking-tight">Personal Details</h2>
-    <p class="text-zinc-500 mt-2">Let's start with the basics</p>
+    <h2 class="font-['Space_Grotesk',sans-serif] text-2xl font-semibold tracking-tight text-white">Personal details</h2>
+    <p class="mt-1.5 font-['Inter',sans-serif] text-sm text-zinc-500">Tell us who's registering for verification</p>
   </div>
 
-  <div class="grid grid-cols-1 gap-6">
+  <div class="space-y-5">
     <div>
-      <label class="block text-sm font-medium mb-2">Full Name</label>
-      <input 
+      <label for="fullname" class="mb-2 block font-['Inter',sans-serif] text-xs font-medium uppercase tracking-wide text-zinc-500">
+        Full legal name
+      </label>
+      <input
+        id="fullname"
         bind:value={name}
-        type="text" 
-        placeholder="John Doe"
-        class="w-full px-5 py-4 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-2xl focus:outline-none focus:border-violet-500 transition-all text-lg"
+        type="text"
+        placeholder="As it appears on your ID"
+        class="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 font-['Inter',sans-serif] text-white placeholder:text-zinc-600 outline-none transition-all focus:border-[#f26522]/60 focus:bg-white/[0.05] focus:ring-4 focus:ring-[#f26522]/[0.08]"
       />
     </div>
 
-    <div class="grid grid-cols-2 gap-6">
+    <div class="grid grid-cols-2 gap-4">
       <div>
-        <label class="block text-sm font-medium mb-2 flex items-center gap-2">
-          <Calendar size={18} /> Date of Birth
+        <label for="dob" class="mb-2 flex items-center gap-1.5 font-['Inter',sans-serif] text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <Calendar size={13} /> Date of birth
         </label>
-        <input 
+        <input
+          id="dob"
           bind:value={dob}
           type="date"
-          class="w-full px-5 py-4 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-2xl focus:outline-none focus:border-violet-500"
+          class="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 font-['Inter',sans-serif] text-sm text-white outline-none transition-all focus:border-[#f26522]/60 focus:ring-4 focus:ring-[#f26522]/[0.08] [color-scheme:dark]"
         />
       </div>
       <div>
-        <label class="block text-sm font-medium mb-2">Nationality</label>
-        <!-- Melt Combobox would go here -->
-        <select bind:value={country} class="w-full px-5 py-4 bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-700 rounded-2xl focus:outline-none focus:border-violet-500">
-          <option value="Kenya">🇰🇪 Kenya</option>
-          <option value="Uganda">🇺🇬 Uganda</option>
-          <option value="Tanzania">🇹🇿 Tanzania</option>
+        <label for="country" class="mb-2 flex items-center gap-1.5 font-['Inter',sans-serif] text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <Globe2 size={13} /> Nationality
+        </label>
+        <select
+          id="country"
+          bind:value={country}
+          class="w-full appearance-none rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 font-['Inter',sans-serif] text-sm text-white outline-none transition-all focus:border-[#f26522]/60 focus:ring-4 focus:ring-[#f26522]/[0.08]"
+        >
+          {#each countries as c}
+            <option value={c.value} class="bg-[#171c26]">{c.flag} {c.value}</option>
+          {/each}
         </select>
       </div>
     </div>
   </div>
 
-  <button on:click={onNext} class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-2xl text-lg transition-all">
-    Save & Continue
+  <button
+    onclick={onNext}
+    disabled={!isValid}
+    class="w-full rounded-xl bg-[#f26522] py-3.5 font-['Inter',sans-serif] text-sm font-semibold text-white shadow-[0_4px_16px_-4px_rgba(242,101,34,0.5)] transition-all hover:bg-[#ff7530] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-zinc-600 disabled:shadow-none"
+  >
+    Save & continue
   </button>
 </div>

@@ -1,31 +1,28 @@
 <!-- src/routes/(auth)/onboarding/[intent]/+page.svelte -->
 <!--
-  KYC page — serves all intents. Capture UI is the self-hosted, open-source
-  @ballerine/web-sdk (npm, bundled — no cdn.ballerine.io script tag, no
-  Ballerine cloud handshake, no case/token concept). It runs entirely
-  client-side to capture ID document photo(s), the applicant's declared ID
-  details, and a selfie/liveness check, then hands everything back via the
-  'finish' event as a context object.
+  KYC page — serves all intents. Capture UI is our own in-house wizard
+  (Details → ID Document [→ ID Back] → Selfie → Review) — no external
+  capture SDK, nothing loaded client-side beyond this component.
 
-  We take that context, build a FormData (Files + fields, matching
-  submitKycSchema in +page.server.ts), and POST it to ?/submitKyc, which
-  uploads to storage and forwards URLs + metadata to gatebill.
+  We build a FormData (Files + fields, matching submitKycSchema in
+  +page.server.ts) from the wizard's local state and POST it to
+  ?/submitKyc, same contract the old Ballerine integration used.
 
-  TIER (from load(), not Ballerine's kyc_full_ntsa naming — gatebill only
-  knows kyc_light / kyc_full; see TIER_MAP in +page.server.ts):
-    passenger            → kyc_light — ID + selfie
-    crew/operator/owner/org → kyc_full — ID (+ back) + selfie + liveness check
+  TIER (from load()):
+    passenger              → kyc_light — ID front + selfie
+    crew/operator/owner/org → kyc_full  — ID front + back + selfie
 
-  ASSUMPTION — the exact shape of the 'finish' event payload isn't fully
-  documented for @ballerine/web-sdk; the extraction below is based on the
-  closest documented shape (Ballerine's workflow context: entity.data.*
-  for fields, documents[] for captured files). Console.log the raw event
-  once wired up and adjust extractFromFinishContext() if the real shape
-  differs.
+  NOTE: meta.docs below lists every document NTSA actually requires per
+  intent (licence, cert of good conduct, logbook, etc.), but
+  submitKycSchema currently only accepts idImage + selfie regardless of
+  intent — same scope the Ballerine version shipped with. The extra docs
+  are shown to set expectations but aren't collected yet; wire up
+  additional upload steps + schema fields when the backend is ready.
 -->
 <script lang="ts">
   import { onMount } from "svelte"
   import { fade, fly } from "svelte/transition"
+  import { page } from "$app/state"
 
   let { data, form } = $props<{
     data: {
@@ -37,6 +34,8 @@
     }
     form?: { message?: string }
   }>()
+
+  const csrfToken = $derived(page.data.csrfToken)
 
   // ── Intent display metadata ───────────────────────────────────────────────
   const INTENT_META: Record<
@@ -112,163 +111,183 @@
 
   const meta = INTENT_META[data.intent] ?? INTENT_META.passenger
 
-  const FLOW_NAME = "kyc-flow"
-  const MOUNT_ID = "ballerine-mount"
+  // ── Wizard steps (varies with tier) ───────────────────────────────────────
+  type StepId = "applicant" | "id-front" | "id-back" | "selfie" | "review"
 
-  // ── SDK state ──────────────────────────────────────────────────────────
-  let sdkReady = $state(false)
-  let sdkError = $state<string | null>(null)
+  const steps: { id: StepId; label: string }[] = [
+    { id: "applicant", label: "Details" },
+    { id: "id-front", label: "ID Document" },
+    ...(data.tier === "kyc_full" ? [{ id: "id-back" as StepId, label: "ID Back" }] : []),
+    { id: "selfie", label: "Selfie" },
+    { id: "review", label: "Review" },
+  ]
+
+  let stepIndex = $state(0)
+  let currentStepId = $derived(steps[stepIndex]?.id)
+
+  // ── Applicant fields ───────────────────────────────────────────────────────
+  let firstName = $state("")
+  let lastName = $state("")
+  let idNumber = $state("")
+  let idType = $state<"id_card" | "passport">("id_card")
+  let countryCode = $state("KE")
+
+  let isApplicantValid = $derived(
+    firstName.trim().length > 1 && lastName.trim().length > 1 && idNumber.trim().length > 3,
+  )
+
+  // ── Document capture ────────────────────────────────────────────────────────
+  let idImageFront = $state<File | null>(null)
+  let idImageFrontPreview = $state<string | null>(null)
+  let idImageBack = $state<File | null>(null)
+  let idImageBackPreview = $state<string | null>(null)
+  let dragSide = $state<"front" | "back" | null>(null)
+
+  function setIdFile(side: "front" | "back", file: File | undefined | null) {
+    if (!file) return
+    const url = URL.createObjectURL(file)
+    if (side === "front") {
+      if (idImageFrontPreview) URL.revokeObjectURL(idImageFrontPreview)
+      idImageFront = file
+      idImageFrontPreview = url
+    } else {
+      if (idImageBackPreview) URL.revokeObjectURL(idImageBackPreview)
+      idImageBack = file
+      idImageBackPreview = url
+    }
+  }
+
+  function onFileInput(e: Event, side: "front" | "back") {
+    const file = (e.currentTarget as HTMLInputElement).files?.[0]
+    setIdFile(side, file)
+  }
+
+  function onDrop(e: DragEvent, side: "front" | "back") {
+    e.preventDefault()
+    dragSide = null
+    setIdFile(side, e.dataTransfer?.files?.[0])
+  }
+
+  // ── Selfie capture ──────────────────────────────────────────────────────────
+  let videoEl: HTMLVideoElement
+  let canvasEl: HTMLCanvasElement
+  let mediaStream: MediaStream | null = null
+  let cameraActive = $state(false)
+  let cameraError = $state<string | null>(null)
+  let selfieFile = $state<File | null>(null)
+  let selfiePreview = $state<string | null>(null)
+
+  async function startCamera() {
+    cameraError = null
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+      if (videoEl) videoEl.srcObject = mediaStream
+      cameraActive = true
+    } catch {
+      cameraError = "Camera access is off. Enable it in your browser settings to continue."
+    }
+  }
+
+  function stopCamera() {
+    mediaStream?.getTracks().forEach((t) => t.stop())
+    mediaStream = null
+    cameraActive = false
+  }
+
+  function captureSelfie() {
+    if (!videoEl || !canvasEl) return
+    canvasEl.width = videoEl.videoWidth
+    canvasEl.height = videoEl.videoHeight
+    const ctx = canvasEl.getContext("2d")!
+    ctx.translate(canvasEl.width, 0)
+    ctx.scale(-1, 1)
+    ctx.drawImage(videoEl, 0, 0)
+    canvasEl.toBlob(
+      (blob) => {
+        if (!blob) return
+        if (selfiePreview) URL.revokeObjectURL(selfiePreview)
+        selfieFile = new File([blob], "selfie.jpg", { type: "image/jpeg" })
+        selfiePreview = URL.createObjectURL(blob)
+      },
+      "image/jpeg",
+      0.92,
+    )
+    stopCamera()
+  }
+
+  function retakeSelfie() {
+    selfieFile = null
+    if (selfiePreview) URL.revokeObjectURL(selfiePreview)
+    selfiePreview = null
+    startCamera()
+  }
+
+  // Camera follows the active step — starts on arrival, stops on departure.
+  $effect(() => {
+    if (currentStepId === "selfie" && !selfieFile && !cameraActive && !cameraError) {
+      startCamera()
+    }
+    if (currentStepId !== "selfie" && cameraActive) {
+      stopCamera()
+    }
+  })
+
+  onMount(() => () => stopCamera())
+
+  // ── Navigation ───────────────────────────────────────────────────────────
+  function canProceed() {
+    if (currentStepId === "applicant") return isApplicantValid
+    if (currentStepId === "id-front") return !!idImageFront
+    if (currentStepId === "id-back") return !!idImageBack
+    if (currentStepId === "selfie") return !!selfieFile
+    return true
+  }
+
+  function goTo(i: number) {
+    if (i < stepIndex) stepIndex = i
+  }
+  function next() {
+    if (canProceed() && stepIndex < steps.length - 1) stepIndex++
+  }
+  function prev() {
+    if (stepIndex > 0) stepIndex--
+  }
+
+  // ── Submit ───────────────────────────────────────────────────────────────
   let submitting = $state(false)
   let submitError = $state<string | null>(null)
-  let alreadySubmitted = false // guard against duplicate 'finish' firing
 
-  // kyc_light: ID + selfie only. kyc_full: adds document back + a
-  // liveness-style selfie confirmation step. Adjust step names/ids against
-  // whatever your installed @ballerine/web-sdk version actually ships —
-  // these match the documented example flow.
-  function buildFlowConfig() {
-    const steps: Record<string, unknown>[] = [
-      { name: "welcome", id: "welcome" },
-      {
-        name: "document-selection",
-        id: "document-selection",
-        documentOptions: ["id_card", "passport"],
-      },
-      { name: "document-photo", id: "document-photo" },
-      { name: "check-document", id: "check-document" },
-    ]
-
-    if (data.tier === "kyc_full") {
-      steps.push({
-        name: "document-photo-back-start",
-        id: "document-photo-back-start",
-      })
-    }
-
-    steps.push(
-      { name: "selfie", id: "selfie" },
-      { name: "check-selfie", id: "check-selfie" },
-      { name: "loading", id: "loading" },
-      { name: "final", id: "final" },
-    )
-
-    return {
-      uiConfig: {
-        flows: {
-          [FLOW_NAME]: { steps },
-        },
-      },
-    }
-  }
-
-  // TODO(verify): the finish event's real payload shape isn't confirmed —
-  // this assumes a Ballerine-style context object (entity.data.* for
-  // fields, documents[] for files with a `type`/`kind` discriminator).
-  // console.log(context) on first real run and adjust the lookups below
-  // to match whatever actually comes back.
-  function extractFromFinishContext(context: any) {
-    const data_ = context?.entity?.data ?? context?.data ?? {}
-    const documents: any[] = context?.documents ?? []
-
-    const findDoc = (kind: string) =>
-      documents.find((d) => d?.type === kind || d?.kind === kind)
-
-    const idDoc = findDoc("id_card") ?? findDoc("passport") ?? documents[0]
-    const selfieDoc = findDoc("selfie") ?? findDoc("face")
-
-    const toFile = (doc: any): File | null => {
-      if (!doc) return null
-      if (doc.file instanceof File) return doc.file
-      if (doc.blob instanceof Blob) {
-        return new File([doc.blob], `${doc.type ?? "document"}.jpg`, {
-          type: doc.blob.type || "image/jpeg",
-        })
-      }
-      return null
-    }
-
-    return {
-      firstName: data_.firstName ?? data_.additionalInfo?.firstName ?? "",
-      lastName: data_.lastName ?? data_.additionalInfo?.lastName ?? "",
-      idNumber: data_.idNumber ?? data_.documentNumber ?? "",
-      idType: idDoc?.type ?? idDoc?.kind ?? "id_card",
-      countryCode: data_.country ?? data_.countryCode ?? "",
-      idImage: toFile(idDoc),
-      selfie: toFile(selfieDoc),
-    }
-  }
-
-  async function handleFinish(context: any) {
-    if (alreadySubmitted) return
-    alreadySubmitted = true
+  async function submitVerification() {
     submitting = true
     submitError = null
 
-    const fields = extractFromFinishContext(context)
-
-    if (!fields.idImage || !fields.selfie) {
-      submitting = false
-      alreadySubmitted = false
-      submitError =
-        "Couldn't read the captured photos. Please retake and try again."
-      return
-    }
-
     const body = new FormData()
-    body.set("firstName", fields.firstName)
-    body.set("lastName", fields.lastName)
-    body.set("idNumber", fields.idNumber)
-    body.set("idType", fields.idType)
-    body.set("countryCode", fields.countryCode)
-    body.set("idImage", fields.idImage)
-    body.set("selfie", fields.selfie)
+    body.set("csrf-token", csrfToken)
+    body.set("firstName", firstName.trim())
+    body.set("lastName", lastName.trim())
+    body.set("idNumber", idNumber.trim())
+    body.set("idType", idType)
+    body.set("countryCode", countryCode)
+    if (idImageFront) body.set("idImage", idImageFront)
+    if (selfieFile) body.set("selfie", selfieFile)
+    // ASSUMPTION: submitKycSchema doesn't declare a back-of-ID field yet.
+    // Sent only when present so kyc_light (front-only) submissions are
+    // unaffected — confirm the field name server-side before relying on it.
+    if (idImageBack) body.set("idImageBack", idImageBack)
 
     try {
       const res = await fetch("?/submitKyc", { method: "POST", body })
-      submitting = false
-
       if (res.ok) {
         window.location.href = `/onboarding/${data.intent}/pending`
       } else {
-        alreadySubmitted = false
+        submitting = false
         submitError = "Failed to submit verification. Try again."
       }
     } catch {
       submitting = false
-      alreadySubmitted = false
       submitError = "Verification submission failed. Try again."
     }
   }
-
-  onMount(() => {
-    let mounted = true
-
-    import("@ballerine/web-ui-sdk")
-      .then(async ({ flows }) => {
-        if (!mounted) return
-        await flows.init(buildFlowConfig())
-        if (!mounted) return
-
-        flows.on("finish", (context: any) => {
-          handleFinish(context)
-        })
-        flows.on("error", (err: any) => {
-          sdkError =
-            err?.message ?? "Verification encountered an error. Please try again."
-        })
-
-        flows.mount(FLOW_NAME, MOUNT_ID)
-        sdkReady = true
-      })
-      .catch((err) => {
-        console.error("[onboarding/[intent]] Failed to load @ballerine/web-sdk:", err)
-        sdkError = "Failed to load verification service."
-      })
-
-    return () => {
-      mounted = false
-    }
-  })
 </script>
 
 <svelte:head>
@@ -292,14 +311,7 @@
 
   {#if data.isRetry}
     <div class="retry-banner" in:fly={{ y: -8, duration: 200 }}>
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-      >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -323,14 +335,7 @@
     <ul class="docs-list">
       {#each meta.docs as doc}
         <li>
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="3"
-          >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
             <polyline points="20 6 9 17 4 12" />
           </svg>
           {doc}
@@ -339,48 +344,12 @@
     </ul>
   </div>
 
-  <!-- ── KYC capture (self-hosted @ballerine/web-sdk, mounted in onMount) ─ -->
-  <div class="sdk-wrapper">
-    {#if sdkError}
-      <div class="sdk-error" in:fly={{ y: 6, duration: 180 }}>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <div>
-          <div class="sdk-error-title">Verification Unavailable</div>
-          <div class="sdk-error-body">{sdkError}</div>
-          <button
-            type="button"
-            class="retry-btn"
-            onclick={() => {
-              sdkError = null
-              window.location.reload()
-            }}
-          >
-            Try again
-          </button>
-        </div>
-      </div>
-    {:else if submitting}
+  <!-- ── KYC capture wizard ─────────────────────────────────────────────── -->
+  <div class="sdk-wrapper" class:is-panel={!submitting}>
+    {#if submitting}
       <div class="sdk-success" in:fade={{ duration: 200 }}>
         <div class="success-icon">
-          <svg
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
             <polyline points="22 4 12 14.01 9 11.01" />
           </svg>
@@ -390,29 +359,170 @@
         <span class="spinner" aria-hidden="true"></span>
       </div>
     {:else}
-      <!-- @ballerine/web-sdk mounts its flow UI into this element by id.
-           Kept visible (not display:none) even while !sdkReady so the SDK
-           has a real, laid-out element to mount into once it loads. -->
-      {#if !sdkReady}
-        <div class="sdk-loading" in:fade={{ duration: 150 }}>
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Loading verification…</span>
+      <div class="wizard">
+        <!-- Route-line stepper -->
+        <div class="wizard-rail">
+          <div class="rail-track"></div>
+          <div class="rail-fill" style="width: {(stepIndex / (steps.length - 1)) * 100}%"></div>
+          {#each steps as step, i}
+            <button
+              type="button"
+              class="rail-stop"
+              class:is-current={i === stepIndex}
+              class:is-done={i < stepIndex}
+              disabled={i > stepIndex}
+              onclick={() => goTo(i)}
+            >
+              <span class="stop-dot">
+                {#if i < stepIndex}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                {/if}
+              </span>
+              <span class="stop-label">{step.label}</span>
+            </button>
+          {/each}
         </div>
-      {/if}
-      <div id="ballerine-mount" style="width: 100%; min-height: 480px;"></div>
+
+        <!-- Step content -->
+        <div class="wizard-panel">
+          {#key currentStepId}
+            <div in:fly={{ y: 10, duration: 220 }}>
+              {#if currentStepId === "applicant"}
+                <div class="field-grid">
+                  <label class="field">
+                    <span class="field-label">First name</span>
+                    <input class="field-input" type="text" bind:value={firstName} placeholder="Wanjiru" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Last name</span>
+                    <input class="field-input" type="text" bind:value={lastName} placeholder="Kamau" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">ID number</span>
+                    <input class="field-input" type="text" bind:value={idNumber} placeholder="12345678" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">ID type</span>
+                    <select class="field-input" bind:value={idType}>
+                      <option value="NATIONAL_ID">National ID</option>
+                      <option value="ALIEN_ID">Alien ID</option>
+                      <option value="PASSPORT">Passport</option>
+                      <option value="VOTER_ID">Voter ID</option>
+                      <option value="DRIVING_LICENCE">Driving Licence</option>
+                    </select>
+                  </label>
+                </div>
+              {:else if currentStepId === "id-front" || currentStepId === "id-back"}
+                {@const side = currentStepId === "id-front" ? "front" : "back"}
+                {@const preview = side === "front" ? idImageFrontPreview : idImageBackPreview}
+                <div
+                  class="dropzone"
+                  class:has-file={!!preview}
+                  class:is-dragging={dragSide === side}
+                  ondragover={(e) => {
+                    e.preventDefault()
+                    dragSide = side
+                  }}
+                  ondragleave={() => (dragSide = null)}
+                  ondrop={(e) => onDrop(e, side)}
+                >
+                  {#if preview}
+                    <img src={preview} alt="{side} of ID" class="dropzone-preview" />
+                    <div class="dropzone-badge">
+                      <span class="badge-dot"></span>
+                      Uploaded
+                    </div>
+                  {:else}
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <p class="dropzone-title">{side === "front" ? "Front side" : "Back side"}</p>
+                    <p class="dropzone-sub">Drop an image or <span class="link">browse</span></p>
+                  {/if}
+                  <input
+                    class="dropzone-input"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onchange={(e) => onFileInput(e, side)}
+                  />
+                </div>
+              {:else if currentStepId === "selfie"}
+                <div class="selfie-frame">
+                  {#if cameraError}
+                    <div class="selfie-error">
+                      <p>{cameraError}</p>
+                      <button type="button" class="retry-btn" onclick={startCamera}>Try again</button>
+                    </div>
+                  {:else if selfiePreview}
+                    <img src={selfiePreview} alt="Captured selfie" class="selfie-media" />
+                    <div class="selfie-caption">
+                      <span class="badge-dot"></span>
+                      Face detected
+                    </div>
+                  {:else}
+                    <video bind:this={videoEl} autoplay playsinline muted class="selfie-media selfie-mirror"></video>
+                    <div class="selfie-guide"></div>
+                    <button type="button" class="shutter" onclick={captureSelfie} aria-label="Capture selfie">
+                      <span class="shutter-inner"></span>
+                    </button>
+                  {/if}
+                </div>
+                <p class="selfie-hint">Keep your face inside the circle. This photo is matched against your ID.</p>
+                {#if selfiePreview}
+                  <button type="button" class="retake-btn" onclick={retakeSelfie}>Retake</button>
+                {/if}
+              {:else if currentStepId === "review"}
+                <div class="review-list">
+                  <div class="review-row">
+                    <span class="review-label">Applicant</span>
+                    <span class="review-value">{firstName} {lastName}</span>
+                  </div>
+                  <div class="review-row">
+                    <span class="review-label">ID number</span>
+                    <span class="review-value">{idNumber || "—"}</span>
+                  </div>
+                  <div class="review-row">
+                    <span class="review-label">ID document</span>
+                    <span class="review-value review-ok">Uploaded</span>
+                  </div>
+                  {#if data.tier === "kyc_full"}
+                    <div class="review-row">
+                      <span class="review-label">ID document (back)</span>
+                      <span class="review-value review-ok">Uploaded</span>
+                    </div>
+                  {/if}
+                  <div class="review-row">
+                    <span class="review-label">Selfie</span>
+                    <span class="review-value review-ok">Captured</span>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          {/key}
+        </div>
+
+        <!-- Nav -->
+        <div class="wizard-nav">
+          <button type="button" class="nav-back" disabled={stepIndex === 0} onclick={prev}>← Back</button>
+          {#if currentStepId === "review"}
+            <button type="button" class="nav-next" onclick={submitVerification}>Submit for verification</button>
+          {:else}
+            <button type="button" class="nav-next" disabled={!canProceed()} onclick={next}>Continue →</button>
+          {/if}
+        </div>
+      </div>
     {/if}
   </div>
+  <canvas bind:this={canvasEl} style="display: none;"></canvas>
 
   {#if submitError}
     <div class="error-banner" role="alert" in:fly={{ y: 6, duration: 180 }}>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-      >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -423,14 +533,7 @@
 
   {#if form?.message}
     <div class="error-banner" role="alert" in:fly={{ y: 6, duration: 180 }}>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-      >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="12" />
         <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -442,14 +545,7 @@
   <!-- ── NTSA compliance note ───────────────────────────────────────────── -->
   {#if data.isProWorkflow}
     <div class="compliance-note">
-      <svg
-        width="11"
-        height="11"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2.5"
-      >
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
       Verified against the NTSA operator registry. Data processed in accordance
@@ -505,7 +601,6 @@
     backdrop-filter: blur(20px);
   }
 
-  /* Travelling beam along top edge, tinted by the active intent's color */
   .card-shimmer {
     position: absolute;
     top: -1px;
@@ -527,7 +622,6 @@
     animation: beam-spin 5s linear infinite;
   }
 
-  /* ── Brand mark ── */
   .brand-mark {
     display: flex;
     align-items: center;
@@ -555,7 +649,6 @@
     color: var(--orange, #f26522);
   }
 
-  /* ── Intent badge ── */
   .intent-badge {
     display: inline-flex;
     font-size: 0.58rem;
@@ -563,19 +656,13 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--badge-color, var(--orange, #f26522));
-    background: color-mix(
-      in srgb,
-      var(--badge-color, var(--orange, #f26522)) 10%,
-      transparent
-    );
-    border: 1px solid
-      color-mix(in srgb, var(--badge-color, var(--orange, #f26522)) 22%, transparent);
+    background: color-mix(in srgb, var(--badge-color, var(--orange, #f26522)) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--badge-color, var(--orange, #f26522)) 22%, transparent);
     padding: 2px 8px;
     border-radius: 100px;
     margin-bottom: 14px;
   }
 
-  /* ── Retry banner ── */
   .retry-banner {
     display: flex;
     align-items: flex-start;
@@ -590,7 +677,6 @@
     line-height: 1.5;
   }
 
-  /* ── Heading ── */
   .title {
     font-family: var(--font-display, "Syne", sans-serif);
     font-size: clamp(1.7rem, 4vw, 2.15rem);
@@ -614,9 +700,6 @@
     margin-bottom: 28px;
   }
 
-  /* ════════════════════════════════════
-     SECTION DIVIDERS
-  ════════════════════════════════════ */
   .section-label {
     display: flex;
     align-items: center;
@@ -635,9 +718,6 @@
     background: rgba(255, 255, 255, 0.06);
   }
 
-  /* ════════════════════════════════════
-     DOCS BLOCK
-  ════════════════════════════════════ */
   .docs-block {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.07);
@@ -667,62 +747,18 @@
   }
 
   /* ════════════════════════════════════
-     SDK WRAPPER
+     WIZARD WRAPPER
   ════════════════════════════════════ */
   .sdk-wrapper {
     min-height: 200px;
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 16px;
-    overflow: hidden;
     background: rgba(255, 255, 255, 0.02);
     margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
   }
-  .sdk-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    padding: 48px;
-    color: var(--text-3, #605d70);
-    font-size: 0.8rem;
-    font-family: var(--font-body, "DM Sans", sans-serif);
-  }
-  .sdk-error {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 24px;
-    color: #f87171;
-  }
-  .sdk-error-title {
-    font-weight: 700;
-    font-size: 0.875rem;
-    margin-bottom: 4px;
-    color: var(--text-1, #f0eee8);
-  }
-  .sdk-error-body {
-    font-size: 0.78rem;
-    color: var(--text-3, #605d70);
-    line-height: 1.5;
-    margin-bottom: 12px;
-  }
-  .retry-btn {
-    font-family: var(--font-body, "DM Sans", sans-serif);
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: var(--orange, #f26522);
-    background: rgba(242, 101, 34, 0.1);
-    border: 1px solid rgba(242, 101, 34, 0.2);
-    border-radius: 8px;
-    padding: 6px 14px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .retry-btn:hover {
-    background: rgba(242, 101, 34, 0.18);
+  .sdk-wrapper.is-panel {
+    padding: 22px 20px 20px;
   }
 
   .sdk-success {
@@ -753,6 +789,393 @@
   .success-body {
     font-size: 0.8rem;
     color: var(--text-3, #605d70);
+  }
+
+  /* ── Route-line stepper ── */
+  .wizard-rail {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .rail-track,
+  .rail-fill {
+    position: absolute;
+    top: 15px;
+    left: 24px;
+    right: 24px;
+    height: 2px;
+  }
+  .rail-track {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .rail-fill {
+    right: auto;
+    background: linear-gradient(90deg, var(--orange, #f26522), #ff9f5a);
+    transition: width 0.4s ease;
+  }
+  .rail-stop {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+  .rail-stop:disabled {
+    cursor: not-allowed;
+  }
+  .stop-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-3, #605d70);
+    transition: all 0.25s ease;
+  }
+  .rail-stop.is-current .stop-dot {
+    border-color: var(--orange, #f26522);
+    background: var(--orange, #f26522);
+    box-shadow: 0 0 0 4px rgba(242, 101, 34, 0.18);
+  }
+  .rail-stop.is-done .stop-dot {
+    border-color: rgba(0, 176, 155, 0.4);
+    background: rgba(0, 176, 155, 0.1);
+    color: var(--teal, #00b09b);
+  }
+  .stop-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--text-3, #605d70);
+  }
+  .rail-stop.is-current .stop-label {
+    color: var(--orange, #f26522);
+  }
+  .rail-stop.is-done .stop-label {
+    color: var(--teal, #00b09b);
+  }
+
+  /* ── Panel content ── */
+  .wizard-panel {
+    min-height: 220px;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3, #605d70);
+  }
+  .field-input {
+    font-family: var(--font-body, "DM Sans", sans-serif);
+    font-size: 0.85rem;
+    color: var(--text-1, #f0eee8);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    padding: 11px 13px;
+    outline: none;
+    transition: all 0.15s ease;
+  }
+  .field-input::placeholder {
+    color: var(--text-3, #605d70);
+  }
+  .field-input:focus {
+    border-color: color-mix(in srgb, var(--orange, #f26522) 55%, transparent);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 0 3px rgba(242, 101, 34, 0.1);
+  }
+  .field-input option {
+    background: #16161f;
+  }
+
+  /* ── Dropzone ── */
+  .dropzone {
+    position: relative;
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    color: var(--text-3, #605d70);
+    transition: all 0.2s ease;
+    min-height: 190px;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .dropzone.is-dragging {
+    border-color: color-mix(in srgb, var(--orange, #f26522) 55%, transparent);
+    background: rgba(242, 101, 34, 0.05);
+  }
+  .dropzone.has-file {
+    border-style: solid;
+    border-color: rgba(0, 176, 155, 0.3);
+    padding: 0;
+  }
+  .dropzone-preview {
+    width: 100%;
+    height: 190px;
+    object-fit: cover;
+    display: block;
+  }
+  .dropzone-badge {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(6px);
+    border-radius: 100px;
+    padding: 5px 11px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--teal, #00b09b);
+  }
+  .dropzone-title {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-1, #f0eee8);
+    margin-top: 10px;
+  }
+  .dropzone-sub {
+    font-size: 0.75rem;
+    margin-top: 3px;
+  }
+  .dropzone .link {
+    color: var(--orange, #f26522);
+    font-weight: 600;
+  }
+  .dropzone-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .dropzone.has-file .dropzone-input {
+    display: none;
+  }
+
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--teal, #00b09b);
+  }
+
+  /* ── Selfie ── */
+  .selfie-frame {
+    position: relative;
+    width: 220px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .selfie-media {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .selfie-mirror {
+    transform: scaleX(-1);
+  }
+  .selfie-guide {
+    position: absolute;
+    inset: 12%;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--orange, #f26522) 70%, transparent);
+    box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.35);
+  }
+  .shutter {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+  .shutter:active {
+    transform: translateX(-50%) scale(0.92);
+  }
+  .shutter-inner {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #fff;
+  }
+  .selfie-caption {
+    position: absolute;
+    bottom: 12px;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--teal, #00b09b);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+    padding: 26px 0 8px;
+  }
+  .selfie-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .selfie-error p {
+    font-size: 0.78rem;
+    color: var(--text-3, #605d70);
+    line-height: 1.5;
+  }
+  .selfie-hint {
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--text-3, #605d70);
+    margin-top: 14px;
+  }
+  .retake-btn {
+    display: block;
+    margin: 12px auto 0;
+    font-family: var(--font-body, "DM Sans", sans-serif);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-2, #9996a8);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 7px 16px;
+    cursor: pointer;
+  }
+  .retry-btn {
+    font-family: var(--font-body, "DM Sans", sans-serif);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--orange, #f26522);
+    background: rgba(242, 101, 34, 0.1);
+    border: 1px solid rgba(242, 101, 34, 0.2);
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .retry-btn:hover {
+    background: rgba(242, 101, 34, 0.18);
+  }
+
+  /* ── Review ── */
+  .review-list {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .review-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.015);
+  }
+  .review-row + .review-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .review-label {
+    font-size: 0.78rem;
+    color: var(--text-2, #9996a8);
+  }
+  .review-value {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-1, #f0eee8);
+  }
+  .review-ok {
+    color: var(--teal, #00b09b);
+  }
+
+  /* ── Wizard nav ── */
+  .wizard-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .nav-back {
+    font-family: var(--font-body, "DM Sans", sans-serif);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-3, #605d70);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px 10px;
+  }
+  .nav-back:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .nav-next {
+    font-family: var(--font-body, "DM Sans", sans-serif);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--orange, #f26522);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px -4px rgba(242, 101, 34, 0.5);
+    transition: all 0.15s ease;
+  }
+  .nav-next:hover:not(:disabled) {
+    background: #ff7530;
+  }
+  .nav-next:disabled {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-3, #605d70);
+    box-shadow: none;
+    cursor: not-allowed;
   }
 
   /* ════════════════════════════════════
@@ -807,6 +1230,9 @@
   @media (max-width: 520px) {
     .onboard-card {
       padding: 28px 22px 26px;
+    }
+    .field-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

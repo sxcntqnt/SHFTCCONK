@@ -1,104 +1,84 @@
 <script lang="ts">
-  import { Upload, FileText, Camera, CheckCircle2 } from '@lucide/svelte';
-  import { onMount } from 'svelte';
+  import { Upload, FileText, CheckCircle2, IdCard } from '@lucide/svelte';
 
-  export let onNext: () => void;
-  export let onPrev: () => void;
+  let { onNext, onPrev }: { onNext: () => void; onPrev: () => void } = $props();
 
   let frontUploaded = $state(false);
   let backUploaded = $state(false);
-  let documentType = $state('passport');
-
-  let dragOver = $state(false);
+  let dragSide = $state<'front' | 'back' | null>(null);
 
   function handleDrop(e: DragEvent, side: 'front' | 'back') {
     e.preventDefault();
-    dragOver = false;
-    // Simulate upload
+    dragSide = null;
     if (side === 'front') frontUploaded = true;
     else backUploaded = true;
   }
 
-  function handleFileSelect(side: 'front' | 'back') {
-    // Simulate
+  function handleSelect(side: 'front' | 'back') {
     if (side === 'front') frontUploaded = true;
     else backUploaded = true;
   }
 </script>
 
-<div class="space-y-8">
-  <div>
-    <h2 class="text-3xl font-semibold mb-2">Government ID</h2>
-    <p class="text-zinc-500">Upload clear photos of your ID document</p>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <!-- Front -->
-    <div class="border-2 border-dashed {frontUploaded ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950' : 'border-zinc-300 dark:border-zinc-700'} rounded-3xl p-8 text-center transition-all group">
-      <div class="mx-auto w-16 h-16 bg-white dark:bg-zinc-800 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-        {#if frontUploaded}
-          <CheckCircle2 class="text-emerald-500" size={32} />
-        {:else}
-          <FileText size={32} class="text-zinc-400" />
-        {/if}
-      </div>
-      <p class="font-medium">Front Side</p>
-      <p class="text-sm text-zinc-500 mt-1">Passport or National ID</p>
-      
-      {#if !frontUploaded}
-        <div 
-          class="mt-6 p-6 border border-dashed rounded-2xl cursor-pointer {dragOver ? 'border-violet-500 bg-violet-50' : ''}"
-          on:dragover={(e) => {e.preventDefault(); dragOver = true;}}
-          on:dragleave={() => dragOver = false}
-          on:drop={(e) => handleDrop(e, 'front')}
-          on:click={() => handleFileSelect('front')}
-        >
-          <Upload class="mx-auto mb-3 text-violet-500" size={28} />
-          <p class="text-sm font-medium">Drag & drop or <span class="text-violet-600 underline">browse files</span></p>
-        </div>
-      {:else}
-        <div class="mt-4 p-3 bg-white dark:bg-zinc-900 rounded-2xl text-left text-sm">
-          <div class="flex items-center gap-3">
-            <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span>Front uploaded successfully</span>
-          </div>
-        </div>
-      {/if}
-    </div>
-
-    <!-- Back -->
-    <div class="border-2 border-dashed {backUploaded ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950' : 'border-zinc-300 dark:border-zinc-700'} rounded-3xl p-8 text-center transition-all group">
-      <div class="mx-auto w-16 h-16 bg-white dark:bg-zinc-800 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-        {#if backUploaded}
-          <CheckCircle2 class="text-emerald-500" size={32} />
-        {:else}
-          <FileText size={32} class="text-zinc-400" />
-        {/if}
-      </div>
-      <p class="font-medium">Back Side</p>
-      
-      {#if !backUploaded}
-        <div 
-          class="mt-6 p-6 border border-dashed rounded-2xl cursor-pointer"
-          on:click={() => handleFileSelect('back')}
-        >
-          <Upload class="mx-auto mb-3 text-violet-500" size={28} />
-          <p class="text-sm font-medium">Upload Back Side</p>
-        </div>
-      {:else}
-        <div class="mt-4 p-3 bg-white dark:bg-zinc-900 rounded-2xl text-left text-sm">
-          Back uploaded
-        </div>
-      {/if}
-    </div>
-  </div>
-
-  <button 
-    on:click={onNext}
-    disabled={!frontUploaded}
-    class="w-full py-4 bg-violet-600 hover:bg-violet-700 disabled:bg-zinc-300 text-white font-semibold rounded-2xl text-lg transition-all flex items-center justify-center gap-3"
+{#snippet dropzone(side: 'front' | 'back', label: string, sublabel: string, uploaded: boolean)}
+  <div
+    class="group relative rounded-2xl border p-6 text-center transition-all duration-300
+    {uploaded ? 'border-cyan-400/30 bg-cyan-400/[0.06]' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}
+    {dragSide === side ? 'border-[#f26522]/60 bg-[#f26522]/[0.06]' : ''}"
+    ondragover={(e) => { e.preventDefault(); dragSide = side; }}
+    ondragleave={() => (dragSide = null)}
+    ondrop={(e) => handleDrop(e, side)}
   >
-    Continue to Selfie
-    <span class="text-xl">→</span>
+    <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border transition-transform duration-300 group-hover:scale-105
+      {uploaded ? 'border-cyan-400/40 bg-cyan-400/10' : 'border-white/10 bg-white/[0.04]'}">
+      {#if uploaded}
+        <CheckCircle2 size={22} class="text-cyan-300" />
+      {:else}
+        <FileText size={22} class="text-zinc-500" />
+      {/if}
+    </div>
+
+    <p class="font-['Inter',sans-serif] text-sm font-medium text-zinc-200">{label}</p>
+    <p class="mt-0.5 font-['Inter',sans-serif] text-xs text-zinc-500">{sublabel}</p>
+
+    {#if !uploaded}
+      <button
+        onclick={() => handleSelect(side)}
+        class="mt-5 flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-white/15 py-5 transition-colors hover:border-[#f26522]/50 hover:bg-[#f26522]/[0.04]"
+      >
+        <Upload size={20} class="text-[#f26522]" strokeWidth={1.75} />
+        <span class="font-['Inter',sans-serif] text-xs text-zinc-400">
+          Drop file or <span class="font-medium text-[#f26522]">browse</span>
+        </span>
+      </button>
+    {:else}
+      <div class="mt-4 flex items-center justify-center gap-2 rounded-xl bg-black/20 py-2.5 font-['Inter',sans-serif] text-xs text-cyan-300">
+        <span class="h-1.5 w-1.5 rounded-full bg-cyan-400"></span>
+        Uploaded
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+<div class="space-y-8">
+  <div class="text-center">
+    <div class="mx-auto mb-5 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-[#f26522]/25 bg-[#f26522]/10">
+      <IdCard size={28} class="text-[#f26522]" strokeWidth={1.75} />
+    </div>
+    <h2 class="font-['Space_Grotesk',sans-serif] text-2xl font-semibold tracking-tight text-white">Government ID</h2>
+    <p class="mt-1.5 font-['Inter',sans-serif] text-sm text-zinc-500">Clear, uncropped photos of a passport or national ID</p>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    {@render dropzone('front', 'Front side', 'Photo page', frontUploaded)}
+    {@render dropzone('back', 'Back side', 'Signature page', backUploaded)}
+  </div>
+
+  <button
+    onclick={onNext}
+    disabled={!frontUploaded}
+    class="w-full rounded-xl bg-[#f26522] py-3.5 font-['Inter',sans-serif] text-sm font-semibold text-white shadow-[0_4px_16px_-4px_rgba(242,101,34,0.5)] transition-all hover:bg-[#ff7530] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-zinc-600 disabled:shadow-none"
+  >
+    Continue to selfie
   </button>
 </div>
