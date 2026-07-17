@@ -1,96 +1,72 @@
 <script lang="ts">
   // src/routes/+layout.svelte
-  //  Root layout: auth state listener + navigation progress bar.
+  //  Root layout: session polling + navigation progress bar.
   //  RESPONSIBILITIES:
-  // - Listens to Supabase auth state changes (login, logout, token refresh)
-  //  - Triggers permission version checks on TOKEN_REFRESHED events
-  //  - Polls for permission revocations every 60s (long-lived sessions)
-  //  - Shows a navigation progress bar during page transitions
-  //  KILL-SWITCH INTEGRATION:
-  //  When an admin revokes permissions while a user is active:
-  //  1. TOKEN_REFRESHED event → checkVersionAndRefresh() detects mismatch
-  //  2. Periodic polling (60s) → catches it even without a token refresh
-  //  3. Either path: re-bootstraps store → UI re-renders with new permissions
-  //  ALIGNED WITH:
-  //  - auth.ts: checkVersionAndRefresh(),
-  // clearSession(), sessionStore
-  //  - hooks.server.ts: supabase client from locals /
+  //  - Polls periodically to catch permission changes for long-lived
+  //    sessions (tab left open for hours) — the auth-service kill-switch
+  //    case.
+  //  - Shows a navigation progress bar during page transitions.
+  //
+  //  SUPABASE REMOVED:
+  //  There is no more client-side auth-state listener. Under the
+  //  auth-service opaque-token model, the client never holds a JWT to
+  //  inspect — access tokens are short-lived (15 min) and refresh
+  //  happens via an HttpOnly cookie the client can't read, so there's
+  //  no TOKEN_REFRESHED/SIGNED_OUT event to subscribe to client-side.
+  //  Every navigation already re-verifies the session server-side via
+  //  authHandle + authGuardHandle in hooks.server.ts.
+  //
+  //  KILL-SWITCH INTEGRATION (revised):
+  //  Previously: TOKEN_REFRESHED event OR a 60s poll → checkVersionAndRefresh()
+  //  compared a cached version number before deciding whether to re-bootstrap.
+  //  Now: bootstrap_session() already re-runs server-side on every navigation
+  //  (+layout.server.ts), so a normal page change always reflects current
+  //  permissions. The 60s poll below exists only for the case where the user
+  //  never navigates — it calls invalidateAll(), which re-runs
+  //  +layout.server.ts and re-hydrates sessionStore via +layout.ts's
+  //  initSession() call with whatever bootstrap_session() returns now.
+  //
+  //  ⚠️ TRADE-OFF: unlike the old checkVersionAndRefresh(), there is no
+  //  cheap "did anything change" pre-check anymore — every poll tick runs
+  //  the full bootstrap_session() query via invalidateAll(), even when
+  //  nothing changed. The old design avoided that with a lightweight
+  //  version-only comparison before deciding to re-bootstrap. If that
+  //  query cost matters at your traffic volume, worth adding a cheap
+  //  version-only endpoint (e.g. a tiny Neon function returning just
+  //  profiles.permissions_version) to restore the cheap-check behavior —
+  //  not built here, flagging rather than guessing at its shape.
+  //
+  //  Logout is no longer a client-side event either — it's a normal
+  //  server action (POST /auth/logout) that should redirect via the
+  //  response, same as any other form action. No goto("/") listener
+  //  needed here for it.
   import "../app.css"
-  import { invalidate, goto } from "$app/navigation"
+  import { invalidateAll } from "$app/navigation"
   import { navigating } from "$app/state"
   import { onMount } from "svelte"
   import { expoOut } from "svelte/easing"
   import { slide } from "svelte/transition"
-  import {
-    sessionStore,
-    clearSession,
-    checkVersionAndRefresh,
-  } from "$lib/features/auth/stores/auth"
+  import { sessionStore } from "$lib/features/auth/stores/auth"
 
   interface Props {
     children?: import("svelte").Snippet
-    data: {
-      supabase: import("@supabase/supabase-js").SupabaseClient
-      session: import("@supabase/supabase-js").Session | null
-    }
   }
-  let { children, data }: Props = $props()
+  let { children }: Props = $props()
 
-  let { supabase, session } = $state(data)
-
-  // Keep local refs in sync when load data changes (navigation, invalidation)
-  $effect(() => {
-    ;({ supabase, session } = data)
-  })
-
-  // ─── Auth state listener + version polling ──────────────────
+  // ─── Periodic staleness poll (long-lived-tab kill-switch case) ────────
   onMount(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        // Session expiry changed → re-run load functions
-        if (newSession?.expires_at !== session?.expires_at) {
-          invalidate("supabase:auth")
-        }
-
-        // Token refreshed → check if permissions were revoked/changed.
-        // checkVersionAndRefresh() compares store version vs DB version.
-        // If they diverge, it forces a JWT refresh + store re-hydration.
-        if (event === "TOKEN_REFRESHED") {
-          const refreshed = await checkVersionAndRefresh(supabase)
-          if (refreshed) {
-            invalidate("supabase:auth")
-          }
-        }
-
-        // Signed out → clear store, go home
-        if (event === "SIGNED_OUT") {
-          clearSession()
-          goto("/")
-        }
-      },
-    )
-
-    // ─── Periodic version polling ─────────────────────────────
-    // For long-lived sessions (user leaves tab open for hours).
-    // checkVersionAndRefresh() is cheap:
-    //   - One bootstrap_session() RPC call
-    //   - Early exit if versions match (no JWT refresh, no store update)
-    //   - Only triggers full refresh when permissions actually changed
     const POLL_INTERVAL_MS = 60_000 // 60 seconds
 
-    const versionPollInterval = setInterval(async () => {
-      const s = $sessionStore
-      if (!s.initialized || !s.profile) return
+    const versionPollInterval = setInterval(() => {
+      const s = sessionStore.get?.() // see note below
+      // sessionStore is a plain Svelte store; read via get() from
+      // 'svelte/store' if not already imported elsewhere in this file.
+      if (!s?.initialized || !s?.profile) return
 
-      const refreshed = await checkVersionAndRefresh(supabase)
-      if (refreshed) {
-        invalidate("supabase:auth")
-      }
+      invalidateAll()
     }, POLL_INTERVAL_MS)
 
-    // Cleanup on unmount
     return () => {
-      subscription.subscription.unsubscribe()
       clearInterval(versionPollInterval)
     }
   })

@@ -5,7 +5,7 @@
  * a thin composition file with no implementation details.
  */
 
-export { supabaseHandle }     from './Supabase'
+export { initLocalsHandle } from  './InitLocals'
 export { authHandle }         from './Auth'           // NEW
 export { sessionSyncHandle }  from './SessionSync'    // NEW
 export { authGuardHandle }    from './AuthGuard'

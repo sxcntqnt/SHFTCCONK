@@ -6,26 +6,30 @@
  *
  * Pipeline order (each step depends on the ones above it):
  *
- *   1. Sentry           — error reporting + distributed tracing (must be first)
+ *   1. Sentry            — error reporting + distributed tracing (must be first)
  *   2. cloudflareHttpsFix — http→https rewrite behind CF proxy
- *   3. locationHandle   — geo seed from CF headers → requestContext [NOT auth]
- *   4. mapServiceHandle — DuckDB/SSE singleton init (needs requestContext)
- *   5. posthogProxy     — /ingest reverse proxy (short-circuits early)
- *   6. supabaseHandle   — SSR clients only + null-init all auth locals
- *   7. authHandle       — unified session resolution → locals.auth
- *   8. sessionSyncHandle — internal user → supabaseUserId (no-op for Supabase provider)
- *   9. csrfHandle       — double-submit token issue + verify, session-bound
- *  10. authGuardHandle  — session check → redirect/401
- *  11. userStateHandle  — domain resolution, KYC traps, context activation
+ *   3. locationHandle    — geo seed from CF headers → requestContext [NOT auth]
+ *   4. posthogProxy      — /ingest reverse proxy (short-circuits early)
+ *   5. initLocalsHandle  — zeros all auth/domain locals (no clients — Supabase removed)
+ *   6. authHandle        — unified session resolution → locals.auth
+ *   7. sessionSyncHandle — resolves locals.profileId, RLS's only trusted
+ *                          identity (see pg.ts's withProfileContext)
+ *   8. csrfHandle        — double-submit token issue + verify, session-bound
+ *   9. authGuardHandle   — session check → redirect/401
+ *  10. userStateHandle   — domain resolution, KYC traps, context activation
  *
- * WHY CSRF SITS AFTER authHandle (changed from old arch):
- *   getSessionId now reads event.locals.auth.user directly — one server-validated
- *   getUser() call per request instead of two. This also makes CSRF session
- *   binding provider-agnostic: it doesn't care whether the user came from
- *   Supabase or the internal provider, only that locals.auth is populated.
+ * NOTE — map service is NOT in this pipeline:
+ *   initMapService() / getReadyMapService() (see MapService.ts) is a
+ *   process-level lazy singleton, called directly from wherever map data
+ *   is first needed (e.g. a load function), not from a request hook. This
+ *   is a deliberate design shift away from request-middleware init, which
+ *   was race-prone under prerender. Do not add it to sequence(...) below.
  *
- *   CSRF still fires before authGuardHandle, so it covers every state-mutating
- *   request including unauthenticated ones (login form POSTs, etc.).
+ * WHY CSRF SITS AFTER authHandle:
+ *   getSessionId reads event.locals.auth.user directly — one server-validated
+ *   auth-service check per request. CSRF still fires before authGuardHandle,
+ *   so it covers every state-mutating request including unauthenticated ones
+ *   (login form POSTs, etc.).
  */
 
 import * as Sentry                from '@sentry/sveltekit'
@@ -38,9 +42,9 @@ import {
   cloudflareHttpsFix,
   locationHandle,
   posthogProxy,
-  supabaseHandle,
-  authHandle,         // NEW
-  sessionSyncHandle,  // NEW
+  initLocalsHandle,
+  authHandle,
+  sessionSyncHandle,
   createCsrfHandle,
   authGuardHandle,
   userStateHandle,
@@ -61,7 +65,7 @@ const csrfHandle = createCsrfHandle({
 
   // Bind each token to the authenticated user's id.
   // authHandle runs before this so event.locals.auth is already populated —
-  // no second getUser() call needed, and this works for both auth providers.
+  // no second lookup needed.
   // Returns undefined for unauthenticated requests — token is still issued
   // and verified, just without user binding.
   getSessionId: async (event) => event.locals.auth.user?.id,
@@ -77,9 +81,9 @@ export const handle = sequence(
   cloudflareHttpsFix,
   locationHandle,
   posthogProxy,
-  supabaseHandle,     // clients only; zeros all auth locals
-  authHandle,         // → locals.auth                       NEW
-  sessionSyncHandle,  // → locals.supabaseUserId (internal)  NEW
+  initLocalsHandle,   // zeros all auth locals — no clients created
+  authHandle,         // → locals.auth
+  sessionSyncHandle,  // → locals.profileId
   csrfHandle,         // after authHandle (locals.auth ready), before authGuard
   authGuardHandle,
   userStateHandle,

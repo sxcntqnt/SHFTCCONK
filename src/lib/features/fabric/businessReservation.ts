@@ -1,5 +1,5 @@
 // src/lib/features/billing/anchorBusinessReservation.ts
-import { supabaseAdmin } from "$lib/server/db";
+import { sql } from "$lib/server/pg";
 import { streamClient } from "$lib/server/redis";
 
 // Minimal Fabric gateway stub — replace with real Fabric SDK in production
@@ -23,13 +23,16 @@ export async function anchorBusinessReservation(
   status: string;
 }> {
   // Fetch booking details
-  const { data: booking, error: fetchError } = await supabaseAdmin
-    .from("fleet_bookings")
-    .select("*")
-    .eq("id", bookingId)
-    .single();
+  const bookings = await sql`
+    SELECT *
+    FROM fleet_bookings
+    WHERE id = ${bookingId}
+    LIMIT 1
+  `;
 
-  if (fetchError || !booking) {
+  const booking = bookings[0];
+
+  if (!booking) {
     throw new Error("Booking not found");
   }
 
@@ -63,19 +66,23 @@ export async function anchorBusinessReservation(
 
   const txId = fabricResult.transactionId;
 
-  // Update booking status in Supabase
-  const { error: updateError } = await supabaseAdmin
-    .from("fleet_bookings")
-    .update({
-      ledger_tx_id: txId,
-      status: "LEDGER_ANCHORED",
-      route_deviation_authorised: true,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", bookingId);
-
-  if (updateError) {
-    throw new Error(`Failed to update booking: ${updateError.message}`);
+  // Update booking status in Postgres
+  try {
+    await sql`
+      UPDATE fleet_bookings
+      SET
+        ledger_tx_id = ${txId},
+        status = 'LEDGER_ANCHORED',
+        route_deviation_authorised = TRUE,
+        updated_at = NOW()
+      WHERE id = ${bookingId}
+    `;
+  } catch (err) {
+    throw new Error(
+      `Failed to update booking: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
 
   // Invalidate ledger gate cache so the next check reflects the new anchor count

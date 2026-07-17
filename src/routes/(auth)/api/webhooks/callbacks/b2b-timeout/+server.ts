@@ -6,7 +6,7 @@
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { supabaseAdmin } from "$lib/server/db";
+import { sql } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: unknown;
@@ -18,7 +18,8 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ ResultCode: 0, ResultDesc: "Received" });
   }
 
-  const conversationId = (body as Record<string, unknown>)?.ConversationID as string | undefined;
+  const conversationId =
+    (body as Record<string, unknown>)?.ConversationID as string | undefined;
 
   if (!conversationId) {
     console.warn("[b2b-timeout] Received timeout callback without ConversationID");
@@ -26,33 +27,46 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   // ── Mark settlement as timed out ───────────────────────────────────────
-  const { error: updateError } = await supabaseAdmin
-    .from("mpesa_settlements")
-    .update({
-      status: "failed",
-      result_code: null,
-      result_description: "Queue timeout — request did not reach Safaricom in time",
-      completed_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("conversation_id", conversationId);
-
-  if (updateError) {
-    console.error("[b2b-timeout] Failed to update mpesa_settlements:", updateError);
+  try {
+    await sql`
+      UPDATE mpesa_settlements
+      SET
+        status = 'failed',
+        result_code = NULL,
+        result_description = 'Queue timeout — request did not reach Safaricom in time',
+        completed_at = NULL,
+        updated_at = NOW()
+      WHERE conversation_id = ${conversationId}
+    `;
+  } catch (updateError) {
+    console.error(
+      "[b2b-timeout] Failed to update mpesa_settlements:",
+      updateError
+    );
   }
 
   // ── Audit log ───────────────────────────────────────────────────────────
-  const { error: auditError } = await supabaseAdmin.from("audit_logs").insert({
-    event_type: "mpesa_b2b_timeout",
-    target_table: "mpesa_settlements",
-    details: {
-      conversation_id: conversationId,
-      reason: "Queue timeout",
-    },
-  });
-
-  if (auditError) {
-    console.error("[b2b-timeout] Failed to insert audit log:", auditError);
+  try {
+    await sql`
+      INSERT INTO audit_logs (
+        event_type,
+        target_table,
+        details
+      )
+      VALUES (
+        'mpesa_b2b_timeout',
+        'mpesa_settlements',
+        ${JSON.stringify({
+          conversation_id: conversationId,
+          reason: "Queue timeout",
+        })}::jsonb
+      )
+    `;
+  } catch (auditError) {
+    console.error(
+      "[b2b-timeout] Failed to insert audit log:",
+      auditError
+    );
   }
 
   console.warn("[b2b-timeout] B2B Settlement timed out:", conversationId);

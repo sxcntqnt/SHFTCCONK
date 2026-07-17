@@ -1,7 +1,8 @@
-// src/lib/features/billing/perEventEscrow.ts// 
-import { supabaseAdmin } from "$lib/server/db";
+// src/lib/features/billing/perEventEscrow.ts//
+import { sql } from "$lib/server/pg";
 import { streamClient } from "$lib/server/redis";
 import { mpesa } from "$lib/server/mpesa-provider";
+import { env } from "$env/dynamic/private";
 
 export interface EscrowInitResult {
   collection_initiated: boolean;
@@ -12,6 +13,8 @@ export interface EscrowInitResult {
 
 const PLATFORM_FEE_RATE = 0.025; // 2.5%
 const MINIMUM_FEE_KES = 50;
+
+
 
 export async function initiatePerEventEscrow(params: {
   bookingId: string;
@@ -27,8 +30,7 @@ export async function initiatePerEventEscrow(params: {
   );
 
   const operatorNetKes = params.agreedFareKes - platformFeeKes;
-
-  const callbackUrl = `${process.env.PUBLIC_BASE_URL}/api/mpesa/callbacks/per-event-escrow`;
+  const callbackUrl = `${env.PUBLIC_BASE_URL}/api/mpesa/callbacks/per-event-escrow`;
 
   // Initiate M-Pesa STK Push
   const stkResult = await mpesa.stkPush({
@@ -68,23 +70,37 @@ export async function initiatePerEventEscrow(params: {
     600 // 10 minutes
   );
 
-  // Persist to Supabase (using admin client)
-  const { error } = await supabaseAdmin
-    .from("per_event_escrow_records")
-    .insert({
-      booking_id: params.bookingId,
-      org_id: params.orgId,
-      operator_id: params.operatorId,
-      agreed_fare_kes: params.agreedFareKes,
-      platform_fee_kes: platformFeeKes,
-      operator_net_kes: operatorNetKes,
-      mpesa_checkout_request_id: checkoutId,
-      status: "PENDING",
-    });
-
-  if (error) {
-    console.error("Failed to insert escrow record:", error);
-    throw new Error(`Escrow record insert failed: ${error.message}`);
+  // Persist to Postgres
+  try {
+    await sql`
+      INSERT INTO per_event_escrow_records (
+        booking_id,
+        org_id,
+        operator_id,
+        agreed_fare_kes,
+        platform_fee_kes,
+        operator_net_kes,
+        mpesa_checkout_request_id,
+        status
+      )
+      VALUES (
+        ${params.bookingId},
+        ${params.orgId},
+        ${params.operatorId},
+        ${params.agreedFareKes},
+        ${platformFeeKes},
+        ${operatorNetKes},
+        ${checkoutId},
+        'PENDING'
+      )
+    `;
+  } catch (err) {
+    console.error("Failed to insert escrow record:", err);
+    throw new Error(
+      `Escrow record insert failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
 
   return {

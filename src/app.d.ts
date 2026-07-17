@@ -129,9 +129,15 @@ declare global {
       /** Active runtime context for permission checks and UI gating */
       activeContext: ActiveContext | null;
 
+      /** Request-scoped geo context forwarded from locals.requestContext.
+       *  Independent of auth — do not gate identity logic on this. */
+      requestContext: RequestContext | null;
+
       /** CSRF token forwarded from locals — inject into forms as a hidden field */
       csrfToken?: string;
     }
+
+
   }
 }
 

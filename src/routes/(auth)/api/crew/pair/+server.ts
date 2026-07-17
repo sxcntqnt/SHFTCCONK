@@ -1,8 +1,11 @@
 // src/routes/api/driver/pair/+server.ts
 import type { RequestHandler } from "./$types";
 import { json, error } from "@sveltejs/kit";
-import { verifyPairingToken, generateDriverSessionToken } from "$lib/features/auth/services/pairingToken";
-import { supabaseAdmin } from "$lib/server/db";
+import {
+  verifyPairingToken,
+  generateDriverSessionToken,
+} from "$lib/features/auth/services/pairingToken";
+import { sql } from "$lib/server/pg";
 import { streamClient } from "$lib/server/redis";
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -15,23 +18,27 @@ export const POST: RequestHandler = async ({ request }) => {
   let payload;
   try {
     payload = await verifyPairingToken(pairing_token);
-  } catch (e) {
+  } catch {
     throw error(401, {
       code: "TOKEN_EXPIRED",
-      message: "Pairing link has expired. Request a new one from your operator.",
+      message:
+        "Pairing link has expired. Request a new one from your operator.",
     });
   }
 
   // Fetch and validate token record (atomic check + mark as consumed)
-  const { data: tokenRecord, error: fetchError } = await supabaseAdmin
-    .from("vehicle_pairing_tokens")
-    .select("*")
-    .eq("id", payload.token_id || payload.id) // adjust based on what verifyPairingToken returns
-    .eq("vehicle_id", payload.vehicle_id)
-    .is("consumed_at", null)
-    .single();
+  const tokenRows = await sql`
+    SELECT *
+    FROM vehicle_pairing_tokens
+    WHERE id = ${payload.token_id || payload.id}
+      AND vehicle_id = ${payload.vehicle_id}
+      AND consumed_at IS NULL
+    LIMIT 1
+  `;
 
-  if (fetchError || !tokenRecord) {
+  const tokenRecord = tokenRows[0];
+
+  if (!tokenRecord) {
     throw error(409, {
       code: "TOKEN_CONSUMED",
       message: "This pairing link has already been used.",
@@ -39,15 +46,16 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   // Mark token as consumed
-  const { error: updateError } = await supabaseAdmin
-    .from("vehicle_pairing_tokens")
-    .update({
-      consumed_at: new Date().toISOString(),
-    })
-    .eq("id", tokenRecord.id);
-
-  if (updateError) {
-    throw new Error(`Failed to consume token: ${updateError.message}`);
+  try {
+    await sql`
+      UPDATE vehicle_pairing_tokens
+      SET consumed_at = NOW()
+      WHERE id = ${tokenRecord.id}
+    `;
+  } catch (err) {
+    throw new Error(
+      `Failed to consume token: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 
   // Generate driver session token

@@ -1,16 +1,14 @@
 // src/routes/api/bookings/[id]/anchor/+server.ts
 import type { RequestHandler } from "./$types";
 import { json, error } from "@sveltejs/kit";
-import { createSupabaseServerClient } from "$lib/server/db";
+import { withProfileContext } from "$lib/server/pg";
 import { assertLedgerNotGated } from "$lib/features/billing/ledgerGate";
 import { initiatePerEventEscrow } from "$lib/features/billing/perEventEscrow";
 import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation";
 import { streamClient } from "$lib/server/redis";
 import { getPostHogClient } from "$lib/server/posthog";
 
-export const POST: RequestHandler = async ({ params, request, locals, cookies }) => {
-  const supabase = createSupabaseServerClient(cookies);
-
+export const POST: RequestHandler = async ({ params, request, locals }) => {
   const { id: bookingId } = params;
   const { route } = (await request.json()) as {
     route: "SUBSCRIPTION" | "PER_EVENT";
@@ -24,15 +22,19 @@ export const POST: RequestHandler = async ({ params, request, locals, cookies })
   }
 
   // Fetch booking with RLS enforcement
-  const { data: booking, error: bookingError } = await supabase
-    .from("fleet_bookings")
-    .select("*")
-    .eq("id", bookingId)
-    .eq("org_id", orgId)
-    .eq("operator_id", operatorId)
-    .single();
+  const booking = await withProfileContext(operatorId, async (tx) => {
+    const rows = await tx`
+      SELECT *
+      FROM fleet_bookings
+      WHERE id = ${bookingId}
+        AND org_id = ${orgId}
+        AND operator_id = ${operatorId}
+    `;
 
-  if (bookingError || !booking) {
+    return rows[0];
+  });
+
+  if (!booking) {
     throw error(404, "Booking not found or not accessible.");
   }
 
@@ -42,7 +44,6 @@ export const POST: RequestHandler = async ({ params, request, locals, cookies })
 
   // Check ledger gating status
   const { permitted, route: resolvedRoute } = await assertLedgerNotGated(
-    supabase,
     orgId,
     booking.agreed_fare
   );

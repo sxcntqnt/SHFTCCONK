@@ -10,37 +10,51 @@
 //   5. Route to correct landing page
 //
 // AUTH_PROVIDER=internal:
-//   1. User already validated — locals.auth.user set by authHandle in hooks
-//   2. Sync already ran in sessionSyncHandle (hooks) — read locals.supabaseUserId
-//      rather than calling getOrCreateSupabaseUser again. Calling it twice per
-//      request caused a race: the second call's identity_accounts lookup could
-//      run before the first call's insert was visible, leading it to fall into
-//      the "first login" branch, create a duplicate stub profile, and then fail
-//      on auth.admin.createUser() with "already registered" — because the first
-//      call had already created the Supabase auth user under the deterministic
-//      email. sessionSyncHandle is the single source of truth for this value.
-//   3. Create user-scoped Supabase client so RPCs see correct auth.uid()
-//   4. Redeem invite token if present
-//   5. Bootstrap session via RPC
-//   6. Route to correct landing page
+//   1. authHandle has already validated the caller and set locals.auth.user;
+//      sessionSyncHandle has already resolved the canonical domain identity
+//      and set locals.profileId. Both run in hooks.server.ts, before this
+//      route is ever reached.
+//   2. Open a Neon transaction scoped to that profile via
+//      withProfileContext() (src/lib/server/pg.ts) — it sets
+//      app.current_profile_id for the duration of the transaction, the
+//      same session GUC every RLS policy resolves identity from — and
+//      call bootstrap_session()/redeem_invite() as plain SQL function
+//      calls.
+//   3. Route to correct landing page.
 //
-// CLIENT SELECTION RATIONALE:
+//   REMOVED (Neon/auth-service migration): the entire Supabase-session
+//   -minting shim that used to live here for the internal provider —
+//   generateLink('magiclink') + verifyOtp() + createSupabaseUserScopedClient(),
+//   plus its supabaseUserId/supabaseUserEmail locals dependency. That
+//   machinery existed for exactly one reason: Postgres RPCs used to
+//   resolve identity via auth.uid(), which only exists inside a
+//   Supabase-authenticated session. Since 03_functions.sql/06_rls.sql
+//   replaced every auth.uid() call with get_current_profile_id() reading
+//   app.current_profile_id, there is no longer any reason to manufacture
+//   a fake Supabase login for internal-provider users — and
+//   sessionSyncHandle no longer populates supabaseUserId/supabaseUserEmail
+//   at all (that belonged to the old "internal auth → shadow Supabase
+//   user" architecture), which was the direct cause of the
+//   "No supabaseUserId on locals" error immediately following successful
+//   profile creation.
+//
+// CLIENT SELECTION RATIONALE (Supabase path only):
 //   locals.supabaseServiceRole — service role, bypasses RLS
 //                                used for: admin.createSession()
-//                                (sync itself now happens exclusively in
-//                                sessionSyncHandle, not here)
 //   locals.supabase            — anon key + request cookies, respects RLS
 //                                used for: Supabase provider RPC calls
 //                                (session in cookies after code exchange)
-//   createSupabaseUserScopedClient — anon key + Authorization header
-//                                used for: internal provider RPC calls
-//                                (no cookie session; token from admin.createSession)
+//
+// The internal path has no equivalent client-selection question — there
+// is exactly one connection layer (src/lib/server/pg.ts), and identity is
+// scoped per-call via withProfileContext(), not per-client.
 
 import { redirect } from "@sveltejs/kit"
 import { isAuthApiError } from "@supabase/supabase-js"
 import type { RequestHandler } from "./$types"
+import type { TransactionSql } from "postgres"
 import { env } from "$env/dynamic/private"
-import { createSupabaseUserScopedClient, createSupabaseAnonClient } from "$lib/server/db"
+import { withProfileContext } from "$lib/server/pg"
 
 
 export const GET: RequestHandler = async ({ url, locals }) => {
@@ -98,8 +112,8 @@ async function handleSupabaseCallback(
   }
 
   // ── 3 & 4. Redeem invite + bootstrap (locals.supabase has auth.uid()) ──
-  const { inviteRedeemed, inviteResult } = await redeemInvite(supabase, inviteToken)
-  const bootstrapData = await bootstrapSession(supabase)
+  const { inviteRedeemed, inviteResult } = await redeemInviteSupabase(supabase, inviteToken)
+  const bootstrapData = await bootstrapSessionSupabase(supabase)
 
   if (next && !inviteRedeemed) redirect(303, sanitizeRedirect(next))
 
@@ -112,13 +126,11 @@ async function handleSupabaseCallback(
 
 /* ============================================================
    INTERNAL PROVIDER PATH
-   User authenticated via internal auth service — no Supabase
-   session cookie exists. sessionSyncHandle (in hooks.server.ts,
-   which runs on every request BEFORE this route handler) already
-   performed the sync and set locals.supabaseUserId. This handler
-   never calls getOrCreateSupabaseUser — doing so again here was
-   the root cause of the duplicate-stub-profile / "already
-   registered" failure loop.
+   authHandle -> sessionSyncHandle -> locals.profileId
+     -> withProfileContext(profileId, tx => ...)
+     -> bootstrap_session() / redeem_invite() as plain SQL
+     -> redirect
+   No Supabase client, no shadow session, no auth.uid().
 ============================================================ */
 
 async function handleInternalCallback(
@@ -139,102 +151,39 @@ async function handleInternalCallback(
     redirect(303, "/login/sign_in?error=session_missing")
   }
 
-  // ── 2. Read the sync result set by sessionSyncHandle ──────
+  // ── 2. Confirm sessionSyncHandle resolved the canonical profile ──
   // sessionSyncHandle runs earlier in the hooks chain and is the single
-  // point that calls getOrCreateSupabaseUser. If sync failed there, and
-  // /auth/callback is listed in PROTECTED_PREFIXES, the hook itself
-  // already returned a 503 and this handler never runs. This check is a
-  // defensive fallback for cases where /auth/callback is reached with a
-  // stale or missing value (e.g. PROTECTED_PREFIXES misconfigured).
-  const { supabaseUserId } = locals
+  // point that resolves profileId (sync.ts's resolveProfileId). If sync
+  // failed there, and /auth/callback is listed in PROTECTED_PREFIXES, the
+  // hook itself already returned a 503 and this handler never runs. This
+  // check is a defensive fallback for cases where /auth/callback is
+  // reached with a stale or missing value (e.g. PROTECTED_PREFIXES
+  // misconfigured).
+  const { profileId } = locals
 
-  if (!supabaseUserId) {
+  if (!profileId) {
     console.error(
-      "[auth/callback:internal] No supabaseUserId on locals — " +
+      "[auth/callback:internal] No profileId on locals — " +
       "sessionSyncHandle did not run or failed silently for user:",
       internalUser.id,
     )
     redirect(303, "/auth/auth-code-error")
   }
 
-  // ── 3. Derive user-scoped client for RPC calls ────────────
-  // RPCs (bootstrap_session, redeem_invite) rely on auth.uid() in
-  // Postgres. Without a Supabase session cookie, auth.uid() is null
-  // and all user-scoped queries fail.
-  //
-  // NOTE: supabase-js has no admin.createSession(userId) method — the
-  // GoTrue Admin API only exposes createUser, deleteUser, listUsers,
-  // getUserById, updateUserById, generateLink, inviteUserByEmail,
-  // signOut, and mfa. To mint a real session for an already-known
-  // user without their password, we use the generateLink + verifyOtp
-  // workaround: generateLink('magiclink') issues a hashed_token server
-  // -side, and verifyOtp redeems it for a genuine session — the same
-  // mechanism Supabase's own magic-link email flow uses under the hood.
-  //
-  // supabaseUserEmail comes straight from locals — sessionSyncHandle
-  // (hooks) already resolved it via sync.ts's resolveEmail(), which is
-  // a pure function of internalUserId. No getUserById round-trip needed.
-
-  const { supabaseUserEmail } = locals
-
-  if (!supabaseUserEmail) {
-    console.error(
-      "[auth/callback:internal] No supabaseUserEmail on locals for user:",
-      supabaseUserId,
-    )
-    redirect(303, "/auth/auth-code-error")
-  }
-
-  const {
-    data: linkData,
-    error: linkError,
-  } = await locals.supabaseServiceRole.auth.admin.generateLink({
-    type:  "magiclink",
-    email: supabaseUserEmail,
-  })
-
-  const hashedToken = linkData?.properties?.hashed_token
-
-  if (linkError || !hashedToken) {
-    console.error(
-      "[auth/callback:internal] Failed to generate session link for user:",
-      supabaseUserId,
-      linkError?.message,
-    )
-    redirect(303, "/auth/auth-code-error")
-  }
-
-  // verifyOtp must run on a plain anon-key client (not the admin client,
-  // and not locals.supabase — we don't want this written to cookies for
-  // the internal provider). It exchanges the hashed_token for a real
-  // access_token + refresh_token pair.
-  const anonClient = createSupabaseAnonClient()
-  const {
-    data: otpData,
-    error: otpError,
-  } = await anonClient.auth.verifyOtp({
-    type:       "magiclink",
-    token_hash: hashedToken,
-  })
-
-  if (otpError || !otpData.session) {
-    console.error(
-      "[auth/callback:internal] Failed to verify session token for user:",
-      supabaseUserId,
-      otpError?.message,
-    )
-    redirect(303, "/auth/auth-code-error")
-  }
-
-  // createSupabaseUserScopedClient injects the token as an
-  // Authorization header — auth.uid() = supabaseUserId in Postgres.
-  const userScopedClient = createSupabaseUserScopedClient(
-    otpData.session.access_token,
+  // ── 3 & 4. Redeem invite + bootstrap ──────────────────────
+  // Two independent transactions (not one combined transaction) — this
+  // preserves the original two-independent-calls semantics: a failed
+  // bootstrap_session() must not roll back a successful invite
+  // redemption, the same way two separate Supabase RPC calls never
+  // shared a transaction on the old path.
+  const { inviteRedeemed, inviteResult } = await withProfileContext(
+    profileId,
+    (tx) => redeemInviteInternal(tx, inviteToken),
   )
-
-  // ── 4 & 5. Redeem invite + bootstrap (userScopedClient has auth.uid()) ─
-  const { inviteRedeemed, inviteResult } = await redeemInvite(userScopedClient, inviteToken)
-  const bootstrapData = await bootstrapSession(userScopedClient)
+  const bootstrapData = await withProfileContext(
+    profileId,
+    (tx) => bootstrapSessionInternal(tx),
+  )
 
   if (next && !inviteRedeemed) redirect(303, sanitizeRedirect(next))
 
@@ -246,11 +195,11 @@ async function handleInternalCallback(
 
 
 /* ============================================================
-   SHARED HELPERS — provider-agnostic, accept any Supabase client
+   HELPERS — SUPABASE PATH (unchanged from before)
 ============================================================ */
 
-async function redeemInvite(
-  client: ReturnType<typeof createSupabaseUserScopedClient>,
+async function redeemInviteSupabase(
+  client: App.Locals["supabase"],
   inviteToken: string | null,
 ): Promise<{ inviteRedeemed: boolean; inviteResult: InviteResult | null }> {
   if (!inviteToken) return { inviteRedeemed: false, inviteResult: null }
@@ -261,7 +210,6 @@ async function redeemInvite(
 
   if (error) {
     // Non-blocking — user continues with existing permissions.
-    // Surface the error on the landing page via query param if needed.
     console.warn("[auth/callback] Invite redemption failed (non-blocking):", error)
     return { inviteRedeemed: false, inviteResult: null }
   }
@@ -273,8 +221,8 @@ async function redeemInvite(
   }
 }
 
-async function bootstrapSession(
-  client: ReturnType<typeof createSupabaseUserScopedClient>,
+async function bootstrapSessionSupabase(
+  client: App.Locals["supabase"],
 ): Promise<BootstrapPayload> {
   const { data, error } = await client.rpc("bootstrap_session")
 
@@ -284,6 +232,50 @@ async function bootstrapSession(
   }
 
   return data as BootstrapPayload
+}
+
+
+/* ============================================================
+   HELPERS — INTERNAL PATH (raw SQL via withProfileContext)
+============================================================ */
+
+async function redeemInviteInternal(
+  tx: TransactionSql,
+  inviteToken: string | null,
+): Promise<{ inviteRedeemed: boolean; inviteResult: InviteResult | null }> {
+  if (!inviteToken) return { inviteRedeemed: false, inviteResult: null }
+
+  try {
+    const [row] = await tx<{ result: InviteResult | null }[]>`
+      select public.redeem_invite(${inviteToken}::uuid) as result
+    `
+    const inviteResult = row?.result ?? null
+    return {
+      inviteRedeemed: inviteResult?.status === "success",
+      inviteResult,
+    }
+  } catch (err) {
+    // Non-blocking — user continues with existing permissions. Matches
+    // the Supabase path's behavior: an invalid/expired/already-redeemed
+    // token should never block signup/login.
+    console.warn("[auth/callback] Invite redemption failed (non-blocking):", err)
+    return { inviteRedeemed: false, inviteResult: null }
+  }
+}
+
+async function bootstrapSessionInternal(
+  tx: TransactionSql,
+): Promise<BootstrapPayload> {
+  try {
+    const [row] = await tx<{ result: BootstrapPayload }[]>`
+      select public.bootstrap_session() as result
+    `
+    if (!row?.result) throw new Error("bootstrap_session() returned no data")
+    return row.result
+  } catch (err) {
+    console.error("[auth/callback] Bootstrap failed:", err)
+    redirect(303, "/app/dashboard")  // client layout will retry
+  }
 }
 
 

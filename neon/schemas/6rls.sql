@@ -881,6 +881,29 @@ create policy "mpesa_customers_write_backend" on mpesa_customers
 
 
 -- ═══════════════════════════════════════════════════════════
+-- ACTOR VERIFICATION TOKENS (self-scoped, app_backend)
+-- ═══════════════════════════════════════════════════════════
+-- Was previously enabled-with-zero-policies (same silent-default-deny
+-- gap as mpesa_customers/identity_accounts before this pass). Backs the
+-- email/SMS OTP verification shim (src/lib/server/mailer.ts) — token_hash
+-- is a hash of the code, never the raw code itself, so a policy exposing
+-- this table more broadly than "own profile" would still not leak usable
+-- codes, but self-scoping is the correct default regardless.
+--
+-- One row per (actor_id, method) by constraint — generating a new token
+-- is an upsert (`on conflict (actor_id, method) do update`), which needs
+-- the same policy to cover both the insert and update path.
+
+alter table actor_verification_tokens enable row level security;
+
+create policy "actor_verification_tokens_self" on actor_verification_tokens
+  for all
+  to app_backend
+  using (profile_id = public.get_current_profile_id())
+  with check (profile_id = public.get_current_profile_id());
+
+
+-- ═══════════════════════════════════════════════════════════
 -- CONTACT REQUESTS (server-side insert only)
 -- ═══════════════════════════════════════════════════════════
 -- SECURITY FIX: Removed WITH CHECK (true) which allowed anyone

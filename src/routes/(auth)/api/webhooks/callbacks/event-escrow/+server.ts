@@ -1,7 +1,7 @@
 // src/routes/api/mpesa/callbacks/per-event-escrow/+server.ts
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { supabaseAdmin } from "$lib/server/db";
+import { sql } from "$lib/server/pg";
 import { streamClient } from "$lib/server/redis";
 import { anchorBusinessReservation } from "$lib/features/fabric/businessReservation";
 import { getPostHogClient } from "$lib/server/posthog";
@@ -32,23 +32,24 @@ export const POST: RequestHandler = async ({ request }) => {
   // Payment FAILED
   // ─────────────────────────────────────────────
   if (ResultCode !== 0) {
-    const { error } = await supabaseAdmin
-      .from("per_event_escrow_records")
-      .update({
-        status: "FAILED",
-        failure_reason: ResultDesc || "Unknown failure",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("mpesa_checkout_request_id", CheckoutRequestID);
-
-    if (error) {
-      console.error("Failed to update escrow record to FAILED:", error);
+    try {
+      await sql`
+        UPDATE per_event_escrow_records
+        SET
+          status = 'FAILED',
+          failure_reason = ${ResultDesc || "Unknown failure"},
+          updated_at = NOW()
+        WHERE mpesa_checkout_request_id = ${CheckoutRequestID}
+      `;
+    } catch (err) {
+      console.error("Failed to update escrow record to FAILED:", err);
     }
 
     await streamClient.del(`escrow_intent:${CheckoutRequestID}`);
 
     // Track failed payment
     const posthog = getPostHogClient();
+
     await posthog.capture({
       distinctId: intent.operator_id,
       event: "per_event_escrow_payment_failed",
@@ -74,35 +75,37 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Extract M-Pesa receipt number from callback metadata
     const items = stkCallback.CallbackMetadata?.Item || [];
-    const mpesaReceiptNumber = items.find((item: any) => item.Name === "MpesaReceiptNumber")?.Value;
+
+    const mpesaReceiptNumber =
+      items.find((item: any) => item.Name === "MpesaReceiptNumber")?.Value;
 
     // 2. Update escrow record
-    const { error: escrowError } = await supabaseAdmin
-      .from("per_event_escrow_records")
-      .update({
-        status: "SETTLED",
-        mpesa_receipt_number: mpesaReceiptNumber,
-        ledger_tx_id: anchorResult.txId,
-        settled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("mpesa_checkout_request_id", CheckoutRequestID);
-
-    if (escrowError) {
-      console.error("Failed to update escrow record:", escrowError);
+    try {
+      await sql`
+        UPDATE per_event_escrow_records
+        SET
+          status = 'SETTLED',
+          mpesa_receipt_number = ${mpesaReceiptNumber},
+          ledger_tx_id = ${anchorResult.txId},
+          settled_at = NOW(),
+          updated_at = NOW()
+        WHERE mpesa_checkout_request_id = ${CheckoutRequestID}
+      `;
+    } catch (err) {
+      console.error("Failed to update escrow record:", err);
     }
 
     // 3. Update booking with M-Pesa reference
-    const { error: bookingError } = await supabaseAdmin
-      .from("fleet_bookings")
-      .update({
-        mpesa_reference: mpesaReceiptNumber,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", intent.booking_id);
-
-    if (bookingError) {
-      console.error("Failed to update booking mpesa_reference:", bookingError);
+    try {
+      await sql`
+        UPDATE fleet_bookings
+        SET
+          mpesa_reference = ${mpesaReceiptNumber},
+          updated_at = NOW()
+        WHERE id = ${intent.booking_id}
+      `;
+    } catch (err) {
+      console.error("Failed to update booking mpesa_reference:", err);
     }
 
     // 4. Clear cache
@@ -110,6 +113,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // 5. Track successful payment
     const posthog = getPostHogClient();
+
     await posthog.capture({
       distinctId: intent.operator_id,
       event: "per_event_escrow_settled",
@@ -127,13 +131,20 @@ export const POST: RequestHandler = async ({ request }) => {
     console.error("Error processing successful escrow callback:", err);
 
     // Optional: Mark as partially failed if anchoring fails
-    await supabaseAdmin
-      .from("per_event_escrow_records")
-      .update({
-        status: "SETTLED_PAYMENT_FAILED_ANCHOR",
-        failure_reason: err.message || "Failed to anchor to ledger",
-      })
-      .eq("mpesa_checkout_request_id", CheckoutRequestID);
+    try {
+      await sql`
+        UPDATE per_event_escrow_records
+        SET
+          status = 'SETTLED_PAYMENT_FAILED_ANCHOR',
+          failure_reason = ${err.message || "Failed to anchor to ledger"}
+        WHERE mpesa_checkout_request_id = ${CheckoutRequestID}
+      `;
+    } catch (updateErr) {
+      console.error(
+        "Failed to update escrow record after anchor failure:",
+        updateErr
+      );
+    }
   }
 
   // Always acknowledge to Safaricom

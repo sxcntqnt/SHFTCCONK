@@ -2,39 +2,40 @@
   /**
    * src/routes/(marketing)/login/sign_in/+page.svelte
    *
-   * Sign-in page — email/password form + GitHub OAuth.
+   * Sign-in page — email/password form. GitHub OAuth temporarily disabled.
    *
    * EMAIL/PASSWORD:
    *   Custom form that POSTs to the +page.server.ts default action via
-   *   SvelteKit progressive enhancement (use:enhance).  No Supabase
-   *   involved for email auth — the server action calls the Go service.
+   *   SvelteKit progressive enhancement (use:enhance). Calls the
+   *   auth-service directly — unaffected by the Supabase removal.
    *
-   * GITHUB OAUTH:
-   *   Still flows through Supabase (signInWithOAuth → /auth/callback →
-   *   sessionSyncHandle maps Supabase user → internal user).  The
-   *   onAuthStateChange listener handles the SIGNED_IN event and runs
-   *   bootstrap_session() for the redirect decision, just as before.
+   * GITHUB OAUTH — ⚠️ NOT YET MIGRATED, INTENTIONALLY DISABLED:
+   *   The previous flow was signInWithOAuth() → /auth/callback →
+   *   sessionSyncHandle mapping a Supabase user to an internal one, then
+   *   a client-side bootstrap_session() RPC + setUserFromBootstrap() to
+   *   decide the post-login redirect. All of that was Supabase-specific
+   *   and none of it has a designed replacement: the auth-service's route
+   *   table (see its README) has no OAuth endpoint — only
+   *   /auth/register, /auth/login, /auth/refresh, /auth/logout(-all),
+   *   /auth/sessions, /auth/context/activate, /auth/verify, /auth/me.
+   *   Wiring GitHub back in needs a real design decision (does
+   *   auth-service grow an OAuth callback route? does something else
+   *   front it?) before this can be un-stubbed — not something to guess
+   *   at here. Until then, the button is hidden.
    *
-   * DESIGN:
-   *   Matches the Matatu Pulse design system — same tokens as the old
-   *   sharedAppearance variables but expressed as native CSS/HTML.
+   *   bootstrap_session() is also no longer client-callable at all (see
+   *   pg.ts / +layout.server.ts) — even a stopgap OAuth flow can't call
+   *   it the way this file used to.
    */
 
   import { enhance } from "$app/forms"
   import { page } from "$app/state"
-  import { browser } from "$app/environment"
-  import { goto } from "$app/navigation"
-  import posthog from "posthog-js"
-  import { oauthProviders } from "../login_config"
-  import { setUserFromBootstrap } from "$lib/features/auth/stores/auth"
-  import { resolveRouteFromBootstrap } from "$lib/features/auth/utils/resolveRoute"
 
   // ── Props ────────────────────────────────────────────────────────
-  let { data } = $props<{ data: { supabase: any; url: string; csrfToken?: string } }>()
+  let { data } = $props<{ data: { csrfToken?: string } }>()
 
   // ── Form state ───────────────────────────────────────────────────
   let submitting = $state(false)
-  let mounted    = $state(false)
 
   // Server action result — present after a failed submission
   let actionError = $derived(page.form?.error as string | undefined)
@@ -42,71 +43,6 @@
 
   // ── Misc derivations ─────────────────────────────────────────────
   let verified = $derived(page.url?.searchParams?.get("verified") === "true")
-
-  // ── GitHub OAuth ─────────────────────────────────────────────────
-  // OAuth still uses Supabase.  SIGNED_IN event fires after the callback
-  // and triggers bootstrap_session() → resolveRouteFromBootstrap() redirect.
-  $effect(() => {
-    mounted = true
-
-    const {
-      data: { subscription },
-    } = data.supabase.auth.onAuthStateChange(
-      async (event: string, _session: any) => {
-        if (event !== "SIGNED_IN") return
-        if (!mounted) return
-
-        // Small delay to ensure session is fully propagated
-        await new Promise<void>((r) => setTimeout(r, 200))
-        if (!mounted) return
-
-        try {
-          const { data: rpcData, error } =
-            await data.supabase.rpc("bootstrap_session")
-          if (!mounted) return
-
-          if (error) {
-            console.error("[sign_in] bootstrap_session:", error)
-            goto("/app/dashboard")
-            return
-          }
-
-          const payload = Array.isArray(rpcData) ? rpcData[0] : rpcData
-          setUserFromBootstrap(payload)
-
-          if (browser && payload?.profile_id) {
-            posthog.identify(payload.profile_id, {
-              email: payload.email ?? undefined,
-              name:  payload.name  ?? undefined,
-              role:  payload.actor_type ?? undefined,
-            })
-            posthog.capture("user_signed_in", {
-              provider: "github",
-              role:     payload.actor_type ?? "unknown",
-            })
-          }
-
-          goto(resolveRouteFromBootstrap(payload))
-        } catch (err) {
-          if (!mounted) return
-          console.error("[sign_in] bootstrap_session threw:", err)
-          goto("/app/dashboard")
-        }
-      },
-    )
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
-  })
-
-  async function signInWithOAuth(provider: string) {
-    await data.supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${data.url}/auth/callback` },
-    })
-  }
 </script>
 
 <svelte:head>
@@ -162,47 +98,18 @@
     </div>
   {/if}
 
-  <!-- ── OAuth providers ── -->
-  {#if oauthProviders.length > 0}
-    <div class="oauth-section">
-      {#each oauthProviders as provider}
-        <button
-          type="button"
-          class="oauth-btn"
-          onclick={() => signInWithOAuth(provider)}
-          disabled={submitting}
-        >
-          {#if provider === "github"}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
-              />
-            </svg>
-            Continue with GitHub
-          {:else}
-            Continue with {provider}
-          {/if}
-        </button>
-      {/each}
-    </div>
-
-    <div class="divider">
-      <div class="divider-line"></div>
-      <span class="divider-text">or continue with email</span>
-      <div class="divider-line"></div>
-    </div>
-  {/if}
+  <!-- OAuth section intentionally removed — see script comment above.
+       Re-add once auth-service has a real OAuth route. -->
 
   <!-- ── Email / password form ── -->
   <form
     method="POST"
     class="auth-form"
-    use:enhance={({ formElement, formData, cancel }) => {
+    use:enhance={() => {
       submitting = true
 
-      return async ({ result, update }) => {
+      return async ({ update }) => {
         submitting = false
-        // Let SvelteKit handle the redirect or re-render with form data
         await update()
       }
     }}
@@ -210,7 +117,6 @@
     <!-- CSRF token — required by csrfHandle for all POST requests -->
     <input type="hidden" name="csrf-token" value={data.csrfToken} />
 
-    <!-- Server-side error banner -->
     {#if actionError}
       <div class="form-error" role="alert">{actionError}</div>
     {/if}

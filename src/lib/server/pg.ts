@@ -35,27 +35,30 @@ import { env } from '$env/dynamic/private'
 // SvelteKit's server is long-lived (not per-request like serverless), so
 // this is safe and avoids reconnect overhead on every request.
 //
-// SUPABASE-SPECIFIC NOTES:
-//   - DATABASE_URL should be the DIRECT connection string (port 5432,
-//     no pooler) if your host has IPv6 egress, or the Supavisor SESSION
-//     MODE pooler string (Project Settings -> Database -> Connection
-//     Pooling -> Session mode) if it doesn't. Avoid the transaction-mode
-//     pooler (port 6543) for a long-lived server — it's built for
-//     serverless/edge functions with short-lived connections.
-//   - ssl is required — Supabase rejects unencrypted connections.
-//   - If you DO end up on the transaction-mode pooler for any reason,
-//     set prepare: false — prepared statements are bound to a specific
-//     backend connection, which transaction pooling doesn't guarantee
-//     across statements outside a single transaction.
+// NEON-SPECIFIC NOTES (database is Neon, not Supabase Postgres — Supabase
+// is now execution-layer-only, see Supabase.ts):
+//   - DATABASE_URL should point at Neon's pooled connection endpoint (the
+//     hostname with the `-pooler` suffix) unless this host has a direct
+//     route that bypasses PgBouncer. Neon's pooler runs in PgBouncer
+//     transaction mode by default.
+//   - Because of that, prepare: false is required below — prepared
+//     statements are bound to a specific backend connection, which
+//     transaction-mode pooling doesn't guarantee across statements outside
+//     a single transaction. Without this, expect intermittent
+//     "prepared statement does not exist" errors under load.
+//   - ssl is required — Neon rejects unencrypted connections.
+//   - If DATABASE_URL is ever pointed at Neon's *unpooled* endpoint instead
+//     (e.g. for a migration runner that needs session-level guarantees),
+//     prepare: false is unnecessary but harmless.
 const sql = postgres(env.DATABASE_URL, {
   max: 20,
   idle_timeout: 30,
   connect_timeout: 10,
   ssl: 'require',
+  prepare: false,
 })
 
 export type Sql = typeof sql
-
 /**
  * Run `fn` inside a transaction with app.current_profile_id set for the
  * duration of that transaction only (SET LOCAL — automatically reverts at

@@ -7,7 +7,7 @@
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { supabaseAdmin } from "$lib/server/db";
+import { sql } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: unknown;
@@ -57,37 +57,50 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   // ── Update settlement record ────────────────────────────────────────────
-  const { error: updateError } = await supabaseAdmin
-    .from("mpesa_settlements")
-    .update({
-      status: succeeded ? "completed" : "failed",
-      result_code: resultCode,
-      result_description: resultDesc,
-      transaction_id: transactionId,
-      completed_at: succeeded ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("conversation_id", conversationId);
-
-  if (updateError) {
-    console.error("[b2b-callback] Failed to update mpesa_settlements:", updateError);
+  try {
+    await sql`
+      UPDATE mpesa_settlements
+      SET
+        status = ${succeeded ? "completed" : "failed"},
+        result_code = ${resultCode},
+        result_description = ${resultDesc},
+        transaction_id = ${transactionId},
+        completed_at = ${succeeded ? new Date() : null},
+        updated_at = NOW()
+      WHERE conversation_id = ${conversationId}
+    `;
+  } catch (updateError) {
+    console.error(
+      "[b2b-callback] Failed to update mpesa_settlements:",
+      updateError
+    );
   }
 
   // ── Audit log ───────────────────────────────────────────────────────────
-  const { error: auditError } = await supabaseAdmin.from("audit_logs").insert({
-    event_type: "mpesa_b2b_result",
-    target_table: "mpesa_settlements",
-    details: {
-      conversation_id: conversationId,
-      transaction_id: transactionId,
-      result_code: resultCode,
-      result_desc: resultDesc,
-      succeeded,
-    },
-  });
-
-  if (auditError) {
-    console.error("[b2b-callback] Failed to insert audit log:", auditError);
+  try {
+    await sql`
+      INSERT INTO audit_logs (
+        event_type,
+        target_table,
+        details
+      )
+      VALUES (
+        'mpesa_b2b_result',
+        'mpesa_settlements',
+        ${JSON.stringify({
+          conversation_id: conversationId,
+          transaction_id: transactionId,
+          result_code: resultCode,
+          result_desc: resultDesc,
+          succeeded,
+        })}::jsonb
+      )
+    `;
+  } catch (auditError) {
+    console.error(
+      "[b2b-callback] Failed to insert audit log:",
+      auditError
+    );
   }
 
   if (!succeeded) {

@@ -7,7 +7,7 @@
 
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { supabaseAdmin } from "$lib/server/db";
+import { sql } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request }) => {
   let body: unknown;
@@ -31,19 +31,32 @@ export const POST: RequestHandler = async ({ request }) => {
   const succeeded = ResultCode === 0;
 
   // ── 1. Update the payments record ───────────────────────────────────────
-  const { data: payment, error: payError } = await supabaseAdmin
-    .from("payments")
-    .update({
-      status: succeeded ? "completed" : "failed",
-      result_desc: ResultDesc || "Unknown",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("transaction_id", CheckoutRequestID)
-    .select("user_id, amount, metadata")
-    .single();
+  let payment:
+    | {
+        user_id: string | null;
+        amount: number;
+        metadata: any;
+      }
+    | undefined;
 
-  if (payError) {
+  try {
+    const rows = await sql`
+      UPDATE payments
+      SET
+        status = ${succeeded ? "completed" : "failed"},
+        result_desc = ${ResultDesc || "Unknown"},
+        updated_at = NOW()
+      WHERE transaction_id = ${CheckoutRequestID}
+      RETURNING
+        user_id,
+        amount,
+        metadata
+    `;
+
+    payment = rows[0];
+  } catch (payError) {
     console.error("[stk-callback] Failed to update payments table:", payError);
+
     // Still acknowledge to Safaricom
     return json({ ResultCode: 0, ResultDesc: "Received" });
   }
@@ -60,33 +73,47 @@ export const POST: RequestHandler = async ({ request }) => {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1); // 30-day subscription cycle
 
-    const { error: subError } = await supabaseAdmin
-      .from("subscriptions")
-      .upsert(
-        {
-          user_id: payment.user_id,
-          plan_id: planId,
-          status: "active",
-          current_period_start: now.toISOString(),
-          current_period_end: periodEnd.toISOString(),
-          updated_at: now.toISOString(),
-        },
-        { onConflict: "user_id" } // One active subscription per user
-      );
-
-    if (subError) {
+    try {
+      await sql`
+        INSERT INTO subscriptions (
+          user_id,
+          plan_id,
+          status,
+          current_period_start,
+          current_period_end,
+          updated_at
+        )
+        VALUES (
+          ${payment.user_id},
+          ${planId},
+          'active',
+          ${now},
+          ${periodEnd},
+          ${now}
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE
+        SET
+          plan_id = EXCLUDED.plan_id,
+          status = EXCLUDED.status,
+          current_period_start = EXCLUDED.current_period_start,
+          current_period_end = EXCLUDED.current_period_end,
+          updated_at = EXCLUDED.updated_at
+      `;
+    } catch (subError) {
       console.error("[stk-callback] Failed to upsert subscription:", subError);
     }
   }
 
   // ── 3. Handle seat reservation (if this was a seat booking payment) ───────
   if (payment.metadata?.seat_ids?.length) {
-    const { error: seatError } = await supabaseAdmin
-      .from("seats")
-      .update({ status: "reserved" })
-      .in("id", payment.metadata.seat_ids as string[]);
-
-    if (seatError) {
+    try {
+      await sql`
+        UPDATE seats
+        SET status = 'reserved'
+        WHERE id = ANY(${payment.metadata.seat_ids})
+      `;
+    } catch (seatError) {
       console.error("[stk-callback] Failed to update seat status:", seatError);
     }
   }
