@@ -57,6 +57,7 @@ import type { PageServerLoad, Actions } from "./$types"
 import { redirect, error } from "@sveltejs/kit"
 import { PRIVATE_GATEBILL_API_URL } from "$env/static/private"
 import { withProfileContext } from "$lib/server/pg"
+import { putKycObject, getKycObjectUrl } from "$lib/server/r2"
 
 import {
   VALID_INTENTS,
@@ -76,15 +77,15 @@ const TIER_MAP: Record<OnboardingIntent, "kyc_light" | "kyc_full"> = {
   org: "kyc_full",
 }
 
-// TODO: storage destination for KYC photos not decided yet. Wire this up
-// to whatever you land on (MinIO/S3 client, presigned PUT flow, etc.) and
-// have it return a URL gatebill's worker can actually fetch. Left as an
-// explicit failure rather than a silent fake URL so this can't accidentally
-// ship half-wired.
-async function uploadKycDocument(_file: File, _key: string): Promise<string> {
-  throw new Error(
-    "uploadKycDocument not implemented — decide on object storage (MinIO/S3?) and wire it here",
-  )
+// Storage: Cloudflare R2 (S3-compatible). Bucket is private; we hand
+// gatebill a presigned GET URL rather than making photos public.
+async function uploadKycDocument(file: File, key: string): Promise<string> {
+  // preserve extension so the object isn't extensionless in the bucket browser
+  const ext = file.name.includes(".") ? file.name.split(".").pop() : "jpg"
+  const objectKey = `${key}.${ext}`
+
+  await putKycObject(file, objectKey)
+  return getKycObjectUrl(objectKey)
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {

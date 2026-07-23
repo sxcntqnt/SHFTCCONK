@@ -38,7 +38,7 @@ create table profiles (
   guardian_profile_id uuid references profiles(id) on delete set null,
   kyc_status text
     check (kyc_status in ('pending','approved','rejected','expired')),
-  ballerine_case_id text unique,
+  gatebill_job_id text unique,
   phone text,
   starting_locations text,
   destinations text,
