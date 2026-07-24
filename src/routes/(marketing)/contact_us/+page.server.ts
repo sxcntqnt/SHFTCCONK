@@ -9,13 +9,10 @@ import { preventDuplicate } from "$lib/security/dedupe"
 import { logSecurityEvent } from "$lib/utils/logger"
 import { sendAdminEmail } from "$lib/mailer"
 import { getPostHogClient } from "$lib/server/posthog"
+import { createLead, CrmError } from "$lib/server/crm"
 
 export const actions: Actions = {
-  default: async ({
-    request,
-    locals: { supabaseServiceRole },
-    getClientAddress,
-  }) => {
+  default: async ({ request, getClientAddress }) => {
     const ip = getClientAddress()
     const formData = await request.formData()
 
@@ -99,19 +96,35 @@ export const actions: Actions = {
     }
 
     // ─────────────────────────────
-    // 7. Database insert
+    // 7. Create lead in BottleCRM
     // ─────────────────────────────
-    const { error } = await supabaseServiceRole
-      .from("contact_requests")
-      .insert({
-        ...sanitized,
-        ip_address: ip,
-        created_at: new Date().toISOString(),
-      })
+    try {
+      await createLead(sanitized, ip)
+    } catch (err) {
+      if (err instanceof CrmError) {
+        logSecurityEvent("CRM_ERROR", {
+          ip,
+          status: err.status,
+          body: err.body,
+        })
 
-    if (error) {
-      logSecurityEvent("PAYLOAD_BLOCKED", { ip, error })
-      return fail(500, { error: "Database error" })
+        // Validation issues on our side are a 400 we can surface;
+        // everything else (auth, rate limit, CRM outage) is opaque
+        // to the visitor.
+        if (err.status === 400) {
+          return fail(500, {
+            error: "We couldn't process your enquiry. Please try again.",
+          })
+        }
+
+        return fail(500, {
+          error: "Unable to submit your enquiry right now.",
+        })
+      }
+
+      // Network/timeout error — CrmError wasn't thrown at all
+      logSecurityEvent("CRM_ERROR", { ip, error: String(err) })
+      return fail(500, { error: "Unable to submit your enquiry right now." })
     }
 
     // ─────────────────────────────
@@ -123,7 +136,8 @@ export const actions: Actions = {
         body: JSON.stringify({ ...sanitized, ip }, null, 2),
       })
     } catch {
-      // Email failure should never block user
+      // Email failure should never block the user — the lead already
+      // exists in the CRM.
     }
 
     // ─────────────────────────────
@@ -142,7 +156,7 @@ export const actions: Actions = {
       })
       await posthog.flush()
     } catch {
-      // Analytics failure should never block user
+      // Analytics failure should never block the user
     }
 
     return { success: true }

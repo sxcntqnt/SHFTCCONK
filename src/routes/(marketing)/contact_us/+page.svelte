@@ -1,20 +1,19 @@
+<script lang="ts">
+  import { PUBLIC_TURNSTILE_SITE_KEY } from "$env/static/public"
+  import TurnstileWidget from "$lib/components/TurnstileWidget.svelte"
+  import { page } from "$app/state"
+
+  let { data } = $props<{ data: { csrfToken?: string } }>()
+</script>
+
 <svelte:head>
   <title>Contact — Matatu Pulse | Get in Touch</title>
   <meta
     name="description"
     content="Contact the Matatu Pulse team. Reach us for operator demos, partnership enquiries, press, technical support, or general questions about our Nairobi matatu tracking platform."
   />
-  <link
-    rel="canonical"
-    href="https://sxcntcnqunts.org/contact_us"
-  />
-  <script
-    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-    async
-    defer
-  >
-    import TurnstileWidget from "$lib/components/TurnstileWidget.svelte"
-  </script>
+  <link rel="canonical" href="https://sxcntcnqunts.org/contact_us" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </svelte:head>
 
 <div class="page">
@@ -57,6 +56,7 @@
           </p>
 
           <form method="POST">
+            <input type="hidden" name="csrf-token" value={data.csrfToken} />
             <div class="form-grid">
               <div class="form-group">
                 <label for="first">First Name</label>
@@ -133,7 +133,7 @@
             <!-- Turnstile widget -->
             <div
               class="cf-turnstile"
-              data-sitekey={String(import.meta.env.PUBLIC_TURNSTILE_SITE_KEY)}
+              data-sitekey={PUBLIC_TURNSTILE_SITE_KEY}
             ></div>
             <button type="submit" class="submit-btn">
               Send Message
